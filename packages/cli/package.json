@@ -1,0 +1,28 @@
+{
+  "name": "@athion/cli",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "athion": "./dist/index.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "lint": "echo 'no lint configured yet'",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@athion/core": "workspace:*",
+    "@athion/shared": "workspace:*"
+  }
+}
