@@ -74,9 +74,27 @@
 
 ---
 
+### 2.5 Tool Registry
+
+**Status**: Concluído ✅
+**Commit**: `b1a5171`
+**Path**: `packages/core/src/tools/`
+**Arquivos**:
+
+- `types.ts` — ToolResult, ToolDefinition (genérica com Zod), ToolRegistry interface
+- `registry.ts` — `createToolRegistry()` factory + `defineTool()` helper
+- `builtins.ts` — 5 tools: read_file, write_file, list_files, run_command, search_files
+- `index.ts` — barrel export
+
+**Fixes aplicados**:
+
+- Spread condicional `...(cwd ? { cwd: resolve(cwd) } : {})` (fix `exactOptionalPropertyTypes` no Bun.spawn)
+- Separar retorno success/error em branches distintos (fix ToolResult type)
+
+---
+
 ### Próximos módulos (pendentes)
 
-- 2.5 Tool Registry — defineTool + 5 tools básicas
 - 2.6 Permission System — allow/ask/deny com glob matching
 - 2.7 Skill Manager — SKILL.md parser e discovery
 - 2.8 Token Manager — Budget + Compaction + Loop Detection
