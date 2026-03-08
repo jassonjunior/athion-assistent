@@ -17,6 +17,14 @@ export default tseslint.config(
     },
   },
   {
+    files: ['**/scripts/**/*.ts'],
+    rules: {
+      'no-console': 'off',
+      'no-debugger': 'off',
+      'max-lines-per-function': 'off',
+    },
+  },
+  {
     ignores: ['dist/', 'node_modules/', '*.config.js', '*.config.ts'],
   },
 )

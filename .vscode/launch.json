@@ -1,0 +1,17 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "E2E Test (Bun)",
+      "type": "bun",
+      "request": "launch",
+      "program": "${workspaceFolder}/packages/core/scripts/test-e2e.ts",
+      "cwd": "${workspaceFolder}",
+      "stopOnEntry": false,
+      "console": "integratedTerminal",
+      "env": {
+        "ATHION_VLLM_MLX_URL": "http://localhost:8000/v1"
+      }
+    }
+  ]
+}

@@ -40,14 +40,14 @@ export const PROVIDERS: Record<string, ProviderEntry> = {
     },
     models: [
       {
-        id: 'qwen3-coder-reap-40b-a3b',
+        id: 'Qwen3-Coder-Next-REAP-40B-A3B-mlx-mxfp4',
         name: 'Qwen3 Coder REAP 40B',
         providerId: 'vllm-mlx',
         contextLength: 50000,
       },
       {
-        id: 'qwen3-30B-a3b',
-        name: 'Qwen3 30B A3B',
+        id: 'Qwen3.5-35B-A3B-4bit',
+        name: 'Qwen3.5 35B A3B',
         providerId: 'vllm-mlx',
         contextLength: 50000,
       },
