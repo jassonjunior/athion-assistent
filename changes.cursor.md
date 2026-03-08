@@ -112,9 +112,22 @@
 
 ---
 
+### 2.7 Skill Manager
+
+**Status**: Concluído ✅
+**Commit**: `6bd95ca`
+**Path**: `packages/core/src/skills/`
+**Arquivos**:
+
+- `types.ts` — SkillDefinition, SkillManager interface
+- `parser.ts` — `parseSkillFile()` extrai metadados de arquivos .md
+- `manager.ts` — `createSkillManager()` com loadFromDirectory, register, findByTrigger
+- `index.ts` — barrel export
+
+---
+
 ### Próximos módulos (pendentes)
 
-- 2.7 Skill Manager — SKILL.md parser e discovery
 - 2.8 Token Manager — Budget + Compaction + Loop Detection
 
 ---
