@@ -126,9 +126,91 @@
 
 ---
 
-### Próximos módulos (pendentes)
+### 2.8 Token Manager
 
-- 2.8 Token Manager — Budget + Compaction + Loop Detection
+**Status**: Concluído ✅
+**Path**: `packages/core/src/tokens/`
+
+---
+
+## Fase 2: Orchestrator + SubAgents (branch: fase-2/orchestrator-subagents)
+
+### 2.1 Orchestrator
+
+**Status**: Concluído ✅
+**Commit**: `4a91679`
+**Path**: `packages/core/src/orchestrator/`
+**Arquivos**:
+
+- `types.ts` — OrchestratorEvent (8-variant union), Session, AgentDefinition, UserMessage, OrchestratorDeps
+- `session.ts` — `createSessionManager()` bridge Storage ↔ Orchestrator (parts JSON ↔ simple strings)
+- `prompt-builder.ts` — `createPromptBuilder()` monta system prompt com skills, tools, agents, contexto
+- `tool-dispatcher.ts` — `createToolDispatcher()` verifica permissões e delega para ToolRegistry
+- `orchestrator.ts` — `createOrchestrator()` streaming chat loop, multi-turn, loop detection
+- `index.ts` — barrel export
+
+### 2.2 SubAgent Manager
+
+**Status**: Concluído ✅
+**Commit**: `481ea9c`
+**Path**: `packages/core/src/subagent/`
+**Arquivos**:
+
+- `types.ts` — SubAgentTask (task-based model), SubAgentConfig, SubAgentEvent (7-variant union)
+- `agent.ts` — `runSubAgent()` AsyncGenerator com chat loop isolado e task status tracking
+- `manager.ts` — `createSubAgentManager()` registry + spawn de subagentes
+- `index.ts` — barrel export
+
+### 2.3 Task Tool
+
+**Status**: Concluído ✅
+**Path**: `packages/core/src/tools/task-tool.ts`
+
+- `createTaskTool()` — tool especial que delega tasks para subagentes via SubAgentManager
+- Schema Zod: agent (string), description (string), steps (string[] opcional)
+- Consome generator inteiro e retorna resultado final
+
+### 2.4 Built-in Skills (7 arquivos .md)
+
+**Status**: Concluído ✅
+**Path**: `packages/core/skills/`
+**Arquivos**:
+
+- `code-review.md` — Revisão de código (segurança, bugs, performance)
+- `refactor.md` — Refatoração preservando comportamento
+- `explain.md` — Explicação de código e conceitos
+- `test-writer.md` — Escrita de testes unitários/integração
+- `debug.md` — Diagnóstico e correção de bugs
+- `search.md` — Busca e análise read-only do codebase
+- `coder.md` — Geração de código e modificação de arquivos
+
+### 2.5 Built-in SubAgents
+
+**Status**: Concluído ✅
+**Path**: `packages/core/src/subagent/builtins.ts`
+
+- 7 subagentes: search, coder, code-reviewer, refactorer, explainer, test-writer, debugger
+- Cada um referencia uma skill e tem whitelist de tools
+- `builtinAgents` array exportado para registro automático
+
+### 2.6 Core Tools
+
+**Status**: Concluído ✅ (já existiam da Fase 1)
+**Path**: `packages/core/src/tools/builtins.ts`
+
+- 5 tools: read_file, write_file, list_files, run_command, search_files
+- - task tool (2.3)
+
+### 2.7 Bootstrap + Barrel Exports
+
+**Status**: Concluído ✅
+**Path**: `packages/core/src/bootstrap.ts`, `packages/core/src/index.ts`
+
+- `bootstrap()` — inicializa todos os módulos na ordem correta (6 níveis de dependência)
+- `AthionCore` — interface com todas as instâncias prontas
+- `index.ts` — re-exporta tudo publicamente
+
+**Nota futura**: Implementar busca vetorial (embeddings + sqlite-vec) para o Search agent.
 
 ---
 
