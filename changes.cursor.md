@@ -93,9 +93,27 @@
 
 ---
 
+### 2.6 Permission System
+
+**Status**: Concluído ✅
+**Commit**: `3603b9f`
+**Path**: `packages/core/src/permissions/`
+**Arquivos**:
+
+- `types.ts` — PermissionDecision, PermissionScope, PermissionRule, PermissionCheck, PermissionManager
+- `permissions.ts` — `createPermissionManager()` com glob matching e 3 níveis de prioridade
+- `index.ts` — barrel export
+
+**Decisões**:
+
+- Glob matching sem dependências externas (regex com `*` e `**`)
+- Prioridade: session rules → persistent rules → default 'ask'
+- Integração com DatabaseManager para scope 'remember'
+
+---
+
 ### Próximos módulos (pendentes)
 
-- 2.6 Permission System — allow/ask/deny com glob matching
 - 2.7 Skill Manager — SKILL.md parser e discovery
 - 2.8 Token Manager — Budget + Compaction + Loop Detection
 
