@@ -19,6 +19,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@athion/shared": "workspace:*"
+    "@athion/shared": "workspace:*",
+    "zod": "^4.3.6"
   }
 }
