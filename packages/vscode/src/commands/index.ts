@@ -15,7 +15,7 @@ type CommandEntry = [string, (...args: unknown[]) => unknown]
 
 export function registerCommands(
   context: vscode.ExtensionContext,
-  _bridge: CoreBridge,
+  bridge: CoreBridge,
   chatProvider: ChatViewProvider,
   diffManager: DiffManager,
 ): void {
@@ -25,6 +25,7 @@ export function registerCommands(
     ...inlineCommands(),
     ...diffCommands(diffManager),
     ...settingsCommands(),
+    ...codebaseCommands(bridge, chatProvider),
   ]
 
   for (const [id, handler] of commands) {
@@ -111,6 +112,111 @@ function settingsCommands(): CommandEntry[] {
           'workbench.action.openSettings',
           '@ext:athion.athion-assistent',
         )
+      },
+    ],
+  ]
+}
+
+// ─── Codebase Commands ──────────────────────────────────────────────
+
+function codebaseCommands(bridge: CoreBridge, chatProvider: ChatViewProvider): CommandEntry[] {
+  return [
+    [
+      'athion.indexCodebase',
+      async () => {
+        const workspaceFolders = vscode.workspace.workspaceFolders
+        if (!workspaceFolders || workspaceFolders.length === 0) {
+          vscode.window.showWarningMessage('Athion: Nenhum workspace aberto para indexar.')
+          return
+        }
+
+        const workspacePath = workspaceFolders[0]?.uri.fsPath
+        if (!workspacePath) return
+
+        await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: 'Athion: Indexando codebase...',
+            cancellable: false,
+          },
+          async (progress) => {
+            try {
+              // Registra listener de progresso antes de iniciar
+              const onEvent = (method: string, params: unknown) => {
+                if (method === 'codebase.event') {
+                  const ev = params as {
+                    type: string
+                    indexed?: number
+                    total?: number
+                    currentFile?: string
+                  }
+                  if (ev.type === 'progress' && ev.total) {
+                    const pct = Math.floor(((ev.indexed ?? 0) / ev.total) * 100)
+                    progress.report({
+                      message: `${pct}% (${ev.indexed}/${ev.total})`,
+                      increment: 0,
+                    })
+                  }
+                }
+              }
+              bridge.on('notification', onEvent as never)
+
+              const result = await bridge.request<{ totalFiles: number; totalChunks: number }>(
+                'codebase.index',
+                {},
+                300000, // 5min timeout para workspaces grandes
+              )
+
+              bridge.off('notification', onEvent as never)
+
+              vscode.window.showInformationMessage(
+                `Athion: Codebase indexado! ${result.totalFiles} arquivos, ${result.totalChunks} chunks.`,
+              )
+            } catch (err) {
+              vscode.window.showErrorMessage(
+                `Athion: Erro ao indexar codebase: ${err instanceof Error ? err.message : String(err)}`,
+              )
+            }
+          },
+        )
+      },
+    ],
+    [
+      'athion.searchCodebase',
+      async () => {
+        const query = await vscode.window.showInputBox({
+          prompt: 'Buscar no codebase',
+          placeHolder: 'Ex: função de autenticação JWT',
+        })
+        if (!query) return
+
+        try {
+          const result = await bridge.request<{
+            results: Array<{ file: string; startLine: number; symbolName?: string; score: number }>
+          }>('codebase.search', { query, limit: 8 }, 30000)
+
+          if (result.results.length === 0) {
+            vscode.window.showInformationMessage('Athion: Nenhum resultado encontrado.')
+            return
+          }
+
+          // Mostra resultado no chat como slash command /codebase
+          const summary = result.results
+            .map(
+              (r, i) =>
+                `${i + 1}. ${r.file}:${r.startLine}${r.symbolName ? ` (${r.symbolName})` : ''} [${Math.round(r.score * 100)}%]`,
+            )
+            .join('\n')
+
+          chatProvider.focus()
+          await chatProvider.sendMessage(
+            `/codebase ${query}\n\nResultados encontrados:\n${summary}`,
+          )
+        } catch (err) {
+          vscode.window.showErrorMessage(
+            `Athion: Erro na busca: ${err instanceof Error ? err.message : String(err)}`,
+          )
+        }
       },
     ],
   ]

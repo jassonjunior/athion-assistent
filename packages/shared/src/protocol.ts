@@ -60,6 +60,10 @@ export type RpcMethod =
   | 'tools.list'
   | 'agents.list'
   | 'completion.complete'
+  | 'codebase.index'
+  | 'codebase.search'
+  | 'codebase.status'
+  | 'codebase.clear'
   | 'ping'
 
 // ─── Request Params ────────────────────────────────────────────────

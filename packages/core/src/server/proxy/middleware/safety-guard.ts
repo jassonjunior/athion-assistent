@@ -147,7 +147,7 @@ export function safetyGuard(response: OpenAIChatResponse): MiddlewareResult {
  * Extrai o arquivo/path alvo dos argumentos de uma tool call.
  * Mesma tool para arquivo diferente = chamada diferente (não é loop).
  */
-function extractTarget(toolName: string, argsJson: string): string {
+function extractTarget(_toolName: string, argsJson: string): string {
   try {
     const parsed = JSON.parse(argsJson) as Record<string, unknown>
     // Campos comuns que identificam o alvo

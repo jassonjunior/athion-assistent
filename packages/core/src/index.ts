@@ -52,3 +52,13 @@ export type { TelemetryConfig, TelemetryService, SpanContext } from './telemetry
 export { createToolRegistry, defineTool } from './tools'
 export type { ToolDefinition, ToolRegistry, ToolResult } from './tools'
 export { createTaskTool } from './tools/task-tool'
+
+// Indexing
+export { createCodebaseIndexer } from './indexing'
+export type {
+  CodebaseIndexer,
+  CodeChunk,
+  SearchResult,
+  IndexerConfig,
+  IndexStats,
+} from './indexing'

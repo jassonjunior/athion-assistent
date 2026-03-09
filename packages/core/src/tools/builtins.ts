@@ -1,6 +1,7 @@
 import { readdir, readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { z } from 'zod/v4'
+import type { CodebaseIndexer } from '../indexing'
 import { defineTool } from './registry'
 
 /**
@@ -201,8 +202,57 @@ export const searchFilesTool = defineTool({
 })
 
 /**
+ * Cria a tool search_codebase vinculada a um CodebaseIndexer.
+ * Usa busca semântica (vector + FTS) como estratégia primária.
+ * Deve ser registrada após o indexer estar disponível no bootstrap.
+ */
+export function createSearchCodebaseTool(indexer: CodebaseIndexer) {
+  return defineTool({
+    name: 'search_codebase',
+    level: 'agent',
+    description:
+      'Busca semanticamente no índice do codebase (vector + FTS). Use antes de search_files para perguntas sobre código. Retorna chunks com arquivo, linha e conteúdo.',
+    parameters: z.object({
+      query: z.string().describe('Descrição do que procurar (ex: "função de autenticação JWT")'),
+      limit: z.number().optional().describe('Máximo de resultados (default: 8)'),
+    }),
+    execute: async ({ query, limit }) => {
+      try {
+        const hits = await indexer.search(query, limit ?? 8)
+        return {
+          success: true as const,
+          data: {
+            results: hits.map((r) => ({
+              file: r.chunk.filePath,
+              startLine: r.chunk.startLine,
+              endLine: r.chunk.endLine,
+              language: r.chunk.language,
+              symbolName: r.chunk.symbolName,
+              chunkType: r.chunk.chunkType,
+              score: Math.round(r.score * 100) / 100,
+              source: r.source,
+              content: r.chunk.content,
+            })),
+            message:
+              hits.length === 0
+                ? 'Nenhum resultado no índice. Use search_files para busca por texto exato.'
+                : undefined,
+          },
+        }
+      } catch (error) {
+        return {
+          success: false as const,
+          error: error instanceof Error ? error.message : String(error),
+        }
+      }
+    },
+  })
+}
+
+/**
  * Todas as tools built-in do Athion.
  * Registre todas de uma vez no ToolRegistry com registerBuiltins().
+ * search_codebase NÃO está aqui — é criada dinamicamente com createSearchCodebaseTool().
  */
 export const BUILTIN_TOOLS = [
   readFileTool,

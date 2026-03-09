@@ -31,6 +31,11 @@ export function createHandlers(core: AthionCore, notify: NotifyFn): RpcHandlers 
     'tools.list': async () => handleToolsList(core),
     'agents.list': async () => handleAgentsList(core),
     'completion.complete': (params: unknown) => handleCompletion(core, params),
+    // Codebase indexer
+    'codebase.index': (params: unknown) => handleCodebaseIndex(core, notify, params),
+    'codebase.search': (params: unknown) => handleCodebaseSearch(core, params),
+    'codebase.status': async () => handleCodebaseStatus(core),
+    'codebase.clear': async () => handleCodebaseClear(core),
   }
 }
 
@@ -191,6 +196,74 @@ function handleToolsList(core: AthionCore): unknown {
 
 function handleAgentsList(core: AthionCore): unknown {
   return core.subagents.list().map((a) => ({ name: a.name, description: a.description }))
+}
+
+// ─── Codebase Handlers ──────────────────────────────────────────────
+
+async function handleCodebaseIndex(
+  core: AthionCore,
+  notify: NotifyFn,
+  params: unknown,
+): Promise<unknown> {
+  if (!core.indexer) {
+    throw new Error('Indexer não configurado. Inicie o servidor com --workspace=<path>')
+  }
+
+  const { file } = (params as { file?: string }) ?? {}
+
+  if (file) {
+    // Re-indexa um arquivo específico
+    await core.indexer.indexFile(file)
+    notify('codebase.event', { type: 'file_indexed', file })
+    return { ok: true, file }
+  }
+
+  // Indexa o workspace completo com progresso via notificações
+  const stats = await core.indexer.indexWorkspace((indexed, total, currentFile) => {
+    notify('codebase.event', { type: 'progress', indexed, total, currentFile })
+  })
+
+  notify('codebase.event', { type: 'done', stats })
+  return stats
+}
+
+async function handleCodebaseSearch(core: AthionCore, params: unknown): Promise<unknown> {
+  if (!core.indexer) {
+    throw new Error('Indexer não configurado.')
+  }
+
+  const { query, limit } = params as { query: string; limit?: number }
+  const results = await core.indexer.search(query, limit ?? 8)
+
+  return {
+    results: results.map((r) => ({
+      file: r.chunk.filePath,
+      startLine: r.chunk.startLine,
+      endLine: r.chunk.endLine,
+      language: r.chunk.language,
+      symbolName: r.chunk.symbolName,
+      chunkType: r.chunk.chunkType,
+      score: Math.round(r.score * 100) / 100,
+      source: r.source,
+      content: r.chunk.content,
+    })),
+  }
+}
+
+function handleCodebaseStatus(core: AthionCore): unknown {
+  if (!core.indexer) {
+    return { available: false, reason: 'Indexer não configurado.' }
+  }
+  const stats = core.indexer.getStats()
+  return { available: true, ...stats }
+}
+
+function handleCodebaseClear(core: AthionCore): unknown {
+  if (!core.indexer) {
+    throw new Error('Indexer não configurado.')
+  }
+  core.indexer.clear()
+  return { ok: true }
 }
 
 // ─── Completion Handler ─────────────────────────────────────────────

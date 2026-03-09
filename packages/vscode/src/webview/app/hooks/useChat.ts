@@ -57,12 +57,71 @@ export function useChat() {
       setIsStreaming(false)
     })
 
+    // Codebase slash command responses
+    on('codebase:result', (d: unknown) => {
+      const data = d as {
+        results: Array<{ file: string; startLine: number; symbolName?: string; score: number }>
+        query: string
+      }
+      const lines = data.results.map(
+        (r, i) =>
+          `${i + 1}. \`${r.file}:${r.startLine}\`${r.symbolName ? ` — **${r.symbolName}**` : ''} [${Math.round(r.score * 100)}%]`,
+      )
+      const md =
+        data.results.length > 0
+          ? `**Resultados para "${data.query}":**\n\n${lines.join('\n')}`
+          : `Nenhum resultado para "${data.query}". Execute *Athion: Index Codebase* primeiro.`
+      setMessages((prev) => [
+        ...prev,
+        { id: `codebase-${Date.now()}`, role: 'assistant' as const, content: md },
+      ])
+    })
+    on('codebase:indexed', (d: unknown) => {
+      const data = d as { totalFiles: number; totalChunks: number }
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `codebase-idx-${Date.now()}`,
+          role: 'assistant' as const,
+          content: `Codebase indexado: ${data.totalFiles} arquivos, ${data.totalChunks} chunks.`,
+        },
+      ])
+    })
+    on('codebase:error', (d: unknown) => {
+      const data = d as { message: string }
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `codebase-err-${Date.now()}`,
+          role: 'assistant' as const,
+          content: `Erro no codebase: ${data.message}`,
+        },
+      ])
+    })
+
     post({ type: 'ready' })
   }, [])
 
   const sendMessage = useCallback(
     (content: string) => {
       if (!content.trim() || isStreaming) return
+
+      // Slash command: /codebase [query] ou /codebase index
+      const codebaseMatch = content.trim().match(/^\/codebase\s*(.*)$/)
+      if (codebaseMatch) {
+        const arg = (codebaseMatch[1] ?? '').trim()
+        setMessages((prev) => [
+          ...prev,
+          { id: `msg-${++refs.messageId.current}`, role: 'user' as const, content },
+        ])
+        if (arg === 'index' || arg === '') {
+          post({ type: 'codebase:index' })
+        } else {
+          post({ type: 'codebase:search', query: arg })
+        }
+        return
+      }
+
       setMessages((prev) => [
         ...prev,
         { id: `msg-${++refs.messageId.current}`, role: 'user' as const, content },

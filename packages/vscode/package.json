@@ -104,6 +104,14 @@
       {
         "command": "athion.openSettings",
         "title": "Athion: Open Settings"
+      },
+      {
+        "command": "athion.indexCodebase",
+        "title": "Athion: Index Codebase"
+      },
+      {
+        "command": "athion.searchCodebase",
+        "title": "Athion: Search Codebase"
       }
     ],
     "keybindings": [

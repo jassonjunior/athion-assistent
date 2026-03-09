@@ -586,3 +586,208 @@ Quando 90% da janela de contexto é consumida, o sistema chama o LLM para resumi
 - `test-agent-search` — **PASSED ✅** (com strategy 'summarize')
 - `test-e2e` — **PASSED ✅**
 - Todos 8 testes — **PASSED ✅** (incluindo code-reviewer com fuzzy match)
+
+---
+
+## Feature: Codebase Indexer — Busca Semântica do Codebase
+
+**Status**: Concluído ✅
+**Data**: 2026-03-09
+**Branch**: `fase-6/polish`
+
+### Descrição
+
+Módulo de indexação e busca semântica do codebase implementado do zero sem binários nativos:
+
+- **FileWalker**: percorre diretório respeitando `.gitignore` (parser próprio sem dependências)
+- **Chunker**: chunking heurístico por linguagem (regex, sem tree-sitter nativo)
+- **EmbeddingService**: chama `/v1/embeddings` (OpenAI-compatible — LM Studio, Ollama, OpenAI)
+- **DbStore**: SQLite direto (bun:sqlite) com FTS5 + vetores BLOB
+- **Vector Similarity**: cosine similarity em JS (float32 serializado)
+- **CodebaseIndexer**: orquestra tudo — indexação completa, incremental, busca híbrida
+
+### Estratégia de Busca
+
+1. **FTS5** (rápido, exact/keyword) — sempre disponível
+2. **Vector similarity** (semântico) — disponível se `ATHION_EMBEDDING_URL` configurado
+3. **Híbrida**: FTS(40%) + Vector(60%) com re-ranking por score médio
+
+### Arquivos Criados
+
+**`packages/core/src/indexing/`**:
+
+- `types.ts` — `CodeChunk`, `SearchResult`, `IndexerConfig`, `IndexStats`
+- `file-walker.ts` — walker com gitignore parsing próprio, `detectLanguage()`
+- `chunker.ts` — chunking semântico + sliding-window, `generateChunkId()`
+- `embeddings.ts` — `EmbeddingService`, `cosineSimilarity()`, serialização float32
+- `db-store.ts` — SQLite + FTS5 + índice de vetores (sem drizzle)
+- `manager.ts` — `CodebaseIndexer` class + `createCodebaseIndexer()` factory
+- `index.ts` — barrel exports
+
+### Arquivos Modificados
+
+**`packages/core/src/tools/builtins.ts`**:
+
+- `createSearchCodebaseTool(indexer)` — tool `search_codebase` dinâmica
+- Prioridade: semântico primeiro, grep como fallback
+
+**`packages/core/src/subagent/builtins.ts`**:
+
+- Todos os agentes (search, coder, code-reviewer, refactorer, explainer, test-writer, debugger)
+  adicionaram `search_codebase` como primeira tool da lista
+
+**`packages/core/src/bootstrap.ts`**:
+
+- `BootstrapOptions`: novos campos `workspacePath`, `indexDbPath`
+- `AthionCore`: novo campo `indexer: CodebaseIndexer | null`
+- Cria `CodebaseIndexer` se `workspacePath` fornecido
+- Registra `search_codebase` tool automaticamente
+- Usa `ATHION_EMBEDDING_URL` e `ATHION_EMBEDDING_MODEL` env vars
+
+**`packages/core/src/index.ts`**:
+
+- Re-exporta `createCodebaseIndexer` e tipos do módulo indexing
+
+**`packages/core/src/tools/index.ts`**:
+
+- Re-exporta `createSearchCodebaseTool`
+
+**`packages/shared/src/protocol.ts`**:
+
+- Novos `RpcMethod`: `codebase.index`, `codebase.search`, `codebase.status`, `codebase.clear`
+
+**`packages/cli/src/commands/codebase.ts`** (novo):
+
+- Subcomandos: `index [path]`, `search <query>`, `status`, `clear`
+- Suporte a `--db` para custom path do banco
+- Progresso em tempo real durante indexação
+
+**`packages/cli/src/index.ts`**:
+
+- Registra comando `codebase` no CLI
+
+**`packages/cli/src/serve/handlers.ts`**:
+
+- `handleCodebaseIndex` — indexa com progresso via notificações
+- `handleCodebaseSearch` — busca e retorna resultados formatados
+- `handleCodebaseStatus` — status do índice
+- `handleCodebaseClear` — limpa o índice
+
+**`packages/vscode/src/bridge/messenger-types.ts`**:
+
+- `WebviewToExtension`: `codebase:index`, `codebase:search`
+- `ExtensionToWebview`: `codebase:result`, `codebase:indexed`, `codebase:error`
+- Interface `CodebaseSearchResult`
+
+**`packages/vscode/src/commands/index.ts`**:
+
+- `athion.indexCodebase` — indexa workspace com progress notification
+- `athion.searchCodebase` — input box + busca + exibe no chat
+
+**`packages/vscode/package.json`**:
+
+- Registra novos comandos no `contributes.commands`
+
+**`packages/vscode/src/webview/chat-view-provider.ts`**:
+
+- Handlers para `codebase:index` e `codebase:search` do webview
+
+**`packages/vscode/src/webview/app/hooks/useChat.ts`**:
+
+- Intercep slash command `/codebase [query]` no `sendMessage`
+- `/codebase index` → indexa workspace
+- `/codebase <query>` → busca e mostra resultados no chat
+- Eventos `codebase:result`, `codebase:indexed`, `codebase:error`
+
+**`packages/test-ui/src/server/protocol.ts`**:
+
+- `WsClientMessage`: `codebase:index`, `codebase:search`
+- `WsServerMessage`: `codebase:progress`, `codebase:indexed`, `codebase:results`, `codebase:error`
+
+**`packages/test-ui/src/server/index.ts`**:
+
+- Handlers WebSocket para `codebase:index` e `codebase:search`
+
+### Fixes de Build (pré-existentes)
+
+**`packages/core/tsconfig.json`**:
+
+- Adicionado `exclude: ["src/**/*.test.ts", "src/**/*.spec.ts"]` para evitar falha no build
+
+**`packages/core/src/server/proxy/compression.ts`**:
+
+- Fixes de `exactOptionalPropertyTypes` e tipagem de `res.json()`
+
+**`packages/core/src/server/proxy/middleware/safety-guard.ts`**:
+
+- Fix de variável não utilizada (`toolName` → `_toolName`)
+
+### Como Usar
+
+**CLI**:
+
+```bash
+# Indexar workspace atual
+athion codebase index .
+
+# Buscar semanticamente
+athion codebase search "função de autenticação JWT"
+
+# Status do índice
+athion codebase status
+
+# Com embeddings (semântico)
+ATHION_EMBEDDING_URL=http://localhost:1234 athion codebase index .
+```
+
+**VS Code**:
+
+- `Athion: Index Codebase` — indexa o workspace aberto
+- `Athion: Search Codebase` — input box para busca
+- No chat: `/codebase index` ou `/codebase <query>`
+
+**Chat App**:
+
+- WebSocket: `{ type: 'codebase:index' }` ou `{ type: 'codebase:search', query: '...' }`
+
+---
+
+## Testes E2E — Codebase Indexer + search_codebase (2026-03-09)
+
+**Status**: Concluído ✅
+
+### Scripts criados
+
+- `packages/core/scripts/test-codebase-indexer.ts` — Testa indexação + FTS + tool
+- `packages/core/scripts/test-search-agent-tools.ts` — Smoke test: registry + subagente
+- `packages/core/scripts/test-agent-search-codebase.ts` — E2E com LLM (search agent)
+
+### Resultados
+
+**test-codebase-indexer.ts — PASSED ✓**
+
+- 262 arquivos indexados em 1.1s
+- 2164 chunks gerados (FTS-only, sem embeddings)
+- FTS retornou resultados para todas as queries válidas
+- Tool `search_codebase` criada, executada, retornou results com file/startLine/score/content
+- Mensagem de fallback presente quando query retorna vazio
+
+**test-search-agent-tools.ts — PASSED ✓**
+
+- Sem `workspacePath`: `search_codebase` NÃO registrada, `indexer = null`
+- Com `workspacePath`: `search_codebase` registrada como 1ª tool do search agent
+- Resolvida corretamente do ToolRegistry para o subagente (linha 51 de `agent.ts`)
+- Execução via `tools.execute('search_codebase', ...)` retorna resultados reais
+
+**test-agent-search-codebase.ts — Parcial (LLM lento)**
+
+- Bootstrap: ✓ (`search_codebase` registrada)
+- Orchestrator delegou corretamente: `task(agent: "search")` ✓
+- `subagent_start: search` emitido ✓
+- LLM 40B no MLX muito lento para completar o turn (timeout)
+
+### Observações
+
+- A busca FTS é instantânea (~0ms); o gargalo é o LLM
+- FTS5 com tokenizer trigram pode retornar resultados parciais (esperado)
+- `embeddingBaseUrl: ''` no bootstrap não ativa embeddings (verificar se precisa ser `undefined`)

@@ -26,6 +26,10 @@ const CONTINUATION_THRESHOLD = 0.7
 /** Máximo de chars para resultados acumulados no prompt de continuação. */
 const MAX_ACCUMULATED_CHARS = 15_000
 
+type AgentMessage = { role: 'user' | 'assistant' | 'system' | 'tool'; content: string | unknown[] }
+type ToolCall = { id: string; name: string; args: unknown }
+type ProviderTools = Record<string, { description: string; parameters: unknown }>
+
 /**
  * Executa um subagente com seu proprio ciclo de chat isolado.
  * Suporta continuation protocol: se o contexto se esgota, sai com status 'partial'
@@ -43,31 +47,16 @@ export async function* runSubAgent(
   task.updatedAt = new Date()
   yield { type: 'start', agentName: config.name, task }
 
-  // 1. Montar system prompt (inclui contexto de continuação se aplicável)
   const skill = deps.skills.get(config.skill)
   const systemPrompt = buildAgentPrompt(config, skill?.instructions, task)
-
-  // 2. Filtrar tools pela whitelist
   const allowedTools = deps.tools.list().filter((t) => config.tools.includes(t.name))
-  const providerTools: Record<string, { description: string; parameters: unknown }> = {}
-  for (const t of allowedTools) {
-    providerTools[t.name] = { description: t.description, parameters: t.parameters }
-  }
-
-  // 3. Preparar mensagens
-  const messages: Array<{
-    role: 'user' | 'assistant' | 'system' | 'tool'
-    content: string | unknown[]
-  }> = [
+  const providerTools = buildProviderTools(allowedTools)
+  const messages: AgentMessage[] = [
     { role: 'system', content: systemPrompt },
     { role: 'user', content: formatTaskPrompt(task) },
   ]
-
-  // 4. Provider/modelo
   const providerName = config.model?.provider ?? deps.defaultProvider
   const modelName = config.model?.model ?? deps.defaultModel
-
-  // 5. Loop de chat
   const resultParts: string[] = []
   let agentDone = false
 
@@ -80,87 +69,28 @@ export async function* runSubAgent(
       return
     }
 
-    let assistantContent = ''
-    const toolCalls: Array<{ id: string; name: string; args: unknown }> = []
-
-    // Gerenciamento de contexto: summarize via LLM ou sliding-window mecânico
-    const estimatedTokens = estimateTokens(messages)
-    if (estimatedTokens > CONTEXT_LIMIT * SLIDING_WINDOW_THRESHOLD) {
-      if (deps.summarizer) {
-        // Estratégia preferida: summarize via LLM — preserva contexto semântico
-        try {
-          const flatMessages = messages.map((m) => ({
-            role: m.role,
-            content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
-          }))
-          const summarized = await deps.summarizer.summarize(flatMessages)
-          messages.length = 0
-          messages.push(
-            ...summarized.map((m) => ({
-              role: m.role as 'user' | 'assistant' | 'system' | 'tool',
-              content: m.content as string | unknown[],
-            })),
-          )
-        } catch {
-          // Fallback: sliding-window mecânico se summarize falhar
-          applySlidingWindow(messages)
-        }
-      } else {
-        // Sem summarizer: sliding-window mecânico
-        applySlidingWindow(messages)
-      }
-
-      // Re-estimar após compactação
-      const afterCompaction = estimateTokens(messages)
-
-      // Se AINDA acima do threshold de continuação, sair para continuation
-      if (afterCompaction > CONTEXT_LIMIT * CONTINUATION_THRESHOLD && resultParts.length > 0) {
-        task.status = 'partial'
-        task.result = resultParts.join('\n')
-        task.accumulatedResults.push(...resultParts)
-        task.remainingWork = buildRemainingWorkSummary(task, resultParts)
-        task.updatedAt = new Date()
-        yield { type: 'continuation_needed', task }
-        return
-      }
+    const compacted = await compactContextIfNeeded(messages, resultParts, task, deps)
+    if (compacted === 'continuation') {
+      yield { type: 'continuation_needed', task }
+      return
     }
 
-    const stream = deps.provider.streamChat({
-      provider: providerName,
-      model: modelName,
+    const { assistantContent, toolCalls, errorEvent } = yield* streamTurn(
+      deps.provider,
+      providerName,
+      modelName,
       messages,
-      ...(Object.keys(providerTools).length > 0 ? { tools: providerTools } : {}),
-    })
-
-    for await (const event of stream) {
-      if (signal?.aborted) {
-        task.status = 'failed'
-        task.result = 'Aborted by user'
-        task.updatedAt = new Date()
-        yield { type: 'error', error: new Error('SubAgent aborted'), task }
-        return
-      }
-
-      if (event.type === 'content') {
-        assistantContent += event.content
-        yield { type: 'content', content: event.content }
-      }
-
-      if (event.type === 'tool_call') {
-        toolCalls.push({ id: event.id, name: event.name, args: event.args })
-        yield { type: 'tool_call', toolName: event.name, args: event.args }
-      }
-
-      if (event.type === 'error') {
-        task.status = 'failed'
-        task.result = event.error.message
-        task.updatedAt = new Date()
-        yield { type: 'error', error: event.error, task }
-        return
-      }
+      providerTools,
+      signal,
+    )
+    if (errorEvent) {
+      task.status = 'failed'
+      task.result = errorEvent.error.message
+      task.updatedAt = new Date()
+      yield errorEvent
+      return
     }
 
-    // Acumular resposta do assistente
     if (assistantContent) {
       resultParts.push(assistantContent)
       task.result = resultParts.join('\n')
@@ -168,72 +98,16 @@ export async function* runSubAgent(
       yield { type: 'task_update', task }
     }
 
-    // Se não tem tool calls, terminamos
     if (toolCalls.length === 0) {
-      if (assistantContent) {
-        messages.push({ role: 'assistant', content: assistantContent })
-      }
+      if (assistantContent) messages.push({ role: 'assistant', content: assistantContent })
       agentDone = true
       break
     }
 
-    // Push assistant com tool call parts (formato AI SDK v6)
-    const assistantParts: unknown[] = []
-    if (assistantContent) {
-      assistantParts.push({ type: 'text', text: assistantContent })
-    }
-    for (const tc of toolCalls) {
-      assistantParts.push({
-        type: 'tool-call',
-        toolCallId: tc.id,
-        toolName: tc.name,
-        input: tc.args,
-      })
-    }
-    messages.push({ role: 'assistant', content: assistantParts })
-
-    // Processar tool calls
-    for (const tc of toolCalls) {
-      const tool = allowedTools.find((t) => t.name === tc.name)
-      if (!tool) {
-        const errorMsg = `Tool "${tc.name}" not in whitelist for agent "${config.name}"`
-        messages.push({
-          role: 'tool',
-          content: [
-            {
-              type: 'tool-result',
-              toolCallId: tc.id,
-              toolName: tc.name,
-              output: { type: 'text', value: `Error: ${errorMsg}` },
-            },
-          ],
-        })
-        yield { type: 'tool_result', toolName: tc.name, result: { error: errorMsg } }
-        continue
-      }
-
-      const result = await deps.tools.execute(tc.name, tc.args)
-      const rawText = result.success ? JSON.stringify(result.data) : `Error: ${result.error}`
-      const resultText = truncateResult(rawText, 10_000)
-      messages.push({
-        role: 'tool',
-        content: [
-          {
-            type: 'tool-result',
-            toolCallId: tc.id,
-            toolName: tc.name,
-            output: { type: 'text', value: resultText },
-          },
-        ],
-      })
-      if (result.success) {
-        resultParts.push(`[${tc.name}] ${truncateResult(rawText, 3_000)}`)
-      }
-      yield { type: 'tool_result', toolName: tc.name, result }
-    }
+    pushAssistantWithToolCalls(messages, assistantContent, toolCalls)
+    yield* processToolCalls(toolCalls, allowedTools, messages, resultParts, deps, config)
   }
 
-  // Se esgotou turnos mas ainda tinha work em progresso → continuation
   if (!agentDone && resultParts.length > 0) {
     task.status = 'partial'
     task.result = resultParts.join('\n')
@@ -244,11 +118,172 @@ export async function* runSubAgent(
     return
   }
 
-  // Resultado final
   task.result = resultParts.join('\n')
   task.status = 'completed'
   task.updatedAt = new Date()
   yield { type: 'complete', task }
+}
+
+function buildProviderTools(allowedTools: ReturnType<ToolRegistry['list']>): ProviderTools {
+  const providerTools: ProviderTools = {}
+  for (const t of allowedTools) {
+    providerTools[t.name] = { description: t.description, parameters: t.parameters }
+  }
+  return providerTools
+}
+
+async function compactContextIfNeeded(
+  messages: AgentMessage[],
+  resultParts: string[],
+  task: SubAgentTask,
+  deps: SubAgentDeps,
+): Promise<'ok' | 'continuation'> {
+  const estimatedTokens = estimateTokens(messages)
+  if (estimatedTokens <= CONTEXT_LIMIT * SLIDING_WINDOW_THRESHOLD) return 'ok'
+
+  if (deps.summarizer) {
+    try {
+      const flat = messages.map((m) => ({
+        role: m.role,
+        content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+      }))
+      const summarized = await deps.summarizer.summarize(flat)
+      messages.length = 0
+      messages.push(
+        ...summarized.map((m) => ({
+          role: m.role as AgentMessage['role'],
+          content: m.content as string | unknown[],
+        })),
+      )
+    } catch {
+      applySlidingWindow(messages)
+    }
+  } else {
+    applySlidingWindow(messages)
+  }
+
+  const afterCompaction = estimateTokens(messages)
+  if (afterCompaction > CONTEXT_LIMIT * CONTINUATION_THRESHOLD && resultParts.length > 0) {
+    task.status = 'partial'
+    task.result = resultParts.join('\n')
+    task.accumulatedResults.push(...resultParts)
+    task.remainingWork = buildRemainingWorkSummary(task, resultParts)
+    task.updatedAt = new Date()
+    return 'continuation'
+  }
+  return 'ok'
+}
+
+async function* streamTurn(
+  provider: ProviderLayer,
+  providerName: string,
+  modelName: string,
+  messages: AgentMessage[],
+  providerTools: ProviderTools,
+  signal: AbortSignal | undefined,
+): AsyncGenerator<
+  SubAgentEvent,
+  {
+    assistantContent: string
+    toolCalls: ToolCall[]
+    errorEvent: Extract<SubAgentEvent, { type: 'error' }> | null
+  }
+> {
+  let assistantContent = ''
+  const toolCalls: ToolCall[] = []
+
+  const stream = provider.streamChat({
+    provider: providerName,
+    model: modelName,
+    messages,
+    ...(Object.keys(providerTools).length > 0 ? { tools: providerTools } : {}),
+  })
+
+  for await (const event of stream) {
+    if (signal?.aborted) {
+      return {
+        assistantContent,
+        toolCalls,
+        errorEvent: {
+          type: 'error',
+          error: new Error('SubAgent aborted'),
+          task: undefined as never,
+        },
+      }
+    }
+    if (event.type === 'content') {
+      assistantContent += event.content
+      yield { type: 'content', content: event.content }
+    } else if (event.type === 'tool_call') {
+      toolCalls.push({ id: event.id, name: event.name, args: event.args })
+      yield { type: 'tool_call', toolName: event.name, args: event.args }
+    } else if (event.type === 'error') {
+      return {
+        assistantContent,
+        toolCalls,
+        errorEvent: { type: 'error', error: event.error, task: undefined as never },
+      }
+    }
+  }
+
+  return { assistantContent, toolCalls, errorEvent: null }
+}
+
+function pushAssistantWithToolCalls(
+  messages: AgentMessage[],
+  assistantContent: string,
+  toolCalls: ToolCall[],
+): void {
+  const parts: unknown[] = []
+  if (assistantContent) parts.push({ type: 'text', text: assistantContent })
+  for (const tc of toolCalls) {
+    parts.push({ type: 'tool-call', toolCallId: tc.id, toolName: tc.name, input: tc.args })
+  }
+  messages.push({ role: 'assistant', content: parts })
+}
+
+async function* processToolCalls(
+  toolCalls: ToolCall[],
+  allowedTools: ReturnType<ToolRegistry['list']>,
+  messages: AgentMessage[],
+  resultParts: string[],
+  deps: SubAgentDeps,
+  config: SubAgentConfig,
+): AsyncGenerator<SubAgentEvent> {
+  for (const tc of toolCalls) {
+    const tool = allowedTools.find((t) => t.name === tc.name)
+    if (!tool) {
+      const errorMsg = `Tool "${tc.name}" not in whitelist for agent "${config.name}"`
+      messages.push({
+        role: 'tool',
+        content: [
+          {
+            type: 'tool-result',
+            toolCallId: tc.id,
+            toolName: tc.name,
+            output: { type: 'text', value: `Error: ${errorMsg}` },
+          },
+        ],
+      })
+      yield { type: 'tool_result', toolName: tc.name, result: { error: errorMsg } }
+      continue
+    }
+    const result = await deps.tools.execute(tc.name, tc.args)
+    const rawText = result.success ? JSON.stringify(result.data) : `Error: ${result.error}`
+    messages.push({
+      role: 'tool',
+      content: [
+        {
+          type: 'tool-result',
+          toolCallId: tc.id,
+          toolName: tc.name,
+          output: { type: 'text', value: truncateResult(rawText, 10_000) },
+        },
+      ],
+    })
+    if (result.success) resultParts.push(`[${tc.name}] ${truncateResult(rawText, 3_000)}`)
+    yield { type: 'tool_result', toolName: tc.name, result }
+  }
 }
 
 /**
@@ -327,7 +362,18 @@ function compressAccumulatedResults(results: string[], maxChars: number): string
   return compressed.join('\n---\n')
 }
 
-/** Aplica sliding-window mecânico: descarta mensagens antigas, mantém 50% mais recentes. */
+/** Apply sliding-window mechanism: discard old messages, keep 50% more recent.
+ * @param messages - The messages to apply sliding-window to.
+ * @returns void
+ * @example
+ * const messages = [
+ *   { role: 'system', content: 'You are a helpful assistant.' },
+ *   { role: 'user', content: 'Hello, how are you?' },
+ *   { role: 'assistant', content: 'I am fine, thank you!' },
+ * ]
+ * applySlidingWindow(messages)
+ * console.log(messages) // [ { role: 'system', content: 'You are a helpful assistant.' }, { role: 'assistant', content: 'I am fine, thank you!' } ]
+ */
 function applySlidingWindow(messages: Array<{ role: string; content: string | unknown[] }>): void {
   const systemMsgs = messages.filter((m) => m.role === 'system')
   const nonSystem = messages.filter((m) => m.role !== 'system')
@@ -336,7 +382,18 @@ function applySlidingWindow(messages: Array<{ role: string; content: string | un
   messages.push(...systemMsgs, ...keep)
 }
 
-/** Estima tokens de um array de mensagens (~4 chars por token). */
+/** Estimate tokens of a list of messages (~4 chars per token).
+ * @param messages - The messages to estimate tokens for.
+ * @returns The estimated number of tokens.
+ * @example
+ * const messages = [
+ *   { role: 'system', content: 'You are a helpful assistant.' },
+ *   { role: 'user', content: 'Hello, how are you?' },
+ *   { role: 'assistant', content: 'I am fine, thank you!' },
+ *
+ * const tokens = estimateTokens(messages)
+ * console.log(tokens) // 3
+ */
 function estimateTokens(messages: Array<{ role: string; content: string | unknown[] }>): number {
   let chars = 0
   for (const m of messages) {
@@ -349,12 +406,31 @@ function estimateTokens(messages: Array<{ role: string; content: string | unknow
   return Math.ceil(chars / 4)
 }
 
-/** Trunca resultado de tool se exceder o limite de caracteres. */
+/** Trunca resultado de tool se exceder o limite de caracteres.
+ * @param text - The text to truncate.
+ * @param maxChars - The maximum number of characters to allow.
+ * @returns The truncated text.
+ * @example
+ * const text = 'This is a long text that needs to be truncated.'
+ * const truncated = truncateResult(text, 10)
+ * console.log(truncated) // 'This is a long...'
+ */
 function truncateResult(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text
   return text.slice(0, maxChars) + `\n...[truncated: ${text.length - maxChars} chars removed]`
 }
 
+/** Format the task prompt.
+ * @param task - The task to format.
+ * @returns The formatted task prompt.
+ * @example
+ * const task = {
+ *   name: 'Task 1',
+ *   description: 'This is a task description.'
+ * }
+ * const prompt = formatTaskPrompt(task)
+ * console.log(prompt) // 'Execute the following task:\n\n**Task 1**\nThis is a task description.'
+ */
 function formatTaskPrompt(task: SubAgentTask): string {
   let prompt = `Execute the following task:\n\n**${task.name}**\n${task.description}`
 
