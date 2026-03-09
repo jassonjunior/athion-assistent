@@ -1,0 +1,228 @@
+/**
+ * Handlers para cada método JSON-RPC.
+ *
+ * Cada handler recebe params e retorna result (ou throws para error).
+ * O handler `chat.send` é especial: consome o AsyncGenerator do orchestrator
+ * e envia cada OrchestratorEvent como notificação JSON-RPC ao client.
+ */
+
+import type { AthionCore } from '@athion/core'
+
+type NotifyFn = (method: string, params?: unknown) => void
+type Handler = (params: unknown) => Promise<unknown>
+
+export type RpcHandlers = Record<string, Handler>
+
+/** Active abort controllers for chat sessions */
+const activeChats = new Map<string, AbortController>()
+
+export function createHandlers(core: AthionCore, notify: NotifyFn): RpcHandlers {
+  return {
+    ping: async () => ({ pong: true, timestamp: Date.now() }),
+    'chat.send': (params: unknown) => handleChatSend(core, notify, params),
+    'chat.abort': (params: unknown) => handleChatAbort(params),
+    'session.create': (params: unknown) => handleSessionCreate(core, params),
+    'session.list': (params: unknown) => handleSessionList(core, params),
+    'session.load': (params: unknown) => handleSessionLoad(core, params),
+    'session.delete': (params: unknown) => handleSessionDelete(core, params),
+    'config.get': (params: unknown) => handleConfigGet(core, params),
+    'config.set': (params: unknown) => handleConfigSet(core, params),
+    'config.list': async () => core.config.getAll(),
+    'tools.list': async () => handleToolsList(core),
+    'agents.list': async () => handleAgentsList(core),
+    'completion.complete': (params: unknown) => handleCompletion(core, params),
+  }
+}
+
+// ─── Chat Handlers ──────────────────────────────────────────────────
+
+async function handleChatSend(
+  core: AthionCore,
+  notify: NotifyFn,
+  params: unknown,
+): Promise<unknown> {
+  const { sessionId, content } = params as { sessionId: string; content: string }
+  activeChats.get(sessionId)?.abort()
+
+  const controller = new AbortController()
+  activeChats.set(sessionId, controller)
+
+  try {
+    const stream = core.orchestrator.chat(sessionId, { content })
+    for await (const event of stream) {
+      if (controller.signal.aborted) break
+      notifyChatEvent(notify, event)
+    }
+  } finally {
+    activeChats.delete(sessionId)
+  }
+
+  return { ok: true }
+}
+
+function notifyChatEvent(notify: NotifyFn, event: { type: string; [key: string]: unknown }): void {
+  switch (event.type) {
+    case 'content':
+      notify('chat.event', { type: 'content', content: event.content })
+      break
+    case 'tool_call':
+      notify('chat.event', { type: 'tool_call', id: event.id, name: event.name, args: event.args })
+      break
+    case 'tool_result': {
+      const result = event.result as { success: boolean; data?: unknown; error?: unknown }
+      notify('chat.event', {
+        type: 'tool_result',
+        id: event.id,
+        name: event.name,
+        success: result.success,
+        preview: result.success ? JSON.stringify(result.data).slice(0, 500) : String(result.error),
+      })
+      break
+    }
+    case 'subagent_start':
+      notify('chat.event', { type: 'subagent_start', agentName: event.agentName })
+      break
+    case 'subagent_progress':
+      notify('chat.event', {
+        type: 'subagent_progress',
+        agentName: event.agentName,
+        data: event.data,
+      })
+      break
+    case 'subagent_complete':
+      notify('chat.event', {
+        type: 'subagent_complete',
+        agentName: event.agentName,
+        result: event.result,
+      })
+      break
+    case 'subagent_continuation':
+      notify('chat.event', {
+        type: 'subagent_continuation',
+        agentName: event.agentName,
+        continuationIndex: event.continuationIndex,
+      })
+      break
+    case 'finish': {
+      const usage = event.usage as { promptTokens: number; completionTokens: number }
+      notify('chat.event', {
+        type: 'finish',
+        promptTokens: usage.promptTokens,
+        completionTokens: usage.completionTokens,
+      })
+      break
+    }
+    case 'error':
+      notify('chat.event', { type: 'error', message: (event.error as { message: string }).message })
+      break
+  }
+}
+
+async function handleChatAbort(params: unknown): Promise<unknown> {
+  const { sessionId } = params as { sessionId: string }
+  const controller = activeChats.get(sessionId)
+  if (controller) {
+    controller.abort()
+    activeChats.delete(sessionId)
+  }
+  return { aborted: !!controller }
+}
+
+// ─── Session Handlers ───────────────────────────────────────────────
+
+async function handleSessionCreate(core: AthionCore, params: unknown): Promise<unknown> {
+  const { projectId, title } = params as { projectId: string; title?: string }
+  const session = await core.orchestrator.createSession(projectId, title)
+  return {
+    id: session.id,
+    projectId: session.projectId,
+    title: session.title,
+    createdAt: session.createdAt,
+  }
+}
+
+async function handleSessionList(core: AthionCore, params: unknown): Promise<unknown> {
+  const { projectId } = (params as { projectId?: string }) ?? {}
+  return core.orchestrator.listSessions(projectId).map((s) => ({
+    id: s.id,
+    projectId: s.projectId,
+    title: s.title,
+    createdAt: s.createdAt,
+  }))
+}
+
+async function handleSessionLoad(core: AthionCore, params: unknown): Promise<unknown> {
+  const { sessionId } = params as { sessionId: string }
+  const session = await core.orchestrator.loadSession(sessionId)
+  return {
+    id: session.id,
+    projectId: session.projectId,
+    title: session.title,
+    createdAt: session.createdAt,
+  }
+}
+
+async function handleSessionDelete(core: AthionCore, params: unknown): Promise<unknown> {
+  const { sessionId } = params as { sessionId: string }
+  core.orchestrator.deleteSession(sessionId)
+  return { deleted: true }
+}
+
+// ─── Config Handlers ────────────────────────────────────────────────
+
+async function handleConfigGet(core: AthionCore, params: unknown): Promise<unknown> {
+  const { key } = params as { key: string }
+  return { key, value: core.config.get(key as never) }
+}
+
+async function handleConfigSet(core: AthionCore, params: unknown): Promise<unknown> {
+  const { key, value } = params as { key: string; value: unknown }
+  core.config.set(key as never, value as never)
+  return { ok: true }
+}
+
+// ─── List Handlers ──────────────────────────────────────────────────
+
+function handleToolsList(core: AthionCore): unknown {
+  return core.tools
+    .list()
+    .map((t) => ({ name: t.name, description: t.description, level: t.level }))
+}
+
+function handleAgentsList(core: AthionCore): unknown {
+  return core.subagents.list().map((a) => ({ name: a.name, description: a.description }))
+}
+
+// ─── Completion Handler ─────────────────────────────────────────────
+
+async function handleCompletion(core: AthionCore, params: unknown): Promise<unknown> {
+  const { prefix, suffix, language } = params as {
+    prefix: string
+    suffix: string
+    language: string
+    filePath: string
+  }
+
+  const fimPrompt = `<fim_prefix>${prefix}<fim_suffix>${suffix}<fim_middle>`
+  const model = core.config.get('model')
+  const provider = core.config.get('provider')
+
+  const stream = core.provider.streamChat({
+    provider,
+    model,
+    messages: [{ role: 'user', content: fimPrompt }],
+    temperature: 0.2,
+    maxTokens: 256,
+  })
+
+  let text = ''
+  for await (const event of stream) {
+    if (event.type === 'content') text += event.content
+  }
+
+  text = text
+    .replace(/<fim_prefix>|<fim_suffix>|<fim_middle>|<\|endoftext\|>/g, '')
+    .replace(/^\n/, '')
+
+  return { text, language, finishReason: 'stop' }
+}

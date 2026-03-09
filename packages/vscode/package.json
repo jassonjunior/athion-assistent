@@ -1,18 +1,153 @@
 {
-  "name": "@athion/vscode",
+  "name": "athion-assistent",
+  "displayName": "Athion Assistent",
+  "description": "AI coding assistant with orchestrator + subagents",
   "version": "0.0.1",
+  "publisher": "athion",
   "private": true,
-  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "AI",
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./dist/extension.js",
   "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
+    "build": "bun esbuild.config.mjs && bun esbuild.webview.mjs",
+    "build:ext": "bun esbuild.config.mjs",
+    "build:webview": "bun esbuild.webview.mjs",
+    "dev": "bun esbuild.config.mjs --watch",
     "test": "vitest run",
     "lint": "eslint src/",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "package": "vsce package --no-dependencies"
+  },
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "athion",
+          "title": "Athion Assistent",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "athion": [
+        {
+          "type": "webview",
+          "id": "athion.chat",
+          "name": "Chat"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "athion.newChat",
+        "title": "Athion: New Chat"
+      },
+      {
+        "command": "athion.abortChat",
+        "title": "Athion: Abort Response"
+      },
+      {
+        "command": "athion.focusChat",
+        "title": "Athion: Focus Chat Panel"
+      },
+      {
+        "command": "athion.explainCode",
+        "title": "Athion: Explain Selection"
+      },
+      {
+        "command": "athion.reviewCode",
+        "title": "Athion: Review Selection"
+      },
+      {
+        "command": "athion.refactorCode",
+        "title": "Athion: Refactor Selection"
+      },
+      {
+        "command": "athion.generateTests",
+        "title": "Athion: Generate Tests"
+      },
+      {
+        "command": "athion.fixBug",
+        "title": "Athion: Fix Bug"
+      },
+      {
+        "command": "athion.toggleInline",
+        "title": "Athion: Toggle Inline Suggestions"
+      },
+      {
+        "command": "athion.acceptDiff",
+        "title": "Athion: Accept Change"
+      },
+      {
+        "command": "athion.rejectDiff",
+        "title": "Athion: Reject Change"
+      },
+      {
+        "command": "athion.acceptAllDiffs",
+        "title": "Athion: Accept All Changes"
+      },
+      {
+        "command": "athion.rejectAllDiffs",
+        "title": "Athion: Reject All Changes"
+      },
+      {
+        "command": "athion.openSettings",
+        "title": "Athion: Open Settings"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "athion.newChat",
+        "key": "ctrl+shift+a",
+        "mac": "cmd+shift+a"
+      },
+      {
+        "command": "athion.explainCode",
+        "key": "ctrl+shift+e",
+        "mac": "cmd+shift+e",
+        "when": "editorHasSelection"
+      },
+      {
+        "command": "athion.toggleInline",
+        "key": "ctrl+shift+i",
+        "mac": "cmd+shift+i"
+      }
+    ],
+    "configuration": {
+      "title": "Athion Assistent",
+      "properties": {
+        "athion.bunPath": {
+          "type": "string",
+          "default": "bun",
+          "description": "Path to the Bun executable"
+        },
+        "athion.inlineEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable inline code suggestions"
+        }
+      }
+    }
   },
   "dependencies": {
-    "@athion/core": "workspace:*",
     "@athion/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.5",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@types/vscode": "^1.109.0",
+    "esbuild": "^0.27.3",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
   }
 }
