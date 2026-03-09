@@ -433,3 +433,156 @@ task-tool → spawn [RUN 0] → trabalha → contexto cheio → partial
 ### Teste E2E
 
 - `bun scripts/test-agent-search.ts` — **PASSED ✅** (8/8 validações, 20.5s)
+
+---
+
+## Feature: Test UI — Visualização de Testes com Flow Diagram
+
+**Status**: Concluído ✅
+**Data**: 2026-03-08
+
+### Descrição
+
+Módulo de visualização de testes em tempo real com:
+
+- **Flow Diagram** estilo n8n (ReactFlow) — cada etapa vira um node no grafo
+- **Terminal Log** — log em tempo real com token tracking por evento
+- **Token Bar** — barra de progresso de uso de tokens
+
+### Arquitetura
+
+```
+packages/test-ui/
+  src/
+    server/
+      index.ts          → Bun.serve() com WebSocket
+      test-runner.ts     → Bootstrap instrumentado + execução de testes
+      protocol.ts        → Tipos do protocolo WS (compartilhado server/client)
+    app/
+      App.tsx            → Layout split (flow + log) com 3 modos de visualização
+      hooks/
+        useWebSocket.ts  → Conexão WS com reconnect automático
+        useFlowGraph.ts  → Construção dinâmica de nodes/edges a partir dos eventos
+        useTokenTracker.ts → Tracking de tokens em tempo real
+      components/
+        FlowPanel.tsx    → Container ReactFlow com MiniMap e Controls
+        LogPanel.tsx     → Terminal-like log com cores por tipo de evento
+        TokenBar.tsx     → Barra de progresso de tokens (verde/amarelo/vermelho)
+        TestSelector.tsx → Dropdown de testes + botões Run/Stop/Clear
+      nodes/
+        BaseNode.tsx     → Componente base com Handle, status, tokens
+        index.ts         → Registry de 13 tipos de node
+      layout/
+        dagre-layout.ts  → Auto-layout top-to-bottom via dagre
+      styles/
+        theme.css        → Tema dark Catppuccin Mocha
+```
+
+### Instrumentação do SubAgentManager
+
+O `task-tool.ts` drena os eventos do subagente (`for await (const _event of generator)`).
+Para capturar esses eventos sem modificar o core, o test-runner substitui o `spawn()` do
+SubAgentManager por um wrapper que intercepta cada evento antes de yieldar:
+
+```typescript
+Object.assign(core.subagents, {
+  spawn: async function* (config, task, signal) {
+    for await (const event of original.spawn(config, task, signal)) {
+      emitSubAgentEvent(event) // → WebSocket
+      yield event // → propaga normalmente para task-tool
+    }
+  },
+})
+```
+
+### Tipos de Node no Flow
+
+- startNode, setupNode, userMessageNode, systemPromptNode
+- llmResponseNode, toolCallNode, toolResultNode
+- subAgentNode (grupo), subStartNode, continuationNode
+- completeNode, finishNode, errorNode
+
+### Como rodar
+
+```bash
+cd packages/test-ui
+bun run dev          # Server :3457 + Vite :3456
+```
+
+### Stack
+
+- React 19 + @xyflow/react 12 + dagre (layout)
+- Bun.serve (WebSocket nativo)
+- Vite 6 (dev server + build)
+- Tema Catppuccin Mocha (dark)
+
+---
+
+## Feature: Smart Compaction via LLM (Issue #16 — Fase 2)
+
+**Status**: Em progresso
+**Data**: 2026-03-08
+
+### Descrição
+
+Implementar compactação de contexto usando o LLM para gerar resumos estruturados (estilo Claude Code).
+Quando 90% da janela de contexto é consumida, o sistema chama o LLM para resumir mensagens antigas, preservando decisões, paths, erros e estado atual.
+
+### Alterações
+
+**`packages/core/src/provider/types.ts`**:
+
+- Novos tipos: `GenerateConfig` (chamada não-streaming), `GenerateResult` (texto + usage)
+
+**`packages/core/src/provider/provider.ts`**:
+
+- Novo método `generateText()` na interface `ProviderLayer` — chamada não-streaming via AI SDK `generateText()`
+- Usado internamente para summarização (não precisa de streaming)
+
+**`packages/core/src/tokens/summarize.ts`** (novo):
+
+- `SummarizationService` — encapsula a chamada ao LLM para gerar resumos
+- `createSummarizationService({ provider, providerId, modelId })` — factory
+- Reutiliza prompts de `compression-prompt.ts` (já existiam para o proxy)
+- Divide mensagens: system (preservadas) + antigas (resumidas) + recentes (6 preservadas)
+- Fallback seguro: se LLM falhar, retorna mensagens originais
+
+**`packages/core/src/tokens/types.ts`**:
+
+- `TokenManager.compact()` agora retorna `Promise<>` (async para chamar LLM)
+
+**`packages/core/src/tokens/manager.ts`**:
+
+- `compact()` tornado async
+- Nova estratégia `compactSummarize()` que chama `SummarizationService`
+- Fallback para sliding-window se summarizer falhar ou não estiver configurado
+- Aceita `summarizer` opcional no config
+
+**`packages/core/src/orchestrator/session.ts`**:
+
+- `SessionManager.compress()` tornado async (propaga o async do compact)
+
+**`packages/core/src/orchestrator/orchestrator.ts`**:
+
+- `prepareChat()` tornado async (chama `await session.compress()`)
+- `chat()` usa `await` no compress entre turnos
+
+**`packages/core/src/bootstrap.ts`**:
+
+- Cria `SummarizationService` com provider/model do config
+- Estratégia mudada de `'sliding-window'` → `'summarize'`
+- Injeta `summarizer` no `createTokenManager()`
+
+### Fix: Fuzzy Match de Agent Names
+
+**`packages/core/src/tools/task-tool.ts`**:
+
+- `fuzzyMatchAgent()` — encontra agente por similaridade quando LLM erra nome
+- Match por prefix, suffix e substring (ex: "code-review" → "code-reviewer")
+- Fix para o teste code-reviewer que falhava quando LLM mandava nome errado
+
+### Testes
+
+- `test-agent-search` — **PASSED ✅** (com strategy 'summarize')
+- `test-e2e` — **PASSED ✅**
+- Todos 8 testes — **PASSED ✅** (incluindo code-reviewer com fuzzy match)

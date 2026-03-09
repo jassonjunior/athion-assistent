@@ -71,6 +71,10 @@ export interface Orchestrator {
   createSession(projectId: string, title?: string): Promise<Session>
   /** Carrega sessao existente pelo ID */
   loadSession(sessionId: string): Promise<Session>
+  /** Lista todas as sessoes (opcionalmente filtradas por projectId) */
+  listSessions(projectId?: string): Session[]
+  /** Deleta uma sessao pelo ID */
+  deleteSession(sessionId: string): void
   /** Lista tools disponiveis para o LLM */
   getAvailableTools(): ToolDefinition[]
   /** Lista subagentes disponiveis */
