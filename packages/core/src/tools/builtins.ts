@@ -9,14 +9,32 @@ import { defineTool } from './registry'
  */
 export const readFileTool = defineTool({
   name: 'read_file',
-  description: 'Lê o conteúdo de um arquivo pelo caminho informado',
+  level: 'agent',
+  description:
+    'Lê o conteúdo de um arquivo pelo caminho informado. Use offset/limit para ler em partes (linhas).',
   parameters: z.object({
     path: z.string().describe('Caminho do arquivo a ser lido'),
+    offset: z.number().optional().describe('Linha inicial (0-based, default: 0)'),
+    limit: z.number().optional().describe('Número máximo de linhas a retornar (default: 200)'),
   }),
-  execute: async ({ path }) => {
+  execute: async ({ path, offset, limit }) => {
     try {
       const content = await readFile(resolve(path), 'utf-8')
-      return { success: true, data: content }
+      const lines = content.split('\n')
+      const startLine = offset ?? 0
+      const maxLines = limit ?? 200
+      const slice = lines.slice(startLine, startLine + maxLines)
+      const hasMore = startLine + maxLines < lines.length
+      return {
+        success: true,
+        data: {
+          content: slice.join('\n'),
+          totalLines: lines.length,
+          fromLine: startLine,
+          toLine: Math.min(startLine + maxLines, lines.length),
+          hasMore,
+        },
+      }
     } catch (error) {
       return {
         success: false,
@@ -32,6 +50,7 @@ export const readFileTool = defineTool({
  */
 export const writeFileTool = defineTool({
   name: 'write_file',
+  level: 'agent',
   description: 'Escreve conteúdo em um arquivo (cria ou sobrescreve)',
   parameters: z.object({
     path: z.string().describe('Caminho do arquivo a ser escrito'),
@@ -56,6 +75,7 @@ export const writeFileTool = defineTool({
  */
 export const listFilesTool = defineTool({
   name: 'list_files',
+  level: 'agent',
   description: 'Lista arquivos e diretórios em um caminho',
   parameters: z.object({
     path: z.string().describe('Caminho do diretório a ser listado'),
@@ -84,6 +104,7 @@ export const listFilesTool = defineTool({
  */
 export const runCommandTool = defineTool({
   name: 'run_command',
+  level: 'agent',
   description: 'Executa um comando no shell e retorna stdout/stderr',
   parameters: z.object({
     command: z.string().describe('Comando a ser executado'),
@@ -125,27 +146,51 @@ export const runCommandTool = defineTool({
  */
 export const searchFilesTool = defineTool({
   name: 'search_files',
-  description: 'Busca texto em arquivos recursivamente usando grep',
+  level: 'agent',
+  description:
+    'Busca texto em arquivos recursivamente usando grep. Use offset/limit para paginar resultados.',
   parameters: z.object({
     pattern: z.string().describe('Texto ou regex a buscar'),
     path: z.string().describe('Diretório raiz da busca'),
     filePattern: z.string().optional().describe('Filtro de arquivos (ex: "*.ts")'),
+    offset: z.number().optional().describe('Pular N primeiros resultados (default: 0)'),
+    limit: z.number().optional().describe('Máximo de resultados por chamada (default: 50)'),
   }),
-  execute: async ({ pattern, path: searchPath, filePattern }) => {
+  execute: async ({ pattern, path: searchPath, filePattern, offset, limit }) => {
     try {
-      const args = ['grep', '-rn', '--include', filePattern ?? '*', pattern, resolve(searchPath)]
+      const args = [
+        'grep',
+        '-rn',
+        '--exclude-dir=node_modules',
+        '--exclude-dir=.git',
+        '--exclude-dir=dist',
+        '--exclude-dir=.turbo',
+        '--include',
+        filePattern ?? '*',
+        pattern,
+        resolve(searchPath),
+      ]
       const proc = Bun.spawn(args, { stdout: 'pipe', stderr: 'pipe' })
       const stdout = await new Response(proc.stdout).text()
       await proc.exited
-      const matches = stdout
-        .trim()
-        .split('\n')
-        .filter(Boolean)
-        .map((line) => {
-          const [file, lineNum, ...rest] = line.split(':')
-          return { file, line: Number(lineNum), content: rest.join(':').trim() }
-        })
-      return { success: true, data: matches }
+      const startAt = offset ?? 0
+      const maxResults = Math.min(limit ?? 50, 100)
+      const lines = stdout.trim().split('\n').filter(Boolean)
+      const slice = lines.slice(startAt, startAt + maxResults)
+      const matches = slice.map((line) => {
+        const [file, lineNum, ...rest] = line.split(':')
+        return { file, line: Number(lineNum), content: rest.join(':').trim() }
+      })
+      return {
+        success: true,
+        data: {
+          matches,
+          total: lines.length,
+          offset: startAt,
+          limit: maxResults,
+          hasMore: startAt + maxResults < lines.length,
+        },
+      }
     } catch (error) {
       return {
         success: false,

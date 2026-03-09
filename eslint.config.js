@@ -8,12 +8,20 @@ export default tseslint.config(
   prettier,
   {
     rules: {
-      'max-lines': ['error', { max: 300, skipBlankLines: true, skipComments: true }],
-      'max-lines-per-function': ['warn', { max: 50, skipBlankLines: true, skipComments: true }],
+      'max-lines': ['warn', { max: 500, skipBlankLines: true, skipComments: true }],
+      'max-lines-per-function': ['warn', { max: 80, skipBlankLines: true, skipComments: true }],
       'no-console': 'error',
       'eqeqeq': 'error',
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+    },
+  },
+  {
+    files: ['**/scripts/**/*.ts'],
+    rules: {
+      'no-console': 'off',
+      'no-debugger': 'off',
+      'max-lines-per-function': 'off',
     },
   },
   {

@@ -7,53 +7,56 @@ import { createPromptBuilder } from './orchestrator/prompt-builder'
 import { createSessionManager } from './orchestrator/session'
 import { createToolDispatcher } from './orchestrator/tool-dispatcher'
 import type { Orchestrator } from './orchestrator/types'
+import type { PluginManager } from './plugins'
+import { createPluginManager } from './plugins'
 import { createPermissionManager } from './permissions'
 import type { ProviderLayer } from './provider'
 import { createProviderLayer } from './provider'
+import type { ProxyServer } from './server/proxy/proxy'
+import { createProxy } from './server/proxy/proxy'
+import { ProxyConfigSchema } from './server/proxy/types'
+import type { VllmManager } from './server/vllm-manager'
+import { createVllmManager } from './server/vllm-manager'
 import type { SkillManager } from './skills'
 import { createSkillManager } from './skills'
 import { createDatabaseManager } from './storage'
 import type { SubAgentManager } from './subagent'
 import { builtinAgents, createSubAgentManager } from './subagent'
 import { createTokenManager } from './tokens'
+import { createSummarizationService } from './tokens/summarize'
 import type { ToolRegistry } from './tools'
 import { BUILTIN_TOOLS, createToolRegistry } from './tools'
 import { createTaskTool } from './tools/task-tool'
 import type { ToolDefinition } from './tools/types'
 
-/**
- * Opcoes para inicializar o Athion core.
- * @param dbPath - Caminho do banco SQLite (default: ~/.athion/data.db)
- * @param skillsDir - Diretorio de skills .md (default: skills/ do package)
- * @param cliArgs - Overrides de configuracao via CLI
+/** Opcoes para o bootstrap.
+ * @typedef {Object} BootstrapOptions
+ * @property {string} dbPath - Caminho do banco de dados
+ * @property {string} skillsDir - Diretorio de skills
+ * @property {Partial<Config>} cliArgs - Argumentos de linha de comando
+ * @example
+ * const options: BootstrapOptions = { dbPath: '~/.athion/data.db', skillsDir: '~/.athion/skills', cliArgs: { provider: 'vllm-mlx', model: 'Qwen3-Coder-Next-REAP-40B-A3B-mlx-mxfp4' } }
  */
 export interface BootstrapOptions {
   dbPath?: string
   skillsDir?: string
+  pluginsDir?: string
   cliArgs?: Partial<Config>
 }
 
-/**
- * Resultado da inicializacao — todas as instancias prontas para uso.
- *
+/** Core do Athion.
  * @typedef {Object} AthionCore
- * @property {Bus} bus - EventBus para comunicacao entre modulos
- * @property {ConfigManager} config - Gerenciador de configuracoes.
- * @property {ProviderLayer} provider - ProviderLayer para LLMs.
- * @property {SkillManager} skills - Gerenciador de skills.
- * @property {ToolRegistry} tools - Gerenciador de tools.
- * @property {SubAgentManager} subagents - Gerenciador de subagentes.
- * @property {Orchestrator} orchestrator - Orchestrator para orquestrar o fluxo de conversacao.
- * * @example
- * {
- *   bus: Bus,
- *   config: ConfigManager,
- *   provider: ProviderLayer,
- *   skills: SkillManager,
- *   tools: ToolRegistry,
- *   subagents: SubAgentManager,
- *   orchestrator: Orchestrator,
- * }
+ * @property {Bus} bus - Bus de eventos
+ * @property {ConfigManager} config - Configuracao do sistema
+ * @property {ProviderLayer} provider - Provider do LLM
+ * @property {SkillManager} skills - Gerenciador de skills
+ * @property {ToolRegistry} tools - Registro de ferramentas
+ * @property {SubAgentManager} subagents - Gerenciador de subagentes
+ * @property {Orchestrator} orchestrator - Orquestrador
+ * @property {VllmManager} vllm - Gerenciador do vllm-mlx
+ * @property {ProxyServer | null} proxy - Proxy do sistema
+ * @example
+ * const core: AthionCore = { bus: createBus(), config: createConfigManager(), provider: createProviderLayer(), skills: createSkillManager(), tools: createToolRegistry(), subagents: createSubAgentManager(), orchestrator: createOrchestrator(), vllm: createVllmManager(), proxy: createProxy() }
  */
 export interface AthionCore {
   bus: Bus
@@ -61,27 +64,22 @@ export interface AthionCore {
   provider: ProviderLayer
   skills: SkillManager
   tools: ToolRegistry
+  plugins: PluginManager
   subagents: SubAgentManager
   orchestrator: Orchestrator
+  vllm: VllmManager
+  proxy: ProxyServer | null
 }
 
-/**
- * Inicializa todos os modulos do Athion core na ordem correta
- * e conecta as dependencias entre eles.
- *
- * Ordem de inicializacao:
- * 1. Bus, Config, Tokens (independentes)
- * 2. Provider, Skills, Tools (independentes)
- * 3. Storage → Permissions
- * 4. SessionManager, PromptBuilder, ToolDispatcher
- * 5. SubAgentManager → TaskTool → registra no ToolRegistry
- * 6. Orchestrator (recebe tudo)
- *
- * @param options - Opcoes de inicializacao
- * @returns Todas as instancias prontas para uso
+/** Inicializa o core do Athion.
+ * @param options - Opcoes para o bootstrap.
+ * @returns {Promise<AthionCore>} Core do Athion
+ * @example
+ * const core = await bootstrap({ dbPath: '~/.athion/data.db', skillsDir: '~/.athion/skills', cliArgs: { provider: 'vllm-mlx', model: 'Qwen3-Coder-Next-REAP-40B-A3B-mlx-mxfp4' } })
+ * console.log(core) // { bus: createBus(), config: createConfigManager(), provider: createProviderLayer(), skills: createSkillManager(), tools: createToolRegistry(), subagents: createSubAgentManager(), orchestrator: createOrchestrator(), vllm: createVllmManager(), proxy: createProxy() }
  */
 export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionCore> {
-  const { dbPath = '~/.athion/data.db', skillsDir, cliArgs = {} } = options
+  const { dbPath = '~/.athion/data.db', skillsDir, pluginsDir, cliArgs = {} } = options
 
   // Nível 0-1: Serviços independentes
   const { bus, config, tokens, provider, skills, tools } = createBaseServices(cliArgs)
@@ -96,11 +94,21 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
   const toolDispatcher = createToolDispatcher(tools, permissions)
 
   // Nível 4-5: SubAgents + TaskTool
-  const subagents = createSubAgentManager({ config, provider, tools, skills })
+  const summarizer = createSummarizationService({
+    provider,
+    providerId: config.get('provider') as string,
+    modelId: config.get('model') as string,
+  })
+  const subagents = createSubAgentManager({ config, provider, tools, skills, summarizer })
   for (const agent of builtinAgents) subagents.registerAgent(agent)
   tools.register(createTaskTool({ subagents }) as ToolDefinition)
 
-  // Nível 6: Orchestrator
+  // Nível 5.5: Plugins (após tools/bus/config — plugins podem registrar tools)
+  const plugins = createPluginManager({ bus, config, tools, provider })
+  const resolvedPluginsDir = pluginsDir ?? '~/.athion/plugins'
+  await plugins.loadFromDirectory(resolvedPluginsDir)
+
+  // Nível 6: Orchestrator (após subagents + plugins para incluir tudo no prompt)
   const orchestrator = createOrchestrator({
     config,
     bus,
@@ -111,23 +119,69 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
     session,
     promptBuilder,
     toolDispatcher,
+    subagents,
   })
 
-  return { bus, config, provider, skills, tools, subagents, orchestrator }
+  // Nível 7: vllm-mlx + Proxy
+  const cfg = config.getAll()
+  const vllm = createVllmManager({
+    port: cfg.backendPort,
+    ttlMinutes: cfg.vllmTtlMinutes,
+  })
+
+  let proxy: ProxyServer | null = null
+  if (cfg.proxyEnabled) {
+    const proxyConfig = ProxyConfigSchema.parse({
+      proxyPort: cfg.proxyPort,
+      backendPort: cfg.backendPort,
+      contextWindow: cfg.contextWindow,
+      maxOutputTokens: cfg.maxOutputTokens,
+      logLevel: cfg.logLevel,
+    })
+    proxy = createProxy(proxyConfig)
+  }
+
+  // Auto-start vllm se habilitado
+  if (cfg.vllmAutoStart) {
+    await vllm.ensureRunning()
+  }
+
+  // Iniciar proxy se habilitado — redireciona provider pelo proxy
+  if (proxy) {
+    proxy.start()
+    process.env['ATHION_VLLM_MLX_URL'] = `${proxy.url}/v1`
+  }
+
+  return { bus, config, provider, skills, tools, plugins, subagents, orchestrator, vllm, proxy }
 }
 
-/**
- * Cria os servicos base que nao dependem de nada (niveis 0 e 1).
+/** Cria os servicos base do Athion.
+ * @param cliArgs - Argumentos de linha de comando
+ * @returns {Object} Servicos base do Athion
+ * @example
+ * const services = createBaseServices({ provider: 'vllm-mlx', model: 'Qwen3-Coder-Next-REAP-40B-A3B-mlx-mxfp4' })
+ * console.log(services) // { bus: createBus(), config: createConfigManager(), tokens: createTokenManager(), provider: createProviderLayer(), skills: createSkillManager(), tools: createToolRegistry() }
  */
 function createBaseServices(cliArgs: Partial<Config>) {
   const bus = createBus()
   const config = createConfigManager(cliArgs)
-  const tokens = createTokenManager({
-    contextLimit: 128_000,
-    compactionThreshold: 0.8,
-    strategy: 'sliding-window',
-  })
   const provider = createProviderLayer()
+
+  // Summarizer usa o provider para chamar o LLM
+  const summarizer = createSummarizationService({
+    provider,
+    providerId: config.get('provider') as string,
+    modelId: config.get('model') as string,
+  })
+
+  const contextWindow = config.get('contextWindow')
+  const tokens = createTokenManager({
+    contextLimit: contextWindow,
+    compactionThreshold: 0.9,
+    strategy: 'summarize',
+    summarizer,
+  })
+
   const skills = createSkillManager()
   const tools = createToolRegistry()
   for (const tool of BUILTIN_TOOLS) tools.register(tool as ToolDefinition)

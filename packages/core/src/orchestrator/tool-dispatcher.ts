@@ -1,5 +1,6 @@
 import type { PermissionManager } from '../permissions/types'
 import type { ToolRegistry, ToolResult } from '../tools/types'
+import { getToolLevel } from '../tools/types'
 
 /**
  * Contexto passado ao ToolDispatcher para cada execucao.
@@ -50,19 +51,25 @@ export function createToolDispatcher(
     }
 
     // 2. Verificar permissao
-    const target = extractTarget(toolName, args)
-    const decision = permissions.check(toolName, target)
+    // Tools com level='agent' passam por permission check (core tools).
+    // Tools com level='orchestrator' (plugins, task) sao trusted.
+    const needsPermission = getToolLevel(tool) === 'agent'
 
-    if (decision.decision === 'deny') {
-      return { success: false, error: `Permission denied for tool "${toolName}" on "${target}"` }
-    }
+    if (needsPermission) {
+      const target = extractTarget(toolName, args)
+      const decision = permissions.check(toolName, target)
 
-    if (decision.decision === 'ask') {
-      // Por enquanto, retorna erro pedindo permissao
-      // Na Fase 3 (CLI), isso vai pausar e perguntar ao usuario
-      return {
-        success: false,
-        error: `Permission required for tool "${toolName}" on "${target}". User approval needed.`,
+      if (decision.decision === 'deny') {
+        return { success: false, error: `Permission denied for tool "${toolName}" on "${target}"` }
+      }
+
+      if (decision.decision === 'ask') {
+        // Por enquanto, retorna erro pedindo permissao
+        // Na Fase 3 (CLI), isso vai pausar e perguntar ao usuario
+        return {
+          success: false,
+          error: `Permission required for tool "${toolName}" on "${target}". User approval needed.`,
+        }
       }
     }
 
@@ -71,7 +78,9 @@ export function createToolDispatcher(
       return { success: false, error: 'Operation aborted' }
     }
 
-    // 4. Executar tool
+    /** Executa a tool.
+     * Se tools for task, ele vai executar a task para o subagente correspondente.
+     */
     return tools.execute(toolName, args)
   }
 

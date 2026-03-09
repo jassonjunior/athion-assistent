@@ -1,0 +1,29 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug Current Test (Bun)",
+      "type": "bun",
+      "request": "launch",
+      "program": "${file}",
+      "cwd": "${workspaceFolder}/packages/core",
+      "stopOnEntry": false,
+      "console": "integratedTerminal",
+      "env": {
+        "ATHION_VLLM_MLX_URL": "http://localhost:8000/v1"
+      }
+    },
+    {
+      "name": "E2E Test (Bun)",
+      "type": "bun",
+      "request": "launch",
+      "program": "${workspaceFolder}/packages/core/scripts/test-e2e.ts",
+      "cwd": "${workspaceFolder}/packages/core",
+      "stopOnEntry": false,
+      "console": "integratedTerminal",
+      "env": {
+        "ATHION_VLLM_MLX_URL": "http://localhost:8000/v1"
+      }
+    }
+  ]
+}

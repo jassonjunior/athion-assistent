@@ -33,7 +33,7 @@ export const coderAgent: SubAgentConfig = {
  * Usa a skill 'code-review' para analisar codigo. Somente leitura.
  */
 export const codeReviewAgent: SubAgentConfig = {
-  name: 'code-reviewer',
+  name: 'code-review',
   description: 'Reviews code for bugs, security issues, and improvements. Read-only analysis.',
   skill: 'code-review',
   tools: ['read_file', 'list_files', 'search_files'],

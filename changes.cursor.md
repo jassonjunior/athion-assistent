@@ -236,3 +236,200 @@
 - "me ensine X, mas não crie nada"
 - "só me mostra como fazer"
 - "quero entender X, apenas mostrando"
+
+---
+
+## Fix: Function Calling no Provider Layer + Filtragem de Tools
+
+**Status**: Concluído ✅
+**Data**: 2026-03-08
+
+### Problema
+
+O modelo vllm-mlx estava gerando XML (`<search><search_files>`) em vez de function calls reais porque:
+
+1. `provider.ts` usava `textStream` (só texto) em vez de `fullStream` (texto + tool calls)
+2. Nenhuma tool definition era passada para o AI SDK
+3. O system prompt listava TODAS as tools (read_file, write_file, etc.) em vez de apenas `task`
+
+### Correções
+
+**`packages/core/src/provider/provider.ts`**:
+
+- `part.textDelta` → `part.text` (API AI SDK v6)
+- `part.args` → `part.input` (API AI SDK v6)
+- `convertTools()`: `parameters` → `inputSchema` (API AI SDK v6)
+- Usa `fullStream` para capturar eventos `tool-call`
+
+**`packages/core/src/orchestrator/prompt-builder.ts`**:
+
+- `buildToolsSection()` agora filtra para mostrar apenas `task` tool no system prompt
+- Modelo principal delega via `task`, subagentes recebem tools específicas
+
+**`packages/core/src/orchestrator/orchestrator.ts`**:
+
+- `runStreamTurn()` agora busca a tool `task` do registry e passa como `ProviderToolDef`
+- Habilita function calling real via AI SDK `tools` parameter
+
+---
+
+## Fix: Token Control + Context Window + Paginação
+
+**Status**: Concluído ✅
+**Data**: 2026-03-08
+
+### Problema
+
+- Context window configurado como 85K no schema, mas deveria ser 50K
+- Bootstrap usava `contextLimit: 128_000` hardcoded ignorando config
+- Compaction threshold era 0.8 (80%), deveria disparar em 45K (90% de 50K)
+- `search_files` retornava até 200 resultados sem paginação
+- `read_file` retornava arquivo inteiro sem suporte a leitura parcial
+- Tool results grandes (>10K chars) explodiam o contexto
+- Compaction só era verificada no `prepareChat()`, não entre turnos
+- Subagente não tinha controle de tokens
+
+### Correções
+
+**`packages/core/src/config/schema.ts`**:
+
+- `contextWindow` default: 85000 → 50000
+
+**`packages/core/src/bootstrap.ts`**:
+
+- `contextLimit` agora usa `config.get('contextWindow')` em vez de hardcoded 128K
+- `compactionThreshold`: 0.8 → 0.9 (dispara em 45K com janela de 50K)
+
+**`packages/core/src/tools/builtins.ts`**:
+
+- `read_file`: adicionado `offset`/`limit` para leitura parcial (default: 200 linhas)
+- Retorna metadata: `totalLines`, `fromLine`, `toLine`, `hasMore`
+- `search_files`: adicionado `offset`/`limit` para paginação (default: 50 resultados, max 100)
+- Retorna metadata: `total`, `offset`, `limit`, `hasMore`
+
+**`packages/core/src/subagent/agent.ts`**:
+
+- Tool results truncados em 10K chars com `truncateResult()`
+- Estimativa de tokens antes de cada chamada ao provider (`estimateTokens()`)
+- Se estimativa > 85% do limite, faz sliding-window nas mensagens
+
+**`packages/core/src/orchestrator/orchestrator.ts`**:
+
+- Tool results truncados em 10K chars com `truncateResult()`
+- Compaction check entre turnos (não só no prepareChat): verifica `needsCompaction()` no início de cada iteração do while loop
+
+---
+
+## Fix: SubAgent Result Flow + Orchestrator Events + forceTextOnly
+
+**Status**: Concluído ✅
+**Data**: 2026-03-08
+
+### Problema
+
+1. `task.result` do subagente continha apenas o último texto (pré-tool-calls), não o resultado completo
+2. Eventos `subagent_start`/`subagent_complete` existiam no type mas nunca eram emitidos
+3. Modelo re-invocava `task` 3-6x após receber resultado — não confiava no resultado
+4. Safety guard bloqueava chamadas legítimas do subagente (mesma tool para arquivos diferentes)
+5. `Bun.serve` timeout padrão de 10s matava requests para modelo local
+
+### Correções
+
+**`packages/core/src/subagent/agent.ts`**:
+
+- `resultParts: string[]` acumula todo conteúdo (texto + tool results) ao longo dos turnos
+- Tool results incluídos no acumulador: `[toolName] resultado` (truncado em 3K)
+- `task.result = resultParts.join('\n')` no final — resultado completo e rico
+
+**`packages/core/src/orchestrator/orchestrator.ts`**:
+
+- `forceTextOnly: boolean` no `ChatContext` — após task bem sucedida, próximo turno sem tools
+- `runStreamTurn()` não passa tools quando `ctx.forceTextOnly = true` → força resposta texto
+- `handleToolCalls()` emite `subagent_start` antes e `subagent_complete` após dispatch
+- Rejeita tools que não sejam `task` com mensagem de erro explicativa
+
+**`packages/core/src/orchestrator/prompt-builder.ts`**:
+
+- Prompt reforçado: "You can ONLY use the task tool"
+- Instrução para não re-invocar task para o mesmo trabalho
+
+**`packages/core/src/tokens/manager.ts`**:
+
+- Loop detection: mínimo de ações mudou de `loopThreshold * 2` (6) para `loopThreshold` (3)
+
+**`packages/core/src/server/proxy/middleware/safety-guard.ts`**:
+
+- `LOOP_THRESHOLD`: 3 → 5
+- `MAX_TURNS`: 15 → 25
+- Loop detection agora compara `toolName:targetPath` em vez de apenas `toolName`
+- `extractTarget()` extrai path/file dos args da tool call (campos: path, file, pattern, command, description)
+- Mesma tool para arquivo diferente = chamada diferente (não é loop)
+
+**`packages/core/src/server/proxy/proxy.ts`**:
+
+- `idleTimeout: 255` em ambos `Bun.serve()` (máximo do Bun, era default 10s)
+
+### Teste E2E
+
+- `bun scripts/test-agent-search.ts` — **PASSED ✅** (8/8 validações)
+- Agent invoked ✓, Correct agent (search) ✓, Tool calls made ✓, Tool results received ✓
+- All tools succeeded ✓, Has content response ✓, Stream finished ✓, No errors ✓
+- Duração: 610s (modelo local Qwen3-Coder 40B)
+
+---
+
+## Feature: Agent Continuation Protocol
+
+**Status**: Concluído ✅
+**Data**: 2026-03-08
+
+### Problema
+
+Quando o subagente recebe uma task complexa (ex: "analise todos os arquivos .ts"), precisa rodar muitas tools e o contexto de 50K tokens se esgota. O sliding-window perde resultados anteriores, gerando resultado incompleto.
+
+### Solução: Continuation Protocol
+
+O agente detecta mecanicamente quando o contexto está cheio e sai com `status='partial'`. O task-tool re-spawna automaticamente com os resultados acumulados no prompt, até completar ou atingir 5 continuações.
+
+### Alterações
+
+**`packages/core/src/subagent/types.ts`**:
+
+- `TaskStatus`: adicionado `'partial'`
+- `SubAgentTask`: novos campos `accumulatedResults`, `continuationIndex`, `maxContinuations`, `remainingWork`
+- `SubAgentEvent`: novo evento `continuation_needed`
+
+**`packages/core/src/subagent/agent.ts`**:
+
+- Detecção mecânica: se tokens > 80% → sliding-window → se ainda > 70% → sai com `partial`
+- `buildAgentPrompt()`: se `continuationIndex > 0`, inclui "Previous Results" e "Remaining Work"
+- `buildRemainingWorkSummary()`: sintetiza o que falta a partir dos steps pendentes
+- `compressAccumulatedResults()`: trunca proporcionalmente se > 15K chars
+
+**`packages/core/src/tools/task-tool.ts`**:
+
+- Loop de continuação em `executeTask()`: até MAX_CONTINUATIONS (5)
+- Se `partial` → reseta status, continua loop
+- Se `completed` → consolida `accumulatedResults + currentResult`
+- Se esgotou continuações → retorna resultado parcial com nota
+
+**`packages/core/src/orchestrator/types.ts`**:
+
+- Novo evento `subagent_continuation` no `OrchestratorEvent`
+
+**`packages/core/src/orchestrator/orchestrator.ts`**:
+
+- `runStreamTurn()`: quando `forceTextOnly=true`, ignora eventos `tool_call` alucinados pelo modelo local
+- Modelo Qwen3 gera tool calls mesmo sem tools definidas no request — fix com `continue` no loop de stream
+
+### Fluxo
+
+```
+task-tool → spawn [RUN 0] → trabalha → contexto cheio → partial
+         → spawn [RUN 1] → prompt com resultados anteriores → trabalha → completed
+         → retorna resultado consolidado (orchestrator não sabe da continuação)
+```
+
+### Teste E2E
+
+- `bun scripts/test-agent-search.ts` — **PASSED ✅** (8/8 validações, 20.5s)

@@ -1,6 +1,7 @@
 import type { ConfigManager } from '../config/config'
 import type { ProviderLayer } from '../provider/provider'
 import type { SkillManager } from '../skills/types'
+import type { SummarizationService } from '../tokens/summarize'
 import type { ToolRegistry } from '../tools/types'
 import type { SubAgentDeps } from './agent'
 import { runSubAgent } from './agent'
@@ -14,16 +15,14 @@ import type {
 
 /**
  * Dependencias do SubAgent Manager.
- * @param config - ConfigManager
- * @param provider - ProviderLayer
- * @param tools - ToolRegistry
- * @param skills - SkillManager
  */
 export interface SubAgentManagerDeps {
   config: ConfigManager
   provider: ProviderLayer
   tools: ToolRegistry
   skills: SkillManager
+  /** Serviço de summarização para compactar contexto dos subagentes via LLM */
+  summarizer?: SummarizationService | undefined
 }
 
 /**
@@ -46,6 +45,7 @@ export function createSubAgentManager(deps: SubAgentManagerDeps): SubAgentManage
       skills: deps.skills,
       defaultProvider: deps.config.get('provider') as string,
       defaultModel: deps.config.get('model') as string,
+      summarizer: deps.summarizer,
     }
 
     yield* runSubAgent(config, task, subAgentDeps, signal)

@@ -3,6 +3,9 @@ export type { Bus, BusEventDef } from './bus'
 export {
   ConfigChanged,
   PermissionRequest,
+  PluginError,
+  PluginLoaded,
+  PluginUnloaded,
   StreamComplete,
   StreamContent,
   StreamStart,
