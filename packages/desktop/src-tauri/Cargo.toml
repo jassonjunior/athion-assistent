@@ -1,0 +1,25 @@
+[package]
+name = "athion-desktop"
+version = "0.0.1"
+description = "Athion Assistent Desktop App"
+authors = ["Athion"]
+edition = "2021"
+
+[lib]
+name = "athion_desktop_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-shell = "2"
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-clipboard-manager = "2"
+tauri-plugin-deep-link = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["io-util", "process", "sync", "rt"] }
+log = "0.4"
