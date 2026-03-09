@@ -1,5 +1,6 @@
 import type { SkillManager } from '../skills/types'
 import type { ToolDefinition } from '../tools/types'
+import { isOrchestratorTool } from '../tools/types'
 import type { AgentDefinition, Session } from './types'
 
 /**
@@ -63,19 +64,35 @@ Respond in the same language the user writes in.`
 
 /**
  * Lista de tools disponiveis para o LLM.
- * @param tools - Tools disponiveis
- * @returns Lista de tools disponiveis para o LLM
+ *
+ * Usa o campo `level` de cada tool para decidir visibilidade:
+ * - level='orchestrator' → aparece no prompt (task, plugin tools)
+ * - level='agent' → NÃO aparece (core tools como read_file, write_file)
+ *
+ * @param tools - Todas as tools registradas no registry
+ * @returns Seção do prompt listando tools acessíveis
  */
 function buildToolsSection(tools: ToolDefinition[]): string {
-  const taskOnly = tools.filter((t) => t.name === 'task')
-  if (taskOnly.length === 0) return ''
-  const toolList = taskOnly.map((t) => `- ${t.name}: ${t.description}`).join('\n')
-  return `# Available Tools
-${toolList}
+  // Filtra: só tools com level='orchestrator' (ou sem level definido, que defaulta para orchestrator)
+  const directTools = tools.filter((t) => isOrchestratorTool(t))
+  if (directTools.length === 0) return ''
 
-IMPORTANT: You can ONLY use the "task" tool. You do NOT have direct access to any other tools (no read_file, write_file, list_files, run_command, search_files).
+  const toolList = directTools.map((t) => `- ${t.name}: ${t.description}`).join('\n')
+
+  const hasPluginTools = directTools.some((t) => t.name !== 'task')
+
+  let instructions = `# Available Tools\n${toolList}\n\n`
+
+  if (hasPluginTools) {
+    instructions += `You can call these tools directly. For complex coding tasks (reading files, writing code, searching), delegate to agents via the "task" tool.
+When a tool result comes back, present it to the user. Do NOT re-call the same tool unnecessarily.`
+  } else {
+    instructions += `IMPORTANT: You can ONLY use the "task" tool. You do NOT have direct access to file system tools (no read_file, write_file, list_files, run_command, search_files).
 All work must be delegated to agents via the "task" tool. When the task result comes back, present it to the user as your final answer.
 Do NOT try to call task again for the same work — trust the agent's result.`
+  }
+
+  return instructions
 }
 
 /**

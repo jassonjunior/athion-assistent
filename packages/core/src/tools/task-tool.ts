@@ -38,7 +38,13 @@ export function createTaskTool(deps: TaskToolDeps) {
  * re-spawna com contexto acumulado até completar ou atingir MAX_CONTINUATIONS.
  */
 async function executeTask(subagents: SubAgentManager, params: TaskToolParams) {
-  const config = subagents.getAgent(params.agent)
+  let config = subagents.getAgent(params.agent)
+
+  // Fuzzy match: se não encontrou exato, tenta por similaridade
+  if (!config) {
+    config = fuzzyMatchAgent(subagents, params.agent)
+  }
+
   if (!config) {
     const available = subagents
       .list()
@@ -115,6 +121,32 @@ async function executeTask(subagents: SubAgentManager, params: TaskToolParams) {
   } catch (err) {
     return { success: false as const, error: err instanceof Error ? err.message : String(err) }
   }
+}
+
+/**
+ * Fuzzy match: finds the closest agent name when LLM sends a slight variation.
+ * Matches by prefix, suffix, or substring containment.
+ * e.g. "code-review" → "code-reviewer", "reviewer" → "code-reviewer"
+ */
+function fuzzyMatchAgent(subagents: SubAgentManager, name: string) {
+  const normalized = name.toLowerCase().replace(/[_\s]/g, '-')
+  const agents = subagents.list()
+
+  // 1. One name starts with / ends with the other
+  for (const a of agents) {
+    if (a.name.startsWith(normalized) || normalized.startsWith(a.name)) {
+      return subagents.getAgent(a.name)
+    }
+  }
+
+  // 2. Substring match (e.g. "review" matches "code-reviewer")
+  for (const a of agents) {
+    if (a.name.includes(normalized) || normalized.includes(a.name)) {
+      return subagents.getAgent(a.name)
+    }
+  }
+
+  return undefined
 }
 
 function createTask(params: TaskToolParams): SubAgentTask {

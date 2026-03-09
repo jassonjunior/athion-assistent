@@ -1,5 +1,6 @@
 import type { PermissionManager } from '../permissions/types'
 import type { ToolRegistry, ToolResult } from '../tools/types'
+import { getToolLevel } from '../tools/types'
 
 /**
  * Contexto passado ao ToolDispatcher para cada execucao.
@@ -49,8 +50,12 @@ export function createToolDispatcher(
       return { success: false, error: `Tool "${toolName}" not found` }
     }
 
-    // 2. Verificar permissao (task tool é interna, sempre permitida)
-    if (toolName !== 'task') {
+    // 2. Verificar permissao
+    // Tools com level='agent' passam por permission check (core tools).
+    // Tools com level='orchestrator' (plugins, task) sao trusted.
+    const needsPermission = getToolLevel(tool) === 'agent'
+
+    if (needsPermission) {
       const target = extractTarget(toolName, args)
       const decision = permissions.check(toolName, target)
 

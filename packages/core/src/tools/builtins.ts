@@ -9,6 +9,7 @@ import { defineTool } from './registry'
  */
 export const readFileTool = defineTool({
   name: 'read_file',
+  level: 'agent',
   description:
     'Lê o conteúdo de um arquivo pelo caminho informado. Use offset/limit para ler em partes (linhas).',
   parameters: z.object({
@@ -49,6 +50,7 @@ export const readFileTool = defineTool({
  */
 export const writeFileTool = defineTool({
   name: 'write_file',
+  level: 'agent',
   description: 'Escreve conteúdo em um arquivo (cria ou sobrescreve)',
   parameters: z.object({
     path: z.string().describe('Caminho do arquivo a ser escrito'),
@@ -73,6 +75,7 @@ export const writeFileTool = defineTool({
  */
 export const listFilesTool = defineTool({
   name: 'list_files',
+  level: 'agent',
   description: 'Lista arquivos e diretórios em um caminho',
   parameters: z.object({
     path: z.string().describe('Caminho do diretório a ser listado'),
@@ -101,6 +104,7 @@ export const listFilesTool = defineTool({
  */
 export const runCommandTool = defineTool({
   name: 'run_command',
+  level: 'agent',
   description: 'Executa um comando no shell e retorna stdout/stderr',
   parameters: z.object({
     command: z.string().describe('Comando a ser executado'),
@@ -142,6 +146,7 @@ export const runCommandTool = defineTool({
  */
 export const searchFilesTool = defineTool({
   name: 'search_files',
+  level: 'agent',
   description:
     'Busca texto em arquivos recursivamente usando grep. Use offset/limit para paginar resultados.',
   parameters: z.object({

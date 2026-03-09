@@ -1,6 +1,14 @@
-import { streamText, tool } from 'ai'
+import { generateText as aiGenerateText, streamText, tool } from 'ai'
 import { PROVIDERS } from './registry'
-import type { ModelInfo, ProviderInfo, StreamChatConfig, StreamEvent, TokenUsage } from './types'
+import type {
+  GenerateConfig,
+  GenerateResult,
+  ModelInfo,
+  ProviderInfo,
+  StreamChatConfig,
+  StreamEvent,
+  TokenUsage,
+} from './types'
 
 /**
  * Interface pública do Provider Layer.
@@ -10,6 +18,8 @@ export interface ProviderLayer {
   listProviders(): ProviderInfo[]
   listModels(providerId?: string): ModelInfo[]
   streamChat(config: StreamChatConfig): AsyncGenerator<StreamEvent>
+  /** Chamada não-streaming ao LLM. Útil para summarização e tarefas internas. */
+  generateText(config: GenerateConfig): Promise<GenerateResult>
 }
 
 /**
@@ -77,7 +87,33 @@ export function createProviderLayer(): ProviderLayer {
     }
   }
 
-  return { listProviders, listModels, streamChat }
+  async function generateText(config: GenerateConfig): Promise<GenerateResult> {
+    const entry = PROVIDERS[config.provider]
+    if (!entry) {
+      throw new Error(`Provider '${config.provider}' not found`)
+    }
+
+    const model = entry.createModel(config.model)
+
+    const result = await aiGenerateText({
+      model,
+      messages: config.messages,
+      temperature: config.temperature,
+      maxOutputTokens: config.maxTokens,
+    } as Parameters<typeof aiGenerateText>[0])
+
+    const usage = result.usage
+    return {
+      text: result.text,
+      usage: {
+        promptTokens: usage.inputTokens ?? 0,
+        completionTokens: usage.outputTokens ?? 0,
+        totalTokens: (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0),
+      },
+    }
+  }
+
+  return { listProviders, listModels, streamChat, generateText }
 }
 
 /** Converte tools do formato Athion para formato AI SDK. */

@@ -6,6 +6,7 @@ import type { SkillManager } from '../skills/types'
 import type { TokenManager } from '../tokens/types'
 import type { SubAgentManager } from '../subagent/types'
 import type { ToolDefinition, ToolRegistry } from '../tools/types'
+import { isOrchestratorTool } from '../tools/types'
 import type { PromptBuilder } from './prompt-builder'
 import type { SessionManager } from './session'
 import type { DispatchContext, ToolDispatcher } from './tool-dispatcher'
@@ -89,15 +90,15 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
    * console.log(chat) // { type: 'content', content: 'Hello, how are you?' }
    */
   async function* chat(sessionId: string, message: UserMessage): AsyncGenerator<OrchestratorEvent> {
-    const ctx = prepareChat(sessionId, message, deps, agents)
+    const ctx = await prepareChat(sessionId, message, deps, agents)
 
     let continueLoop = true
     while (continueLoop) {
       continueLoop = false
 
-      // Verificar compactação entre turnos
+      // Verificar compactacao entre turnos
       if (deps.tokens.needsCompaction()) {
-        deps.session.compress(sessionId)
+        await deps.session.compress(sessionId)
         const compacted = deps.session.getMessages(sessionId)
         ctx.messages.length = 0
         ctx.messages.push(...compacted)
@@ -196,12 +197,12 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
  * const ctx = prepareChat('123', { content: 'Hello, how are you?' }, deps, agents)
  * console.log(ctx) // { sessionId: '123', deps: deps, agents: agents, messages: [{ role: 'user', content: 'Hello, how are you?' }], llmMessages: [{ role: 'system', content: 'You are a helpful assistant.' }, { role: 'user', content: 'Hello, how are you?' }], actions: [] }
  */
-function prepareChat(
+async function prepareChat(
   sessionId: string,
   message: UserMessage,
   deps: OrchestratorDeps,
   agents: AgentDefinition[],
-): ChatContext {
+): Promise<ChatContext> {
   const { session, tokens, promptBuilder, tools } = deps
 
   const currentSession = session.load(sessionId)
@@ -213,7 +214,7 @@ function prepareChat(
   const systemPrompt = promptBuilder.build(currentSession, tools.list(), agents)
 
   if (tokens.needsCompaction()) {
-    session.compress(sessionId)
+    await session.compress(sessionId)
     const compacted = session.getMessages(sessionId)
     messages.length = 0
     messages.push(...compacted)
@@ -240,12 +241,16 @@ async function* runStreamTurn(ctx: ChatContext): AsyncGenerator<OrchestratorEven
   const pendingToolCalls: Array<{ id: string; name: string; args: unknown }> = []
 
   // Se forceTextOnly, nao passa tools — modelo deve gerar resposta texto
+  // Usa tool.level para filtrar: só envia tools com level='orchestrator' ao provider.
   let providerTools: Record<string, { description: string; parameters: unknown }> | undefined
   if (!ctx.forceTextOnly) {
-    const taskTool = ctx.deps.tools.get('task')
-    providerTools = taskTool
-      ? { task: { description: taskTool.description, parameters: taskTool.parameters } }
-      : undefined
+    const directTools = ctx.deps.tools.list().filter((t) => isOrchestratorTool(t))
+    if (directTools.length > 0) {
+      providerTools = {}
+      for (const t of directTools) {
+        providerTools[t.name] = { description: t.description, parameters: t.parameters }
+      }
+    }
   }
 
   const stream = provider.streamChat({
@@ -297,8 +302,9 @@ async function* handleToolCalls(
   const { tokens, toolDispatcher } = ctx.deps
 
   for (const tc of pendingToolCalls) {
-    // Only allow 'task' tool for the main orchestrator — delegate everything else
-    if (tc.name !== 'task') {
+    // Bloqueia tools com level='agent' — orchestrator não pode chamar diretamente
+    const toolDef = ctx.deps.tools.get(tc.name)
+    if (toolDef && !isOrchestratorTool(toolDef)) {
       const errorMsg = `Tool "${tc.name}" is not available directly. Use the "task" tool to delegate to the appropriate agent.`
       const failResult = { success: false as const, error: errorMsg }
       yield { type: 'tool_result', id: tc.id, name: tc.name, result: failResult }

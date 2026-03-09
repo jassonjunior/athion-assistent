@@ -131,3 +131,38 @@ export const ConfigChanged = defineBusEvent(
     value: z.unknown(),
   }),
 )
+
+// ─── Plugin Events ───────────────────────────────────────────────
+
+/**
+ * Plugin Loaded — emitido quando um plugin é carregado com sucesso.
+ */
+export const PluginLoaded = defineBusEvent(
+  'plugin.loaded',
+  z.object({
+    name: z.string(),
+    version: z.string(),
+    toolsRegistered: z.array(z.string()),
+  }),
+)
+
+/**
+ * Plugin Unloaded — emitido quando um plugin é descarregado.
+ */
+export const PluginUnloaded = defineBusEvent(
+  'plugin.unloaded',
+  z.object({
+    name: z.string(),
+  }),
+)
+
+/**
+ * Plugin Error — emitido quando um plugin falha ao carregar.
+ */
+export const PluginError = defineBusEvent(
+  'plugin.error',
+  z.object({
+    name: z.string(),
+    error: z.string(),
+  }),
+)

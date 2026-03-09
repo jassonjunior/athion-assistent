@@ -87,3 +87,24 @@ export interface StreamChatConfig {
  * - 'queue': Espera o stream terminar e depois processa a nova mensagem
  */
 export type InterruptStrategy = 'abort-resend' | 'queue'
+
+/**
+ * Configuracao para chamada nao-streaming ao LLM.
+ * Usado para tarefas internas como summarizacao de contexto.
+ */
+export interface GenerateConfig {
+  provider: string
+  model: string
+  messages: Array<{
+    role: 'user' | 'assistant' | 'system'
+    content: string
+  }>
+  temperature?: number
+  maxTokens?: number
+}
+
+/** Resultado de uma chamada nao-streaming. */
+export interface GenerateResult {
+  text: string
+  usage: TokenUsage
+}

@@ -7,6 +7,8 @@ import { createPromptBuilder } from './orchestrator/prompt-builder'
 import { createSessionManager } from './orchestrator/session'
 import { createToolDispatcher } from './orchestrator/tool-dispatcher'
 import type { Orchestrator } from './orchestrator/types'
+import type { PluginManager } from './plugins'
+import { createPluginManager } from './plugins'
 import { createPermissionManager } from './permissions'
 import type { ProviderLayer } from './provider'
 import { createProviderLayer } from './provider'
@@ -21,6 +23,7 @@ import { createDatabaseManager } from './storage'
 import type { SubAgentManager } from './subagent'
 import { builtinAgents, createSubAgentManager } from './subagent'
 import { createTokenManager } from './tokens'
+import { createSummarizationService } from './tokens/summarize'
 import type { ToolRegistry } from './tools'
 import { BUILTIN_TOOLS, createToolRegistry } from './tools'
 import { createTaskTool } from './tools/task-tool'
@@ -37,6 +40,7 @@ import type { ToolDefinition } from './tools/types'
 export interface BootstrapOptions {
   dbPath?: string
   skillsDir?: string
+  pluginsDir?: string
   cliArgs?: Partial<Config>
 }
 
@@ -60,6 +64,7 @@ export interface AthionCore {
   provider: ProviderLayer
   skills: SkillManager
   tools: ToolRegistry
+  plugins: PluginManager
   subagents: SubAgentManager
   orchestrator: Orchestrator
   vllm: VllmManager
@@ -74,7 +79,7 @@ export interface AthionCore {
  * console.log(core) // { bus: createBus(), config: createConfigManager(), provider: createProviderLayer(), skills: createSkillManager(), tools: createToolRegistry(), subagents: createSubAgentManager(), orchestrator: createOrchestrator(), vllm: createVllmManager(), proxy: createProxy() }
  */
 export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionCore> {
-  const { dbPath = '~/.athion/data.db', skillsDir, cliArgs = {} } = options
+  const { dbPath = '~/.athion/data.db', skillsDir, pluginsDir, cliArgs = {} } = options
 
   // Nível 0-1: Serviços independentes
   const { bus, config, tokens, provider, skills, tools } = createBaseServices(cliArgs)
@@ -89,11 +94,21 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
   const toolDispatcher = createToolDispatcher(tools, permissions)
 
   // Nível 4-5: SubAgents + TaskTool
-  const subagents = createSubAgentManager({ config, provider, tools, skills })
+  const summarizer = createSummarizationService({
+    provider,
+    providerId: config.get('provider') as string,
+    modelId: config.get('model') as string,
+  })
+  const subagents = createSubAgentManager({ config, provider, tools, skills, summarizer })
   for (const agent of builtinAgents) subagents.registerAgent(agent)
   tools.register(createTaskTool({ subagents }) as ToolDefinition)
 
-  // Nível 6: Orchestrator (após subagents para incluir agents no prompt)
+  // Nível 5.5: Plugins (após tools/bus/config — plugins podem registrar tools)
+  const plugins = createPluginManager({ bus, config, tools, provider })
+  const resolvedPluginsDir = pluginsDir ?? '~/.athion/plugins'
+  await plugins.loadFromDirectory(resolvedPluginsDir)
+
+  // Nível 6: Orchestrator (após subagents + plugins para incluir tudo no prompt)
   const orchestrator = createOrchestrator({
     config,
     bus,
@@ -137,7 +152,7 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
     process.env['ATHION_VLLM_MLX_URL'] = `${proxy.url}/v1`
   }
 
-  return { bus, config, provider, skills, tools, subagents, orchestrator, vllm, proxy }
+  return { bus, config, provider, skills, tools, plugins, subagents, orchestrator, vllm, proxy }
 }
 
 /** Cria os servicos base do Athion.
@@ -150,13 +165,23 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
 function createBaseServices(cliArgs: Partial<Config>) {
   const bus = createBus()
   const config = createConfigManager(cliArgs)
+  const provider = createProviderLayer()
+
+  // Summarizer usa o provider para chamar o LLM
+  const summarizer = createSummarizationService({
+    provider,
+    providerId: config.get('provider') as string,
+    modelId: config.get('model') as string,
+  })
+
   const contextWindow = config.get('contextWindow')
   const tokens = createTokenManager({
     contextLimit: contextWindow,
     compactionThreshold: 0.9,
-    strategy: 'sliding-window',
+    strategy: 'summarize',
+    summarizer,
   })
-  const provider = createProviderLayer()
+
   const skills = createSkillManager()
   const tools = createToolRegistry()
   for (const tool of BUILTIN_TOOLS) tools.register(tool as ToolDefinition)

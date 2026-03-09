@@ -14,6 +14,16 @@ export interface ToolResult<T = unknown> {
 }
 
 /**
+ * Nível de acesso de uma tool.
+ *
+ * - 'orchestrator' → acessível diretamente pelo orchestrator (e também por agentes)
+ * - 'agent' → acessível APENAS por subagentes (não aparece no prompt do orchestrator)
+ *
+ * Default: 'agent' para core tools, 'orchestrator' para plugin tools.
+ */
+export type ToolLevel = 'orchestrator' | 'agent'
+
+/**
  * Definição completa de uma tool que o LLM pode invocar.
  * Cada tool tem um schema Zod para validação dos parâmetros.
  * @template TParams - Tipo dos parâmetros (inferido do Zod schema)
@@ -28,6 +38,33 @@ export interface ToolDefinition<TParams = unknown, TResult = unknown> {
   parameters: z.ZodType<TParams>
   /** Função que executa a tool com os parâmetros validados */
   execute: (params: TParams) => Promise<ToolResult<TResult>>
+  /**
+   * Nível de acesso da tool.
+   * - 'orchestrator' → orchestrator pode chamar diretamente + subagentes também
+   * - 'agent' → APENAS subagentes podem usar (default para core tools)
+   *
+   * Se não definido, o sistema infere:
+   * - Core tools (read_file, etc.) → 'agent'
+   * - Plugin tools → 'orchestrator'
+   * - task → 'orchestrator'
+   */
+  level?: ToolLevel | undefined
+}
+
+/**
+ * Retorna o nível efetivo de uma tool.
+ * Se a tool não tem level definido, assume 'orchestrator' (default seguro para plugins).
+ * Core tools devem sempre definir level: 'agent' explicitamente.
+ */
+export function getToolLevel(tool: ToolDefinition): ToolLevel {
+  return tool.level ?? 'orchestrator'
+}
+
+/**
+ * Verifica se uma tool é acessível pelo orchestrator diretamente.
+ */
+export function isOrchestratorTool(tool: ToolDefinition): boolean {
+  return getToolLevel(tool) === 'orchestrator'
 }
 
 /**

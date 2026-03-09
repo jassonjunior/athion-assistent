@@ -61,12 +61,13 @@ export interface TokenManager {
 
   /**
    * Compacta o histórico de mensagens segundo a estratégia configurada.
+   * Async porque a estrategia 'summarize' chama o LLM.
    * @param messages - Array de mensagens a compactar
    * @returns Array compactado de mensagens
    */
   compact(
     messages: Array<{ role: string; content: string }>,
-  ): Array<{ role: string; content: string }>
+  ): Promise<Array<{ role: string; content: string }>>
 
   /**
    * Verifica se o LLM está preso em um loop de tool calls.

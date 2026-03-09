@@ -45,10 +45,11 @@ export interface SessionManager {
    */
   addMessage(sessionId: string, role: string, content: string): void
   /**
-   * Aplica compaction nas mensagens da sessao
+   * Aplica compaction nas mensagens da sessao.
+   * Async porque a estrategia 'summarize' chama o LLM.
    * @param sessionId - ID da sessao a aplicar compaction
    */
-  compress(sessionId: string): void
+  compress(sessionId: string): Promise<void>
 }
 
 /**
@@ -121,9 +122,9 @@ export function createSessionManager(db: DatabaseManager, tokens: TokenManager):
    * Aplica compaction nas mensagens da sessao
    * @param sessionId - ID da sessao a aplicar compaction
    */
-  function compress(sessionId: string): void {
+  async function compress(sessionId: string): Promise<void> {
     const messages = getMessages(sessionId)
-    const compacted = tokens.compact(messages)
+    const compacted = await tokens.compact(messages)
     db.deleteMessages(sessionId)
     for (const msg of compacted) {
       addMessage(sessionId, msg.role, msg.content)

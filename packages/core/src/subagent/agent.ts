@@ -1,5 +1,6 @@
 import type { ProviderLayer } from '../provider/provider'
 import type { SkillManager } from '../skills/types'
+import type { SummarizationService } from '../tokens/summarize'
 import type { ToolRegistry } from '../tools/types'
 import type { SubAgentConfig, SubAgentEvent, SubAgentTask } from './types'
 
@@ -12,6 +13,8 @@ export interface SubAgentDeps {
   skills: SkillManager
   defaultProvider: string
   defaultModel: string
+  /** Serviço de summarização para compactar contexto via LLM (opcional, fallback: sliding-window) */
+  summarizer?: SummarizationService | undefined
 }
 
 /** Limite de contexto do subagente em tokens estimados. */
@@ -66,6 +69,7 @@ export async function* runSubAgent(
 
   // 5. Loop de chat
   const resultParts: string[] = []
+  let agentDone = false
 
   for (let turn = 0; turn < maxTurns; turn++) {
     if (signal?.aborted) {
@@ -79,21 +83,38 @@ export async function* runSubAgent(
     let assistantContent = ''
     const toolCalls: Array<{ id: string; name: string; args: unknown }> = []
 
-    // Gerenciamento de contexto com detecção de continuação
+    // Gerenciamento de contexto: summarize via LLM ou sliding-window mecânico
     const estimatedTokens = estimateTokens(messages)
     if (estimatedTokens > CONTEXT_LIMIT * SLIDING_WINDOW_THRESHOLD) {
-      // Tentar sliding-window primeiro
-      const systemMsgs = messages.filter((m) => m.role === 'system')
-      const nonSystem = messages.filter((m) => m.role !== 'system')
-      const keep = nonSystem.slice(-Math.max(10, Math.floor(nonSystem.length * 0.5)))
-      messages.length = 0
-      messages.push(...systemMsgs, ...keep)
+      if (deps.summarizer) {
+        // Estratégia preferida: summarize via LLM — preserva contexto semântico
+        try {
+          const flatMessages = messages.map((m) => ({
+            role: m.role,
+            content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+          }))
+          const summarized = await deps.summarizer.summarize(flatMessages)
+          messages.length = 0
+          messages.push(
+            ...summarized.map((m) => ({
+              role: m.role as 'user' | 'assistant' | 'system' | 'tool',
+              content: m.content as string | unknown[],
+            })),
+          )
+        } catch {
+          // Fallback: sliding-window mecânico se summarize falhar
+          applySlidingWindow(messages)
+        }
+      } else {
+        // Sem summarizer: sliding-window mecânico
+        applySlidingWindow(messages)
+      }
 
-      // Re-estimar após sliding-window
-      const afterTruncation = estimateTokens(messages)
+      // Re-estimar após compactação
+      const afterCompaction = estimateTokens(messages)
 
       // Se AINDA acima do threshold de continuação, sair para continuation
-      if (afterTruncation > CONTEXT_LIMIT * CONTINUATION_THRESHOLD && resultParts.length > 0) {
+      if (afterCompaction > CONTEXT_LIMIT * CONTINUATION_THRESHOLD && resultParts.length > 0) {
         task.status = 'partial'
         task.result = resultParts.join('\n')
         task.accumulatedResults.push(...resultParts)
@@ -152,6 +173,7 @@ export async function* runSubAgent(
       if (assistantContent) {
         messages.push({ role: 'assistant', content: assistantContent })
       }
+      agentDone = true
       break
     }
 
@@ -209,6 +231,17 @@ export async function* runSubAgent(
       }
       yield { type: 'tool_result', toolName: tc.name, result }
     }
+  }
+
+  // Se esgotou turnos mas ainda tinha work em progresso → continuation
+  if (!agentDone && resultParts.length > 0) {
+    task.status = 'partial'
+    task.result = resultParts.join('\n')
+    task.accumulatedResults.push(...resultParts)
+    task.remainingWork = buildRemainingWorkSummary(task, resultParts)
+    task.updatedAt = new Date()
+    yield { type: 'continuation_needed', task }
+    return
   }
 
   // Resultado final
@@ -292,6 +325,15 @@ function compressAccumulatedResults(results: string[], maxChars: number): string
     r.length > perResult ? r.slice(0, perResult) + '...[compressed]' : r,
   )
   return compressed.join('\n---\n')
+}
+
+/** Aplica sliding-window mecânico: descarta mensagens antigas, mantém 50% mais recentes. */
+function applySlidingWindow(messages: Array<{ role: string; content: string | unknown[] }>): void {
+  const systemMsgs = messages.filter((m) => m.role === 'system')
+  const nonSystem = messages.filter((m) => m.role !== 'system')
+  const keep = nonSystem.slice(-Math.max(10, Math.floor(nonSystem.length * 0.5)))
+  messages.length = 0
+  messages.push(...systemMsgs, ...keep)
 }
 
 /** Estima tokens de um array de mensagens (~4 chars por token). */

@@ -1,32 +1,27 @@
+import type { SummarizationService } from './summarize'
 import type { CompactionStrategy, LoopDetection, TokenBudget, TokenManager } from './types'
 
 /**
- * Configuração do Token Manager.
+ * Configuracao do Token Manager.
  */
 interface TokenManagerConfig {
   /** Limite de contexto do modelo em tokens (ex: 50000 para qwen3) */
   contextLimit: number
-  /** Estratégia de compactação (default: 'sliding-window') */
+  /** Estrategia de compactacao (default: 'sliding-window') */
   strategy?: CompactionStrategy
-  /** Percentual da janela que dispara compactação (default: 0.8 = 80%) */
+  /** Percentual da janela que dispara compactacao (default: 0.8 = 80%) */
   compactionThreshold?: number
-  /** Número de mensagens recentes a manter no sliding-window (default: 20) */
+  /** Numero de mensagens recentes a manter no sliding-window (default: 20) */
   windowSize?: number
-  /** Mínimo de repetições para detectar loop (default: 3) */
+  /** Minimo de repeticoes para detectar loop (default: 3) */
   loopThreshold?: number
+  /** Servico de summarizacao (obrigatorio se strategy = 'summarize') */
+  summarizer?: SummarizationService
 }
 
 /**
- * Cria uma instância do Token Manager.
- * Controla budget de tokens, compactação de histórico e detecção de loops.
- * @param config - Configuração com limites e estratégia
- * @returns Instância do TokenManager pronta para uso
- * @example
- * const tm = createTokenManager({ contextLimit: 50000 })
- * tm.trackUsage(1500, 800)
- * if (tm.needsCompaction()) {
- *   messages = tm.compact(messages)
- * }
+ * Cria uma instancia do Token Manager.
+ * Controla budget de tokens, compactacao de historico e deteccao de loops.
  */
 export function createTokenManager(config: TokenManagerConfig): TokenManager {
   const strategy = config.strategy ?? 'sliding-window'
@@ -57,9 +52,9 @@ export function createTokenManager(config: TokenManagerConfig): TokenManager {
     return used >= config.contextLimit * compactionThreshold
   }
 
-  function compact(
+  async function compact(
     messages: Array<{ role: string; content: string }>,
-  ): Array<{ role: string; content: string }> {
+  ): Promise<Array<{ role: string; content: string }>> {
     if (messages.length <= 2) return messages
 
     switch (strategy) {
@@ -68,14 +63,32 @@ export function createTokenManager(config: TokenManagerConfig): TokenManager {
       case 'sliding-window':
         return compactSlidingWindow(messages)
       case 'summarize':
-        // Placeholder — implementação completa na Fase 2 (issue #16)
-        return compactSlidingWindow(messages)
+        return compactSummarize(messages)
     }
   }
 
   /**
-   * Remove mensagens antigas, mantendo apenas a primeira (system) e as recentes.
+   * Estrategia 'summarize': chama o LLM para gerar resumo estruturado.
+   * Se o summarizer nao estiver configurado, faz fallback para sliding-window.
    */
+  async function compactSummarize(
+    messages: Array<{ role: string; content: string }>,
+  ): Promise<Array<{ role: string; content: string }>> {
+    if (!config.summarizer) {
+      // eslint-disable-next-line no-console
+      console.warn('[tokens] Summarizer not configured, falling back to sliding-window')
+      return compactSlidingWindow(messages)
+    }
+
+    try {
+      return await config.summarizer.summarize(messages)
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[tokens] Summarization failed, falling back to sliding-window:', err)
+      return compactSlidingWindow(messages)
+    }
+  }
+
   function compactTruncate(
     messages: Array<{ role: string; content: string }>,
   ): Array<{ role: string; content: string }> {
@@ -84,9 +97,6 @@ export function createTokenManager(config: TokenManagerConfig): TokenManager {
     return [...systemMessages, ...recentMessages]
   }
 
-  /**
-   * Mantém uma janela fixa das últimas N mensagens + system messages.
-   */
   function compactSlidingWindow(
     messages: Array<{ role: string; content: string }>,
   ): Array<{ role: string; content: string }> {
@@ -111,7 +121,6 @@ export function createTokenManager(config: TokenManagerConfig): TokenManager {
       return { detected: false, repetitions: 0 }
     }
 
-    // Verifica padrões de 1 a 3 ações repetidas
     for (let patternLength = 1; patternLength <= 3; patternLength++) {
       const lastPattern = actions.slice(-patternLength)
       let repetitions = 0
