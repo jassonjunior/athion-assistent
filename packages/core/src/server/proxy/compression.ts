@@ -90,11 +90,14 @@ export function createCompressionService(
     }
 
     const inputText = buildCompressionInput(
-      toCompress.map((m) => ({
-        role: m.role,
-        content: m.content,
-        toolCalls: m.tool_calls?.map((tc) => tc.function.name),
-      })),
+      toCompress.map((m) => {
+        const toolCalls = m.tool_calls?.map((tc) => tc.function.name)
+        return {
+          role: m.role as string,
+          content: m.content,
+          ...(toolCalls !== undefined ? { toolCalls } : {}),
+        }
+      }),
     )
 
     const summary = await callLlmForSummary(inputText)
@@ -171,7 +174,7 @@ export function createCompressionService(
       throw new Error(`Compression LLM call failed: ${res.status} ${res.statusText}`)
     }
 
-    const data = await res.json()
+    const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> }
     const content = data?.choices?.[0]?.message?.content
     if (!content) {
       throw new Error('Compression LLM returned empty response')

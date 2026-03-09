@@ -199,6 +199,53 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this.messenger?.post({ type: 'config:result', config: {} })
       }
     })
+
+    // Codebase handlers
+    this.messenger.on('codebase:index', async () => {
+      try {
+        const result = await this.bridge.request<{ totalFiles: number; totalChunks: number }>(
+          'codebase.index',
+          {},
+          300000,
+        )
+        this.messenger?.post({
+          type: 'codebase:indexed',
+          totalFiles: result.totalFiles,
+          totalChunks: result.totalChunks,
+        })
+      } catch (err) {
+        this.messenger?.post({
+          type: 'codebase:error',
+          message: err instanceof Error ? err.message : String(err),
+        })
+      }
+    })
+
+    this.messenger.on(
+      'codebase:search',
+      async (
+        msg: Extract<
+          import('../bridge/messenger-types.js').WebviewToExtension,
+          { type: 'codebase:search' }
+        >,
+      ) => {
+        try {
+          const result = await this.bridge.request<{
+            results: import('../bridge/messenger-types.js').CodebaseSearchResult[]
+          }>('codebase.search', { query: msg.query, limit: msg.limit ?? 8 }, 30000)
+          this.messenger?.post({
+            type: 'codebase:result',
+            results: result.results,
+            query: msg.query,
+          })
+        } catch (err) {
+          this.messenger?.post({
+            type: 'codebase:error',
+            message: err instanceof Error ? err.message : String(err),
+          })
+        }
+      },
+    )
   }
 
   private getHtml(webview: vscode.Webview): string {

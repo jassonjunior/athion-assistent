@@ -7,9 +7,9 @@ import type { SubAgentConfig } from './types'
 export const searchAgent: SubAgentConfig = {
   name: 'search',
   description:
-    'Searches and analyzes code, files, and project structure. Read-only — never modifies files.',
+    'Searches and analyzes code, files, and project structure. Read-only — never modifies files. Prefers search_codebase (semantic index) first; falls back to search_files (grep) if index has no results.',
   skill: 'search',
-  tools: ['read_file', 'list_files', 'search_files'],
+  tools: ['search_codebase', 'read_file', 'list_files', 'search_files'],
   maxTurns: 30,
   level: 'builtin',
 }
@@ -23,7 +23,7 @@ export const coderAgent: SubAgentConfig = {
   description:
     'Generates code from scratch and modifies existing files. Analyzes context, creates the implementation, and writes the files.',
   skill: 'coder',
-  tools: ['read_file', 'write_file', 'list_files', 'search_files'],
+  tools: ['search_codebase', 'read_file', 'write_file', 'list_files', 'search_files'],
   maxTurns: 50,
   level: 'builtin',
 }
@@ -36,7 +36,7 @@ export const codeReviewAgent: SubAgentConfig = {
   name: 'code-review',
   description: 'Reviews code for bugs, security issues, and improvements. Read-only analysis.',
   skill: 'code-review',
-  tools: ['read_file', 'list_files', 'search_files'],
+  tools: ['search_codebase', 'read_file', 'list_files', 'search_files'],
   maxTurns: 20,
   level: 'builtin',
 }
@@ -50,7 +50,7 @@ export const refactorAgent: SubAgentConfig = {
   description:
     'Restructures code while preserving existing behavior. Makes surgical, verifiable changes.',
   skill: 'refactor',
-  tools: ['read_file', 'write_file', 'list_files', 'search_files'],
+  tools: ['search_codebase', 'read_file', 'write_file', 'list_files', 'search_files'],
   maxTurns: 40,
   level: 'builtin',
 }
@@ -63,7 +63,7 @@ export const explainAgent: SubAgentConfig = {
   name: 'explainer',
   description: 'Explains code, concepts, and technical decisions in a clear and structured way.',
   skill: 'explain',
-  tools: ['read_file', 'list_files', 'search_files'],
+  tools: ['search_codebase', 'read_file', 'list_files', 'search_files'],
   maxTurns: 15,
   level: 'builtin',
 }
@@ -76,7 +76,7 @@ export const testWriterAgent: SubAgentConfig = {
   name: 'test-writer',
   description: 'Writes unit and integration tests for existing code following project conventions.',
   skill: 'test-writer',
-  tools: ['read_file', 'write_file', 'list_files', 'search_files'],
+  tools: ['search_codebase', 'read_file', 'write_file', 'list_files', 'search_files'],
   maxTurns: 30,
   level: 'builtin',
 }
@@ -90,7 +90,14 @@ export const debugAgent: SubAgentConfig = {
   description:
     'Diagnoses and fixes bugs using systematic investigation. Reads code, forms hypotheses, applies minimal fixes.',
   skill: 'debug',
-  tools: ['read_file', 'write_file', 'list_files', 'search_files', 'run_command'],
+  tools: [
+    'search_codebase',
+    'read_file',
+    'write_file',
+    'list_files',
+    'search_files',
+    'run_command',
+  ],
   maxTurns: 40,
   level: 'builtin',
 }

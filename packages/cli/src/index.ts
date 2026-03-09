@@ -21,6 +21,7 @@ import { agentsCommand, agentsHandler } from './commands/agents.js'
 import { skillsCommand, skillsHandler } from './commands/skills.js'
 import { sessionsCommand } from './commands/sessions.js'
 import { serveCommand, serveHandler } from './commands/serve.js'
+import { codebaseCommand } from './commands/codebase.js'
 import { VERSION } from '@athion/shared'
 
 await yargs(hideBin(process.argv))
@@ -32,6 +33,7 @@ await yargs(hideBin(process.argv))
   .command('skills', 'Listar skills disponíveis', skillsCommand, skillsHandler)
   .command('sessions', 'Gerenciar sessões', sessionsCommand)
   .command('serve', 'Iniciar servidor HTTP', serveCommand, serveHandler)
+  .command('codebase', 'Indexar e buscar no codebase', codebaseCommand)
   .command('$0', false as never, chatCommand, chatHandler)
   .strict()
   .help()

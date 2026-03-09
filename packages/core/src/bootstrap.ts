@@ -1,7 +1,11 @@
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import type { Bus } from './bus/bus'
 import { createBus } from './bus/bus'
 import type { Config, ConfigManager } from './config'
 import { createConfigManager } from './config'
+import type { CodebaseIndexer } from './indexing'
+import { createCodebaseIndexer } from './indexing'
 import { createOrchestrator } from './orchestrator/orchestrator'
 import { createPromptBuilder } from './orchestrator/prompt-builder'
 import { createSessionManager } from './orchestrator/session'
@@ -25,7 +29,7 @@ import { builtinAgents, createSubAgentManager } from './subagent'
 import { createTokenManager } from './tokens'
 import { createSummarizationService } from './tokens/summarize'
 import type { ToolRegistry } from './tools'
-import { BUILTIN_TOOLS, createToolRegistry } from './tools'
+import { BUILTIN_TOOLS, createSearchCodebaseTool, createToolRegistry } from './tools'
 import { createTaskTool } from './tools/task-tool'
 import type { ToolDefinition } from './tools/types'
 
@@ -41,6 +45,10 @@ export interface BootstrapOptions {
   dbPath?: string
   skillsDir?: string
   pluginsDir?: string
+  /** Caminho do workspace para indexação do codebase (opcional) */
+  workspacePath?: string
+  /** Caminho do banco SQLite do índice (default: ~/.athion/index.db) */
+  indexDbPath?: string
   cliArgs?: Partial<Config>
 }
 
@@ -69,6 +77,8 @@ export interface AthionCore {
   orchestrator: Orchestrator
   vllm: VllmManager
   proxy: ProxyServer | null
+  /** Indexador de codebase — disponível quando workspacePath foi configurado */
+  indexer: CodebaseIndexer | null
 }
 
 /** Inicializa o core do Athion.
@@ -79,7 +89,14 @@ export interface AthionCore {
  * console.log(core) // { bus: createBus(), config: createConfigManager(), provider: createProviderLayer(), skills: createSkillManager(), tools: createToolRegistry(), subagents: createSubAgentManager(), orchestrator: createOrchestrator(), vllm: createVllmManager(), proxy: createProxy() }
  */
 export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionCore> {
-  const { dbPath = '~/.athion/data.db', skillsDir, pluginsDir, cliArgs = {} } = options
+  const {
+    dbPath = '~/.athion/data.db',
+    skillsDir,
+    pluginsDir,
+    workspacePath,
+    indexDbPath,
+    cliArgs = {},
+  } = options
 
   // Nível 0-1: Serviços independentes
   const { bus, config, tokens, provider, skills, tools } = createBaseServices(cliArgs)
@@ -92,6 +109,20 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
   const session = createSessionManager(db, tokens)
   const promptBuilder = createPromptBuilder(skills)
   const toolDispatcher = createToolDispatcher(tools, permissions)
+
+  // Nível 3.5: CodebaseIndexer (antes dos agents para que search_codebase esteja disponível)
+  let indexer: CodebaseIndexer | null = null
+  if (workspacePath) {
+    const resolvedIndexDb = indexDbPath ?? join(homedir(), '.athion', 'index.db')
+    indexer = createCodebaseIndexer({
+      workspacePath,
+      dbPath: resolvedIndexDb,
+      // Embeddings opcionais — ativa se ATHION_EMBEDDING_URL estiver definida
+      embeddingBaseUrl: process.env['ATHION_EMBEDDING_URL'] ?? '',
+      embeddingModel: process.env['ATHION_EMBEDDING_MODEL'] ?? 'nomic-embed-text',
+    })
+    tools.register(createSearchCodebaseTool(indexer) as ToolDefinition)
+  }
 
   // Nível 4-5: SubAgents + TaskTool
   const summarizer = createSummarizationService({
@@ -152,7 +183,19 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
     process.env['ATHION_VLLM_MLX_URL'] = `${proxy.url}/v1`
   }
 
-  return { bus, config, provider, skills, tools, plugins, subagents, orchestrator, vllm, proxy }
+  return {
+    bus,
+    config,
+    provider,
+    skills,
+    tools,
+    plugins,
+    subagents,
+    orchestrator,
+    vllm,
+    proxy,
+    indexer,
+  }
 }
 
 /** Cria os servicos base do Athion.
