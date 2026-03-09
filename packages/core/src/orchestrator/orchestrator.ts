@@ -184,7 +184,23 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     return [...agents]
   }
 
-  return { chat, createSession, loadSession, getAvailableTools, getAvailableAgents }
+  function listSessions(projectId?: string): Session[] {
+    return deps.session.list(projectId)
+  }
+
+  function deleteSession(sessionId: string): void {
+    deps.session.delete(sessionId)
+  }
+
+  return {
+    chat,
+    createSession,
+    loadSession,
+    listSessions,
+    deleteSession,
+    getAvailableTools,
+    getAvailableAgents,
+  }
 }
 
 /** Prepara o contexto do chat: carrega sessao, monta prompt, aplica compaction.
