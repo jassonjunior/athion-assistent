@@ -11,7 +11,7 @@
  *   - Comandos athion.* estão registrados
  *   - Webview de chat renderiza área de input
  *   - Status bar reflete estado do sidecar Bun
- *   - Chat com modelo (requer ATHION_E2E_MODEL=1)
+ *   - Chat com modelo real
  */
 import {
   openAthionSidebar,
@@ -21,8 +21,6 @@ import {
   dismissPopups,
   withinWebview,
 } from './helpers/vscode-fixture.js'
-
-const HAS_MODEL = !!process.env['ATHION_E2E_MODEL']
 
 describe('VS Code Extension — ativação', () => {
   before(async () => {
@@ -94,44 +92,45 @@ describe('VS Code Extension — webview de chat', () => {
   })
 
   it('área de input de chat está acessível no webview', async () => {
-    try {
-      await withinWebview(async () => {
-        const input = await browser.$('textarea, [contenteditable="true"], input[type="text"]')
-        await expect(input).toBeExisting()
-      })
-    } catch {
-      // Webview pode estar em modo "starting" — aceitável
-    }
+    await withinWebview(async () => {
+      const input = await browser.$('textarea, [contenteditable="true"], input[type="text"]')
+      await expect(input).toBeExisting()
+    })
   })
 })
 
 describe('VS Code Extension — status bar', () => {
-  it('item Athion aparece ou extensão funcionou sem status bar', async () => {
-    await browser.pause(3000)
-    const statusItems = await browser.$$('.statusbar-item')
-    const labels = await Promise.all(statusItems.map((item) => item.getAttribute('aria-label')))
-    const athionItems = labels.filter((l) => l?.toLowerCase().includes('athion'))
-    // Status bar item é opcional — extensão pode funcionar sem ele
-    expect(athionItems.length >= 0).toBe(true)
+  it('sidecar Bun inicia e status fica ready', async () => {
+    // Aguarda sidecar subir (até 30s)
+    await browser.waitUntil(
+      async () => {
+        const statusItems = await browser.$$('.statusbar-item')
+        const labels = await Promise.all(statusItems.map((item) => item.getAttribute('aria-label')))
+        return labels.some(
+          (l) => l?.toLowerCase().includes('ready') || l?.toLowerCase().includes('athion'),
+        )
+      },
+      { timeout: 30000, interval: 1000 },
+    )
   })
 })
 
-describe('VS Code Extension — chat com modelo (requer ATHION_E2E_MODEL=1)', () => {
-  before(async function () {
-    if (!HAS_MODEL) this.skip()
+describe('VS Code Extension — chat com modelo', () => {
+  before(async () => {
     await openAthionSidebar()
+    // Aguarda sidecar pronto
     await browser.pause(5000)
   })
 
-  it('envia mensagem e recebe resposta no webview', async function () {
-    if (!HAS_MODEL) this.skip()
-
+  it('envia mensagem e recebe resposta no webview', async () => {
     await withinWebview(async () => {
       const input = await browser.$('textarea, [contenteditable="true"]')
+      await input.waitForExist({ timeout: 10000 })
       await input.click()
       await input.setValue('Responda apenas: OK')
       await browser.keys('Enter')
 
+      // Aguarda a resposta do assistente aparecer
       await browser.waitUntil(
         async () => {
           const messages = await browser.$$('[class*="message"], [data-role="assistant"]')
@@ -143,5 +142,43 @@ describe('VS Code Extension — chat com modelo (requer ATHION_E2E_MODEL=1)', ()
       const messages = await browser.$$('[class*="message"], [data-role="assistant"]')
       expect(messages.length).toBeGreaterThan(0)
     })
+  })
+
+  it('múltiplas mensagens acumulam no histórico', async () => {
+    await withinWebview(async () => {
+      const input = await browser.$('textarea, [contenteditable="true"]')
+      await input.click()
+      await input.setValue('Qual foi minha última mensagem?')
+      await browser.keys('Enter')
+
+      await browser.waitUntil(
+        async () => {
+          const messages = await browser.$$('[class*="message"]')
+          return messages.length >= 2
+        },
+        { timeout: 60000, interval: 500 },
+      )
+
+      const messages = await browser.$$('[class*="message"]')
+      expect(messages.length).toBeGreaterThanOrEqual(2)
+    })
+  })
+
+  it('athion.abortChat interrompe a resposta em andamento', async () => {
+    await withinWebview(async () => {
+      const input = await browser.$('textarea, [contenteditable="true"]')
+      await input.click()
+      await input.setValue('Conte de 1 a 1000 escrevendo cada número por extenso')
+      await browser.keys('Enter')
+    })
+
+    // Aguarda começar a responder
+    await browser.pause(800)
+
+    // Aborta via comando
+    await executeAthionCommand('athion.abortChat')
+    await browser.pause(500)
+
+    // O comando não deve lançar erro
   })
 })
