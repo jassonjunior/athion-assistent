@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "composite": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "exactOptionalPropertyTypes": true,
+    "paths": {
+      "@athion/core": ["./packages/core/src"],
+      "@athion/cli": ["./packages/cli/src"],
+      "@athion/shared": ["./packages/shared/src"],
+      "@athion/vscode": ["./packages/vscode/src"],
+      "@athion/desktop": ["./packages/desktop/src"]
+    }
+  },
+  "exclude": ["node_modules", "dist", "**/dist"]
+}
