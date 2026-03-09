@@ -44,6 +44,10 @@ export type { SubAgentConfig, SubAgentEvent, SubAgentManager, SubAgentTask } fro
 export { createTokenManager } from './tokens'
 export type { TokenManager } from './tokens'
 
+// Telemetry
+export { createTelemetry } from './telemetry'
+export type { TelemetryConfig, TelemetryService, SpanContext } from './telemetry'
+
 // Tools
 export { createToolRegistry, defineTool } from './tools'
 export type { ToolDefinition, ToolRegistry, ToolResult } from './tools'
