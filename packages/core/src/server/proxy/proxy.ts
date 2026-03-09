@@ -16,15 +16,7 @@ import { thinkStripper } from './middleware/think-stripper'
 import { toolSanitizer } from './middleware/tool-sanitizer'
 import { createStreamHandler } from './streaming'
 
-/** Interface do proxy server.
- * @typedef {Object} ProxyServer
- * @property {function} start - Inicia o proxy.
- * @property {function} stop - Para o proxy.
- * @property {number} port - Porta do proxy.
- * @property {string} url - URL do proxy.
- * @example
- * const proxy: ProxyServer = { start: () => {}, stop: () => {}, port: 1236, url: 'http://localhost:1236' }
- */
+/** Interface do proxy server. */
 export interface ProxyServer {
   start(): void
   stop(): void
@@ -40,14 +32,14 @@ interface ProxyDeps {
   compression: CompressionService
   backend: string
   contextLimit: number
+  _lastMessageCount: number
+  _requestCounter: number
 }
 
-/** Cria e retorna o proxy server.
- * @param config - Configuracao do proxy
- * @returns ProxyServer
- */
+/** Cria e retorna o proxy server. */
 export function createProxy(config: ProxyConfig): ProxyServer {
-  const logger = createProxyLogger('proxy', config.logLevel)
+  const logDir = (process.env.HOME ?? '.') + '/.athion/logs'
+  const logger = createProxyLogger('proxy', config.logLevel, logDir)
   const tokenizer = createTokenizer()
   const compression = createCompressionService(config, tokenizer, logger)
 
@@ -58,23 +50,43 @@ export function createProxy(config: ProxyConfig): ProxyServer {
     compression,
     backend: backendUrl(config),
     contextLimit: effectiveContextLimit(config),
+    _lastMessageCount: 0,
+    _requestCounter: 0,
   }
 
   let server: ReturnType<typeof Bun.serve> | null = null
 
   return {
     start() {
-      server = Bun.serve({
-        port: config.proxyPort,
-        fetch: (req) => handleRequest(req, deps),
-      })
+      try {
+        server = Bun.serve({
+          port: config.proxyPort,
+          reusePort: true,
+          idleTimeout: 255,
+          fetch: (req) => handleRequest(req, deps),
+        })
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        if (msg.includes('EADDRINUSE') || msg.includes('in use')) {
+          logger.warn(`Port ${config.proxyPort} in use, killing previous process...`)
+          Bun.spawnSync(['kill', '-9', ...findPidsOnPort(config.proxyPort)])
+          server = Bun.serve({
+            port: config.proxyPort,
+            reusePort: true,
+            idleTimeout: 255,
+            fetch: (req) => handleRequest(req, deps),
+          })
+        } else {
+          throw err
+        }
+      }
       logger.info(`Proxy listening on http://localhost:${config.proxyPort}`, {
         backend: deps.backend,
         contextWindow: config.contextWindow,
       })
     },
     stop() {
-      server?.stop()
+      server?.stop(true)
       logger.info('Proxy stopped')
     },
     get port() {
@@ -86,15 +98,7 @@ export function createProxy(config: ProxyConfig): ProxyServer {
   }
 }
 
-/** Roteador principal de requests.
- * @param req - Request do proxy.
- * @param deps - Dependencias do proxy.
- * @returns Response do proxy.
- * @example
- * const req = new Request('http://localhost:1236/v1/chat/completions', { method: 'POST', body: JSON.stringify({ messages: [{ role: 'user', content: 'Hello, how are you?' }] }) })
- * const deps = { config: ProxyConfigSchema.parse({}), logger: createProxyLogger('proxy', 'info'), tokenizer: createTokenizer(), compression: createCompressionService(config, tokenizer, logger), backend: 'http://localhost:8000', contextLimit: 1000 }
- * const res = await handleRequest(req, deps)
- */
+/** Roteador principal de requests. */
 async function handleRequest(req: Request, deps: ProxyDeps): Promise<Response> {
   const url = new URL(req.url)
 
@@ -102,21 +106,10 @@ async function handleRequest(req: Request, deps: ProxyDeps): Promise<Response> {
     return handleChatCompletions(req, deps)
   }
 
-  // Proxy passthrough para outros endpoints
   return proxyPassthrough(req, url, deps)
 }
 
-/** Proxy passthrough para endpoints nao-chat.
- * @param req - Request do proxy.
- * @param url - URL do proxy.
- * @param deps - Dependencias do proxy.
- * @returns Response do proxy.
- * @example
- * const req = new Request('http://localhost:1236/v1/chat/completions', { method: 'POST', body: JSON.stringify({ messages: [{ role: 'user', content: 'Hello, how are you?' }] }) })
- * const url = new URL('http://localhost:1236/v1/chat/completions')
- * const deps = { config: ProxyConfigSchema.parse({}), logger: createProxyLogger('proxy', 'info'), tokenizer: createTokenizer(), compression: createCompressionService(config, tokenizer, logger), backend: 'http://localhost:8000', contextLimit: 1000 }
- * const res = await proxyPassthrough(req, url, deps)
- */
+/** Proxy passthrough para endpoints nao-chat. */
 async function proxyPassthrough(req: Request, url: URL, deps: ProxyDeps): Promise<Response> {
   const target = `${deps.backend}${url.pathname}${url.search}`
   try {
@@ -136,15 +129,7 @@ async function proxyPassthrough(req: Request, url: URL, deps: ProxyDeps): Promis
   }
 }
 
-/** Handler principal para /v1/chat/completions.
- * @param req - Request do proxy.
- * @param deps - Dependencias do proxy.
- * @returns Response do proxy.
- * @example
- * const req = new Request('http://localhost:1236/v1/chat/completions', { method: 'POST', body: JSON.stringify({ messages: [{ role: 'user', content: 'Hello, how are you?' }] }) })
- * const deps = { config: ProxyConfigSchema.parse({}), logger: createProxyLogger('proxy', 'info'), tokenizer: createTokenizer(), compression: createCompressionService(config, tokenizer, logger), backend: 'http://localhost:8000', contextLimit: 1000 }
- * const res = await handleChatCompletions(req, deps)
- */
+/** Handler principal para /v1/chat/completions. */
 async function handleChatCompletions(req: Request, deps: ProxyDeps): Promise<Response> {
   const body = (await req.json()) as OpenAIChatRequest
   const startTime = Date.now()
@@ -174,15 +159,7 @@ async function handleChatCompletions(req: Request, deps: ProxyDeps): Promise<Res
   return handleNonStreaming(body, startTime, deps)
 }
 
-/** Trata request streaming via SSE.
- * @param body - Body do request.
- * @param deps - Dependencias do proxy.
- * @returns Response do proxy.
- * @example
- * const body: OpenAIChatRequest = { messages: [{ role: 'user', content: 'Hello, how are you?' }] }
- * const deps = { config: ProxyConfigSchema.parse({}), logger: createProxyLogger('proxy', 'info'), tokenizer: createTokenizer(), compression: createCompressionService(config, tokenizer, logger), backend: 'http://localhost:8000', contextLimit: 1000 }
- * const res = await handleStreaming(body, deps)
- */
+/** Trata request streaming via SSE. */
 async function handleStreaming(body: OpenAIChatRequest, deps: ProxyDeps): Promise<Response> {
   const target = `${deps.backend}/v1/chat/completions`
 
@@ -205,6 +182,8 @@ async function handleStreaming(body: OpenAIChatRequest, deps: ProxyDeps): Promis
     config: deps.config,
     logger: deps.logger,
     contextWindow: deps.config.contextWindow,
+    messageCount: deps._lastMessageCount,
+    requestNumber: deps._requestCounter,
   })
 
   return new Response(stream, {
@@ -216,17 +195,7 @@ async function handleStreaming(body: OpenAIChatRequest, deps: ProxyDeps): Promis
   })
 }
 
-/** Trata request non-streaming.
- * @param body - Body do request.
- * @param startTime - Tempo de inicio do request.
- * @param deps - Dependencias do proxy.
- * @returns Response do proxy.
- * @example
- * const body: OpenAIChatRequest = { messages: [{ role: 'user', content: 'Hello, how are you?' }] }
- * const startTime = Date.now()
- * const deps = { config: ProxyConfigSchema.parse({}), logger: createProxyLogger('proxy', 'info'), tokenizer: createTokenizer(), compression: createCompressionService(config, tokenizer, logger), backend: 'http://localhost:8000', contextLimit: 1000 }
- * const res = await handleNonStreaming(body, startTime, deps)
- */
+/** Trata request non-streaming. */
 async function handleNonStreaming(
   body: OpenAIChatRequest,
   startTime: number,
@@ -266,47 +235,69 @@ async function handleNonStreaming(
   return Response.json(response)
 }
 
-/** Loga dados do request recebido.
- * @param body - Body do request.
- * @param compressionApplied - Se a compressao foi aplicada.
- * @param deps - Dependencias do proxy.
- * @returns void
- * @example
- * const body: OpenAIChatRequest = { messages: [{ role: 'user', content: 'Hello, how are you?' }] }
- * const compressionApplied = true
- * const deps = { config: ProxyConfigSchema.parse({}), logger: createProxyLogger('proxy', 'info'), tokenizer: createTokenizer(), compression: createCompressionService(config, tokenizer, logger), backend: 'http://localhost:8000', contextLimit: 1000 }
- * logRequest(body, compressionApplied, deps)
- */
+/** Loga dados do request recebido. */
 function logRequest(body: OpenAIChatRequest, compressionApplied: boolean, deps: ProxyDeps): void {
+  deps._lastMessageCount = body.messages.length
+  deps._requestCounter++
   const tokens = deps.tokenizer.countMessages(body.messages)
+
+  const toolSummaries = (body.tools ?? []).map((t) => ({
+    name: t.function.name,
+    description: t.function.description,
+    parameterNames: extractParamNames(t.function.parameters),
+  }))
+
+  const messages = body.messages.map((m, i) => ({
+    index: i,
+    role: m.role,
+    contentLength: (m.content ?? '').length,
+    content: m.content ?? '',
+    ...(m.tool_calls
+      ? {
+          toolCalls: m.tool_calls.map((tc) => ({
+            name: tc.function.name,
+            arguments: tc.function.arguments,
+          })),
+        }
+      : {}),
+    ...(m.tool_call_id ? { toolCallId: m.tool_call_id } : {}),
+  }))
+
   deps.logger.logRequest({
+    requestNumber: deps._requestCounter,
     model: body.model,
     messageCount: body.messages.length,
-    hasTools: (body.tools?.length ?? 0) > 0,
+    hasTools: toolSummaries.length > 0,
+    toolCount: toolSummaries.length,
+    toolSummaries,
     promptTokens: tokens,
     contextWindow: deps.config.contextWindow,
     compressionApplied,
-    safetyBlocked: false,
+    stream: body.stream ?? false,
+    maxTokens: body.max_tokens,
+    messages,
   })
 }
 
-/** Loga dados da response.
- * @param response - Response do proxy.
- * @param startTime - Tempo de inicio do request.
- * @param deps - Dependencias do proxy.
- * @returns void
- * @example
- * const response: OpenAIChatResponse = { choices: [{ message: { role: 'assistant', content: 'Hello, how are you?' } }] }
- * const startTime = Date.now()
- * const deps = { config: ProxyConfigSchema.parse({}), logger: createProxyLogger('proxy', 'info'), tokenizer: createTokenizer(), compression: createCompressionService(config, tokenizer, logger), backend: 'http://localhost:8000', contextLimit: 1000 }
- * logResponse(response, startTime, deps)
- */
+/** Extrai nomes dos parametros de um JSON Schema. */
+function extractParamNames(schema: unknown): string[] {
+  if (schema && typeof schema === 'object' && 'properties' in schema) {
+    const props = (schema as { properties: Record<string, unknown> }).properties
+    return Object.keys(props)
+  }
+  return []
+}
+
+/** Loga dados da response. */
 function logResponse(response: OpenAIChatResponse, startTime: number, deps: ProxyDeps): void {
   const toolCalls = response.choices
     .flatMap((c) => c.message.tool_calls ?? [])
-    .map((tc) => tc.function.name)
+    .map((tc) => ({ name: tc.function.name, arguments: tc.function.arguments }))
+
+  const content = response.choices[0]?.message?.content ?? ''
 
   deps.logger.logResponse({
+    requestNumber: deps._requestCounter,
     latencyMs: Date.now() - startTime,
     promptTokens: response.usage?.prompt_tokens ?? 0,
     completionTokens: response.usage?.completion_tokens ?? 0,
@@ -314,17 +305,12 @@ function logResponse(response: OpenAIChatResponse, startTime: number, deps: Prox
     finishReason: response.choices[0]?.finish_reason ?? 'unknown',
     middlewaresApplied: collectMiddlewareNames(deps.config),
     contextWindow: deps.config.contextWindow,
+    content,
+    messageCount: deps._lastMessageCount,
   })
 }
 
-/** Lista middlewares ativos.
- * @param config - Configuracao do proxy.
- * @returns string[]
- * @example
- * const config: ProxyConfig = { thinkStripperEnabled: true, toolSanitizerEnabled: true, safetyGuardEnabled: true, compressionEnabled: true }
- * const names = collectMiddlewareNames(config)
- * console.log(names) // ['think-stripper', 'tool-sanitizer', 'safety-guard', 'compression']
- */
+/** Lista middlewares ativos. */
 function collectMiddlewareNames(config: ProxyConfig): string[] {
   const names: string[] = []
   if (config.thinkStripperEnabled) names.push('think-stripper')
@@ -332,4 +318,12 @@ function collectMiddlewareNames(config: ProxyConfig): string[] {
   if (config.safetyGuardEnabled) names.push('safety-guard')
   if (config.compressionEnabled) names.push('compression')
   return names
+}
+
+/** Encontra PIDs usando uma porta via lsof. */
+function findPidsOnPort(port: number): string[] {
+  const result = Bun.spawnSync(['lsof', '-ti', `:${port}`])
+  const output = result.stdout.toString().trim()
+  if (!output) return []
+  return output.split('\n').filter(Boolean)
 }

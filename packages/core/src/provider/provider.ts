@@ -1,61 +1,25 @@
-import { streamText } from 'ai'
+import { streamText, tool } from 'ai'
 import { PROVIDERS } from './registry'
 import type { ModelInfo, ProviderInfo, StreamChatConfig, StreamEvent, TokenUsage } from './types'
 
 /**
  * Interface pública do Provider Layer.
  * Abstração unificada para interagir com múltiplos provedores LLM.
- * Todos os providers são acessados através da mesma API.
  */
 export interface ProviderLayer {
-  /**
-   * Lista todos os providers registrados.
-   * @returns Array com informações de cada provider (id, nome, isLocal)
-   */
   listProviders(): ProviderInfo[]
-
-  /**
-   * Lista todos os modelos disponíveis, opcionalmente filtrando por provider.
-   * @param providerId - Se informado, retorna apenas modelos deste provider
-   * @returns Array com informações de cada modelo
-   */
   listModels(providerId?: string): ModelInfo[]
-
-  /**
-   * Inicia um streaming de chat com o LLM.
-   * Retorna um AsyncGenerator que emite StreamEvents conforme o LLM gera a resposta.
-   * Suporta cancelamento via AbortSignal.
-   * @param config - Configuração da chamada (provider, model, messages, etc.)
-   * @returns AsyncGenerator que emite StreamEvent (content, tool_call, finish, error)
-   * @example
-   * const stream = providerLayer.streamChat({
-   *   provider: 'vllm-mlx',
-   *   model: 'qwen3-coder-reap-40b-a3b',
-   *   messages: [{ role: 'user', content: 'Olá!' }],
-   * })
-   * for await (const event of stream) {
-   *   if (event.type === 'content') process.stdout.write(event.content)
-   * }
-   */
   streamChat(config: StreamChatConfig): AsyncGenerator<StreamEvent>
 }
 
 /**
  * Cria uma instância do Provider Layer.
- * Usa o registro de providers para resolver modelos e executar streaming.
- * @returns Instância do ProviderLayer pronta para uso
- * @throws {Error} Se o provider solicitado não existir no registro
  */
 export function createProviderLayer(): ProviderLayer {
   function listProviders(): ProviderInfo[] {
     return Object.values(PROVIDERS).map((entry) => entry.info)
   }
 
-  /**
-   * Lista todos os modelos disponíveis, opcionalmente filtrando por provider.
-   * @param providerId - Se informado, retorna apenas modelos deste provider
-   * @returns Array com informações de cada modelo
-   */
   function listModels(providerId?: string): ModelInfo[] {
     if (providerId) {
       return PROVIDERS[providerId]?.models ?? []
@@ -63,13 +27,6 @@ export function createProviderLayer(): ProviderLayer {
     return Object.values(PROVIDERS).flatMap((entry) => entry.models)
   }
 
-  /**
-   * Inicia um streaming de chat com o LLM.
-   * Retorna um AsyncGenerator que emite StreamEvents conforme o LLM gera a resposta.
-   * Suporta cancelamento via AbortSignal.
-   * @param config - Configuração da chamada (provider, model, messages, etc.)
-   * @returns AsyncGenerator que emite StreamEvent (content, tool_call, finish, error)
-   */
   async function* streamChat(config: StreamChatConfig): AsyncGenerator<StreamEvent> {
     const entry = PROVIDERS[config.provider]
     if (!entry) {
@@ -78,6 +35,7 @@ export function createProviderLayer(): ProviderLayer {
     }
 
     const model = entry.createModel(config.model)
+    const aiTools = convertTools(config.tools)
 
     try {
       const result = streamText({
@@ -86,10 +44,20 @@ export function createProviderLayer(): ProviderLayer {
         temperature: config.temperature,
         maxOutputTokens: config.maxTokens,
         abortSignal: config.signal,
+        ...(aiTools ? { tools: aiTools } : {}),
       } as Parameters<typeof streamText>[0])
 
-      for await (const part of result.textStream) {
-        yield { type: 'content', content: part }
+      for await (const part of result.fullStream) {
+        if (part.type === 'text-delta') {
+          yield { type: 'content', content: part.text }
+        } else if (part.type === 'tool-call') {
+          yield {
+            type: 'tool_call',
+            id: part.toolCallId,
+            name: part.toolName,
+            args: part.input,
+          }
+        }
       }
 
       const usage = await result.usage
@@ -110,4 +78,20 @@ export function createProviderLayer(): ProviderLayer {
   }
 
   return { listProviders, listModels, streamChat }
+}
+
+/** Converte tools do formato Athion para formato AI SDK. */
+function convertTools(
+  tools?: Record<string, { description: string; parameters: unknown }>,
+): Record<string, ReturnType<typeof tool>> | undefined {
+  if (!tools || Object.keys(tools).length === 0) return undefined
+
+  const result: Record<string, ReturnType<typeof tool>> = {}
+  for (const [name, def] of Object.entries(tools)) {
+    result[name] = tool({
+      description: def.description,
+      inputSchema: def.parameters as Parameters<typeof tool>[0]['inputSchema'],
+    })
+  }
+  return result
 }

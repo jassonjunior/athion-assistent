@@ -36,7 +36,7 @@ export const PROVIDERS: Record<string, ProviderEntry> = {
         baseURL: process.env['ATHION_VLLM_MLX_URL'] ?? 'http://localhost:8000/v1',
         apiKey: 'not-needed',
       })
-      return provider(modelId)
+      return provider.chat(modelId)
     },
     models: [
       {
@@ -61,7 +61,7 @@ export const PROVIDERS: Record<string, ProviderEntry> = {
         baseURL: process.env['ATHION_OLLAMA_URL'] ?? 'http://localhost:11434/v1',
         apiKey: 'ollama',
       })
-      return provider(modelId)
+      return provider.chat(modelId)
     },
     models: [
       {
@@ -142,7 +142,7 @@ export const PROVIDERS: Record<string, ProviderEntry> = {
         baseURL: 'https://openrouter.ai/api/v1',
         apiKey: process.env['ATHION_OPENROUTER_API_KEY'] ?? '',
       })
-      return provider(modelId)
+      return provider.chat(modelId)
     },
     models: [],
   },

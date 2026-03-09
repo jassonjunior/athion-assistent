@@ -35,7 +35,7 @@ export const ConfigSchema = z.object({
   proxyEnabled: z.boolean().default(true),
   proxyPort: z.number().default(1236),
   backendPort: z.number().default(8000),
-  contextWindow: z.number().default(85000),
+  contextWindow: z.number().default(50000),
   maxOutputTokens: z.number().default(8192),
 
   // vllm-mlx

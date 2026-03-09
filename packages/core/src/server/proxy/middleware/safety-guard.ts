@@ -28,14 +28,14 @@ const DESTRUCTIVE_PATTERNS: RegExp[] = [
  * @example
  * const maxTurns = 15
  */
-const MAX_TURNS = 15
+const MAX_TURNS = 25
 
 /** Quantidade de repeticoes para detectar loop.
  * @constant {number} LOOP_THRESHOLD - Quantidade de repeticoes para detectar loop.
  * @example
  * const loopThreshold = 3
  */
-const LOOP_THRESHOLD = 3
+const LOOP_THRESHOLD = 5
 
 /**
  * Verifica se um comando e destrutivo.
@@ -87,24 +87,27 @@ export function extractCommands(args: string): string[] {
  */
 export function safetyGuardPreCheck(body: OpenAIChatRequest): MiddlewareResult {
   const messages = body.messages
-  const toolCallNames: string[] = []
+  const toolCallSignatures: string[] = []
 
   for (const msg of messages) {
     if (msg.role === 'assistant' && msg.tool_calls) {
       for (const tc of msg.tool_calls) {
-        toolCallNames.push(tc.function.name)
+        // Extrair target (path/file) dos args para comparar
+        // Mesma tool para outro arquivo = chamada diferente (não é loop)
+        const target = extractTarget(tc.function.name, tc.function.arguments ?? '')
+        toolCallSignatures.push(`${tc.function.name}:${target}`)
       }
     }
   }
 
-  // Detectar loops: mesma tool 3+ vezes consecutivas
-  const loopResult = detectLoop(toolCallNames)
+  // Detectar loops: mesma tool para o mesmo arquivo N+ vezes consecutivas
+  const loopResult = detectLoop(toolCallSignatures)
   if (loopResult) {
     return { blocked: true, response: createBlockedResponse(loopResult) }
   }
 
   // Limite de turns
-  if (toolCallNames.length >= MAX_TURNS) {
+  if (toolCallSignatures.length >= MAX_TURNS) {
     return { blocked: true, response: createForceStopResponse() }
   }
 
@@ -138,6 +141,23 @@ export function safetyGuard(response: OpenAIChatResponse): MiddlewareResult {
     }
   }
   return { blocked: false, data: response }
+}
+
+/**
+ * Extrai o arquivo/path alvo dos argumentos de uma tool call.
+ * Mesma tool para arquivo diferente = chamada diferente (não é loop).
+ */
+function extractTarget(toolName: string, argsJson: string): string {
+  try {
+    const parsed = JSON.parse(argsJson) as Record<string, unknown>
+    // Campos comuns que identificam o alvo
+    for (const key of ['path', 'file', 'pattern', 'command', 'description']) {
+      if (typeof parsed[key] === 'string') return parsed[key] as string
+    }
+    return argsJson
+  } catch {
+    return argsJson
+  }
 }
 
 /**

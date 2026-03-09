@@ -55,16 +55,24 @@ export interface ModelInfo {
  * Configuração para uma chamada de streaming ao LLM.
  * Contém tudo que o provider precisa para gerar uma resposta.
  */
+/** Definicao de tool para o provider (formato AI SDK). */
+export interface ProviderToolDef {
+  description: string
+  parameters: unknown
+}
+
 export interface StreamChatConfig {
   /** ID do provider a usar (ex: 'vllm-mlx', 'openai') */
   provider: string
   /** ID do modelo (ex: 'qwen3-coder-reap-40b-a3b', 'gpt-4o') */
   model: string
-  /** Histórico de mensagens da conversa */
+  /** Histórico de mensagens da conversa (content pode ser string ou array de parts para tool calls) */
   messages: Array<{
     role: 'user' | 'assistant' | 'system' | 'tool'
-    content: string
+    content: string | unknown[]
   }>
+  /** Tools disponiveis para function calling */
+  tools?: Record<string, ProviderToolDef>
   /** Temperatura de geração (0 = determinístico, 2 = criativo) */
   temperature?: number
   /** Limite máximo de tokens na resposta */

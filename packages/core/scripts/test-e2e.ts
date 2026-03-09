@@ -2,101 +2,114 @@ import { resolve } from 'node:path'
 import { bootstrap } from '../src/bootstrap'
 import { createVllmManager } from '../src/server/vllm-manager'
 
-/**
- * Teste E2E: vllm-manager -> bootstrap -> orchestrator -> streaming
- */
+const DIVIDER = '═'.repeat(60)
+const LINE = '─'.repeat(60)
+
+function print(msg: string): void {
+  console.log(msg)
+}
+
 async function main() {
-  console.log('=== Athion E2E Test ===\n')
+  print(DIVIDER)
+  print('  ATHION E2E TEST')
+  print(DIVIDER)
 
-  // BREAKPOINT 1: VllmManager — garantir que o servidor esta no ar
-  console.log('Ensuring vllm-mlx is running...')
+  // 1. Garantir vllm-mlx no ar
+  print('\n[1/4] Ensuring vllm-mlx is running...')
   const vllm = createVllmManager()
-  debugger // Inspecionar: vllm.baseUrl
   await vllm.ensureRunning()
-  console.log(`vllm-mlx is online at ${vllm.baseUrl}\n`)
+  print(`  ✓ vllm-mlx online at ${vllm.baseUrl}`)
 
-  // BREAKPOINT 2: Bootstrap — validar se todos os modulos inicializam
-  console.log('Bootstrapping Athion core...')
+  // 2. Bootstrap
+  print('\n[2/4] Bootstrapping Athion core...')
   const core = await bootstrap({
     dbPath: '/tmp/athion-e2e-test.db',
     skillsDir: resolve(import.meta.dir, '../skills'),
   })
-  debugger // Inspecionar: core.tools, core.skills, core.subagents, core.orchestrator
-
-  console.log('Bootstrap complete.')
-  console.log(
-    `  Tools: ${core.tools
+  print(
+    `  ✓ Tools: ${core.tools
       .list()
       .map((t) => t.name)
       .join(', ')}`,
   )
-  console.log(
-    `  Skills: ${core.skills
+  print(
+    `  ✓ Skills: ${core.skills
       .list()
       .map((s) => s.name)
       .join(', ')}`,
   )
-  console.log(
-    `  SubAgents: ${core.subagents
+  print(
+    `  ✓ SubAgents: ${core.subagents
       .list()
       .map((a) => a.name)
       .join(', ')}`,
   )
-  console.log()
+  print(`  ✓ Proxy: ${core.proxy ? core.proxy.url : 'disabled'}`)
 
-  // BREAKPOINT 3: Criar sessao
+  // 3. Criar sessao
+  print('\n[3/4] Creating session...')
   const session = await core.orchestrator.createSession('e2e-test', 'E2E Test Session')
-  debugger // Inspecionar: session.id, session.projectId, session.title
-  console.log(`Session created: ${session.id}\n`)
+  print(`  ✓ Session: ${session.id}`)
 
-  // BREAKPOINT 4: Enviar mensagem
+  // 4. Chat streaming
   const userMessage = 'Ola! Me diga seu nome e o que voce sabe fazer.'
-  console.log(`User: ${userMessage}\n`)
-  console.log('Assistant: ')
+  print('\n[4/4] Chat streaming test')
+  print(DIVIDER)
 
   const startTime = Date.now()
   const stream = core.orchestrator.chat(session.id, { content: userMessage })
-  debugger // Inspecionar: stream (deve ser AsyncGenerator)
 
-  // BREAKPOINT 5: Consumir streaming
-  let eventCount = 0
+  let counter = 0
+  let fullContent = ''
+
+  print(`[${counter}] user: ${userMessage}`)
+  counter++
+
   for await (const event of stream) {
-    eventCount++
-
-    if (eventCount === 1) {
-      debugger // Inspecionar: primeiro evento
-    }
-
     switch (event.type) {
       case 'content':
-        process.stdout.write(event.content)
+        fullContent += event.content
         break
       case 'tool_call':
-        debugger
-        console.log(`\n[Tool Call] ${event.name}(${JSON.stringify(event.args)})`)
+        print(`[${counter}] tool_call: ${event.name}(${JSON.stringify(event.args).slice(0, 200)})`)
+        counter++
         break
-      case 'tool_result':
-        debugger
-        console.log(
-          `[Tool Result] ${event.name}: ${event.result.success ? 'OK' : event.result.error}`,
+      case 'tool_result': {
+        const status = event.result.success ? 'OK' : `ERROR: ${event.result.error}`
+        const data = event.result.success ? JSON.stringify(event.result.data).slice(0, 200) : ''
+        print(`[${counter}] tool_result: ${event.name} → ${status}${data ? ` | ${data}` : ''}`)
+        counter++
+        break
+      }
+      case 'finish': {
+        // Flush conteudo acumulado do assistant
+        if (fullContent) {
+          print(`[${counter}] assistant: ${fullContent}`)
+          counter++
+        }
+        const elapsed = Date.now() - startTime
+        print(
+          `[${counter}] finish: ${event.usage.promptTokens} in / ${event.usage.completionTokens} out | ${(elapsed / 1000).toFixed(1)}s`,
         )
+        counter++
         break
-      case 'finish':
-        debugger
-        console.log('\n\n--- Finished ---')
-        console.log(`Tokens: ${event.usage.promptTokens} in / ${event.usage.completionTokens} out`)
-        console.log(`Time: ${Date.now() - startTime}ms`)
-        console.log(`Events received: ${eventCount}`)
-        break
+      }
       case 'error':
-        debugger
-        console.error(`\n[Error] ${event.error.message}`)
+        print(`[${counter}] error: ${event.error.message}`)
+        counter++
         break
     }
   }
 
+  // Cleanup
   vllm.stop()
-  console.log('\n=== E2E Test Complete ===')
+  print(LINE)
+  print(`Total events: ${counter}`)
+  print(`Content length: ${fullContent.length} chars`)
+  print(DIVIDER)
+  print('  E2E TEST COMPLETE')
+  print(DIVIDER)
+  print('\nLog MITM: tail -f ~/.athion/logs/proxy.log')
 }
 
 main().catch((err) => {

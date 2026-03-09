@@ -93,7 +93,7 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
   for (const agent of builtinAgents) subagents.registerAgent(agent)
   tools.register(createTaskTool({ subagents }) as ToolDefinition)
 
-  // Nível 6: Orchestrator
+  // Nível 6: Orchestrator (após subagents para incluir agents no prompt)
   const orchestrator = createOrchestrator({
     config,
     bus,
@@ -104,10 +104,11 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
     session,
     promptBuilder,
     toolDispatcher,
+    subagents,
   })
 
   // Nível 7: vllm-mlx + Proxy
-  const cfg = config.get()
+  const cfg = config.getAll()
   const vllm = createVllmManager({
     port: cfg.backendPort,
     ttlMinutes: cfg.vllmTtlMinutes,
@@ -130,9 +131,10 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
     await vllm.ensureRunning()
   }
 
-  // Iniciar proxy se habilitado
+  // Iniciar proxy se habilitado — redireciona provider pelo proxy
   if (proxy) {
     proxy.start()
+    process.env['ATHION_VLLM_MLX_URL'] = `${proxy.url}/v1`
   }
 
   return { bus, config, provider, skills, tools, subagents, orchestrator, vllm, proxy }
@@ -148,9 +150,10 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
 function createBaseServices(cliArgs: Partial<Config>) {
   const bus = createBus()
   const config = createConfigManager(cliArgs)
+  const contextWindow = config.get('contextWindow')
   const tokens = createTokenManager({
-    contextLimit: 128_000,
-    compactionThreshold: 0.8,
+    contextLimit: contextWindow,
+    compactionThreshold: 0.9,
     strategy: 'sliding-window',
   })
   const provider = createProviderLayer()

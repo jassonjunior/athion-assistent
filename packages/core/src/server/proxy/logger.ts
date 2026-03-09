@@ -1,15 +1,6 @@
 import { appendFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 
-/** Niveis de log suportados.
- * @typedef {Object} LogLevel
- * @property {string} debug - Debug.
- * @property {string} info - Info.
- * @property {string} warn - Warn.
- * @property {string} error - Error.
- * @example
- * const logLevel: LogLevel = 'debug'
- */
 type LogLevel = 'debug' | 'info' | 'warn' | 'error'
 
 const LOG_LEVELS: Record<LogLevel, number> = {
@@ -19,14 +10,6 @@ const LOG_LEVELS: Record<LogLevel, number> = {
   error: 3,
 }
 
-/** Entrada de log estruturada.
- * @typedef {Object} LogEntry
- * @property {string} timestamp - Timestamp da entrada.
- * @property {LogLevel} level - Nivel da entrada.
- * @property {string} component - Componente da entrada.
- * @property {string} message - Mensagem da entrada.
- * @property {Record<string, unknown>} [extra] - Extra da entrada.
- */
 interface LogEntry {
   timestamp: string
   level: LogLevel
@@ -35,78 +18,62 @@ interface LogEntry {
   [key: string]: unknown
 }
 
-/** Interface do ProxyLogger.
- * @typedef {Object} ProxyLogger
- * @property {function} debug - Loga evento de debug.
- * @property {function} info - Loga evento de info.
- * @property {function} warn - Loga evento de warn.
- * @property {function} error - Loga evento de error.
- * @property {function} logRequest - Loga evento de request.
- * @property {function} logResponse - Loga evento de response.
- * @property {function} logStreamComplete - Loga evento de streaming completo.
- */
-export interface ProxyLogger {
-  debug(message: string, extra?: Record<string, unknown>): void
-  info(message: string, extra?: Record<string, unknown>): void
-  warn(message: string, extra?: Record<string, unknown>): void
-  error(message: string, extra?: Record<string, unknown>): void
-  /** Loga evento de request recebido */
-  logRequest(data: RequestLogData): void
-  /** Loga evento de response completo */
-  logResponse(data: ResponseLogData): void
-  /** Loga evento de streaming completo */
-  logStreamComplete(data: StreamLogData): void
+/** Resumo de uma mensagem para o log MITM. */
+export interface MessageSummary {
+  index: number
+  role: string
+  contentLength: number
+  content: string
+  toolCalls?: Array<{ name: string; arguments: string }>
+  toolCallId?: string
 }
 
-/** Dados para log de request.
- * @typedef {Object} RequestLogData
- * @property {string} model - Modelo do request.
- * @property {number} messageCount - Quantidade de mensagens do request.
- * @property {boolean} hasTools - Se o request tem tools.
- * @property {number} promptTokens - Quantidade de tokens da prompt.
- * @property {number} contextWindow - Limite de contexto do request.
- * @property {boolean} compressionApplied - Se a compressao foi aplicada.
- * @property {boolean} safetyBlocked - Se o safety guard foi bloqueado.
- */
+/** Resumo de uma tool definition. */
+export interface ToolSummary {
+  name: string
+  description: string
+  parameterNames: string[]
+}
+
+/** Dados para log de request. */
 export interface RequestLogData {
+  requestNumber: number
   model: string
   messageCount: number
   hasTools: boolean
+  toolCount: number
+  toolSummaries: ToolSummary[]
   promptTokens: number
   contextWindow: number
   compressionApplied: boolean
-  safetyBlocked: boolean
+  stream: boolean
+  maxTokens: number | undefined
+  messages: MessageSummary[]
 }
 
-/** Dados para log de response.
- * @typedef {Object} ResponseLogData
- * @property {number} latencyMs - Latencia do response.
- * @property {number} promptTokens - Quantidade de tokens da prompt.
- * @property {number} completionTokens - Quantidade de tokens da completion.
- * @property {string[]} toolCalls - Tool calls do response.
- * @property {string} finishReason - Razao da finalizacao do response.
- * @property {string[]} middlewaresApplied - Middlewares aplicados no response.
- * @property {number} contextWindow - Limite de contexto do response.
- */
+/** Dados para log de response (non-streaming). */
 export interface ResponseLogData {
+  requestNumber: number
   latencyMs: number
   promptTokens: number
   completionTokens: number
-  toolCalls: string[]
   finishReason: string
   middlewaresApplied: string[]
   contextWindow: number
+  messageCount: number
+  content: string
+  toolCalls: Array<{ name: string; arguments: string }>
 }
 
-/** Dados para log de streaming completo.
- * @typedef {Object} StreamLogData
- * @property {number} latencyMs - Latencia do streaming completo.
- * @property {number} chunkCount - Quantidade de chunks do streaming completo.
- * @property {number} promptTokens - Quantidade de tokens da prompt.
- * @property {number} completionTokens - Quantidade de tokens da completion.
- * @property {number} contextWindow - Limite de contexto do streaming completo.
- */
+/** Tool call capturada do streaming. */
+export interface StreamToolCall {
+  name: string
+  arguments: string
+}
+
+/** Dados para log de streaming completo. */
 export interface StreamLogData {
+  requestNumber: number
   latencyMs: number
   chunkCount: number
   promptTokens: number
@@ -114,45 +81,40 @@ export interface StreamLogData {
   toolCallsExtracted: number
   thinkTagsStripped: boolean
   contextWindow: number
+  content: string
+  messageCount: number
+  finishReason: string
+  streamToolCalls: StreamToolCall[]
 }
 
-/**
- * Cria um ProxyLogger com output JSONL em arquivo e stderr formatado.
- * @param component - Nome do componente (ex: 'proxy', 'streaming')
- * @param level - Nivel minimo de log
- * @param logDir - Diretorio para arquivo JSONL (opcional)
- * @returns ProxyLogger
- */
+/** Interface do ProxyLogger. */
+export interface ProxyLogger {
+  debug(message: string, extra?: Record<string, unknown>): void
+  info(message: string, extra?: Record<string, unknown>): void
+  warn(message: string, extra?: Record<string, unknown>): void
+  error(message: string, extra?: Record<string, unknown>): void
+  logRequest(data: RequestLogData): void
+  logResponse(data: ResponseLogData): void
+  logStreamComplete(data: StreamLogData): void
+}
+
+/** Cria ProxyLogger com JSONL + texto legivel no estilo MITM. */
 export function createProxyLogger(
   component: string,
   level: LogLevel = 'info',
   logDir?: string,
 ): ProxyLogger {
   const minLevel = LOG_LEVELS[level]
-  let logFileReady: Promise<void> | null = null
+  let logFileReady: Promise<unknown> | null = null
 
   if (logDir) {
     logFileReady = mkdir(logDir, { recursive: true })
   }
 
-  /** Verifica se o nivel de log eh suficiente para ser logado.
-   * @param {LogLevel} lvl - Nivel de log.
-   * @returns {boolean} Se o nivel de log eh suficiente para ser logado.
-   * @example
-   * const shouldLog = shouldLog('debug')
-   * console.log(shouldLog) // true
-   */
   function shouldLog(lvl: LogLevel): boolean {
     return LOG_LEVELS[lvl] >= minLevel
   }
 
-  /** Formata a entrada para o formato de stderr.
-   * @param {LogEntry} entry - Entrada de log.
-   * @returns {string} Entrada formatada para stderr.
-   * @example
-   * const formatted = formatStderr({ timestamp: '2026-03-08T12:00:00.000Z', level: 'debug', component: 'proxy', message: 'Request received' })
-   * console.log(formatted) // [12:00:00] DEBUG [proxy] Request received
-   */
   function formatStderr(entry: LogEntry): string {
     const ts = entry.timestamp.slice(11, 23)
     const lvl = entry.level.toUpperCase().padEnd(5)
@@ -163,13 +125,6 @@ export function createProxyLogger(
     return `[${ts}] ${lvl} [${entry.component}] ${entry.message}${extras ? ` | ${extras}` : ''}`
   }
 
-  /** Escreve a entrada no arquivo JSONL e no stderr.
-   * @param {LogEntry} entry - Entrada de log.
-   * @returns {Promise<void>} Promise que resolve quando a entrada for escrita.
-   * @example
-   * const entry: LogEntry = { timestamp: '2026-03-08T12:00:00.000Z', level: 'debug', component: 'proxy', message: 'Request received' }
-   * await writeEntry(entry)
-   */
   async function writeEntry(entry: LogEntry): Promise<void> {
     process.stderr.write(formatStderr(entry) + '\n')
     if (logDir && logFileReady) {
@@ -179,13 +134,14 @@ export function createProxyLogger(
     }
   }
 
-  /** Loga a entrada.
-   * @param {LogLevel} lvl - Nivel de log.
-   * @param {string} message - Mensagem de log.
-   * @param {Record<string, unknown>} [extra] - Extra de log.
-   * @example
-   * log('debug', 'Request received', { direction: 'request' })
-   */
+  async function writeText(text: string): Promise<void> {
+    if (logDir && logFileReady) {
+      await logFileReady
+      const filePath = join(logDir, 'proxy.log')
+      await appendFile(filePath, text)
+    }
+  }
+
   function log(lvl: LogLevel, message: string, extra?: Record<string, unknown>): void {
     if (!shouldLog(lvl)) return
     const entry: LogEntry = {
@@ -198,60 +154,33 @@ export function createProxyLogger(
     void writeEntry(entry)
   }
 
-  /** Loga evento de request.
-   * @param {RequestLogData} data - Dados do request.
-   * @example
-   * const data: RequestLogData = { model: 'gpt-4o', messageCount: 1, promptTokens: 100, contextWindow: 1000, compressionApplied: true, safetyBlocked: false }
-   * logRequest(data)
-   */
   function logRequest(data: RequestLogData): void {
     const ctxPct = ((data.promptTokens / data.contextWindow) * 100).toFixed(1)
     log(
       'info',
-      `request: ${data.model} msgs=${data.messageCount} tokens=${data.promptTokens} ctx=${ctxPct}%`,
-      {
-        direction: 'request',
-        ...data,
-      },
+      `→ #${data.requestNumber} POST /v1/chat/completions | ${data.model} | msgs=${data.messageCount} tokens=~${data.promptTokens} ctx=${ctxPct}%`,
     )
+    void writeText(formatMitmRequest(data))
   }
 
-  /** Loga evento de response.
-   * @param {ResponseLogData} data - Dados do response.
-   * @example
-   * const data: ResponseLogData = { latencyMs: 100, promptTokens: 100, completionTokens: 200, toolCalls: ['tool1', 'tool2'], finishReason: 'stop', middlewaresApplied: ['middleware1', 'middleware2'], contextWindow: 1000 }
-   * logResponse(data)
-   */
   function logResponse(data: ResponseLogData): void {
     const total = data.promptTokens + data.completionTokens
     const ctxPct = ((total / data.contextWindow) * 100).toFixed(1)
     log(
       'info',
-      `tokens: ${data.promptTokens} prompt + ${data.completionTokens} completion = ${total} | ctx=${ctxPct}% | ${data.latencyMs}ms`,
-      {
-        direction: 'response',
-        ...data,
-      },
+      `← #${data.requestNumber} 200 (${data.latencyMs}ms) | ${data.promptTokens}+${data.completionTokens}=${total} | ctx=${ctxPct}%`,
     )
+    void writeText(formatMitmResponse(data))
   }
 
-  /** Loga evento de streaming completo.
-   * @param {StreamLogData} data - Dados do streaming completo.
-   * @example
-   * const data: StreamLogData = { latencyMs: 100, chunkCount: 100, promptTokens: 100, completionTokens: 200, contextWindow: 1000 }
-   * logStreamComplete(data)
-   */
   function logStreamComplete(data: StreamLogData): void {
     const total = data.promptTokens + data.completionTokens
     const ctxPct = ((total / data.contextWindow) * 100).toFixed(1)
     log(
       'info',
-      `stream: ${data.chunkCount} chunks | ${data.promptTokens}+${data.completionTokens}=${total} tokens | ctx=${ctxPct}% | ${data.latencyMs}ms`,
-      {
-        direction: 'stream_complete',
-        ...data,
-      },
+      `← #${data.requestNumber} 200 STREAM (${data.latencyMs}ms) ${data.chunkCount} chunks | ${data.promptTokens}+${data.completionTokens}=${total} | ctx=${ctxPct}%`,
     )
+    void writeText(formatMitmStreamResponse(data))
   }
 
   return {
@@ -263,4 +192,157 @@ export function createProxyLogger(
     logResponse,
     logStreamComplete,
   }
+}
+
+// ─── Formatadores MITM (texto legivel) ───
+
+const SEP = '════════════════════════════════════════════════════════════'
+
+function ts(): string {
+  return new Date().toISOString().replace('T', ' ').slice(0, 19)
+}
+
+/** Indenta texto com prefixo. */
+function indent(text: string, prefix: string = '  '): string {
+  return text
+    .split('\n')
+    .map((l) => `${prefix}${l}`)
+    .join('\n')
+}
+
+/** Formata request completo com todas as mensagens. */
+function formatMitmRequest(data: RequestLogData): string {
+  const lines: string[] = [
+    SEP,
+    `[${ts()}] → POST /v1/chat/completions  #${data.requestNumber}`,
+    `model: ${data.model}`,
+    `stream: ${data.stream} | max_tokens: ${data.maxTokens ?? 'default'}`,
+    `messages: ${data.messageCount} | tools: ${data.toolCount}`,
+    `est. prompt tokens: ~${data.promptTokens}`,
+  ]
+
+  if (data.compressionApplied) {
+    lines.push(`compression: applied`)
+  }
+
+  if (data.toolSummaries.length > 0) {
+    lines.push('')
+    lines.push('─── TOOLS ───')
+    for (const tool of data.toolSummaries) {
+      const params = tool.parameterNames.length > 0 ? `(${tool.parameterNames.join(', ')})` : '()'
+      lines.push(`  ${tool.name}${params} — ${tool.description.slice(0, 80)}`)
+    }
+  }
+
+  lines.push('')
+  lines.push('─── MESSAGES ───')
+  lines.push('')
+  for (const msg of data.messages) {
+    lines.push(formatMessageBlock(msg))
+    lines.push('')
+  }
+
+  return lines.join('\n') + '\n'
+}
+
+/** Formata bloco de uma mensagem com conteudo completo. */
+function formatMessageBlock(msg: MessageSummary): string {
+  const lines: string[] = []
+  const header = msg.toolCallId
+    ? `[${msg.index}] ${msg.role} (tool_call_id: ${msg.toolCallId})`
+    : `[${msg.index}] ${msg.role} (${msg.contentLength} chars)`
+
+  lines.push(header)
+
+  if (msg.content) {
+    lines.push(indent(msg.content))
+  }
+
+  if (msg.toolCalls && msg.toolCalls.length > 0) {
+    for (const tc of msg.toolCalls) {
+      lines.push(indent(`→ tool_call: ${tc.name}(${tc.arguments})`))
+    }
+  }
+
+  return lines.join('\n')
+}
+
+/** Formata response non-streaming completa. */
+function formatMitmResponse(data: ResponseLogData): string {
+  const total = data.promptTokens + data.completionTokens
+  const ctxPct = ((total / data.contextWindow) * 100).toFixed(1)
+  const idx = data.messageCount
+
+  const lines: string[] = [
+    '',
+    '─── RESPONSE ───',
+    '',
+    `[${ts()}] ← 200 (${data.latencyMs}ms)  #${data.requestNumber}`,
+    '',
+  ]
+
+  lines.push(`[${idx}] assistant`)
+  if (data.content) {
+    lines.push(indent(data.content))
+  }
+  if (data.toolCalls.length > 0) {
+    for (const tc of data.toolCalls) {
+      lines.push(indent(`→ tool_call: ${tc.name}(${tc.arguments})`))
+    }
+  }
+
+  lines.push('')
+  lines.push(`[${idx + 1}] finish: ${data.finishReason}`)
+  lines.push('')
+  lines.push(`tokens: ${data.promptTokens} prompt + ${data.completionTokens} completion = ${total}`)
+  lines.push(`context: ${total} / ${data.contextWindow} = ${ctxPct}% used`)
+
+  if (data.middlewaresApplied.length > 0) {
+    lines.push(`middlewares: ${data.middlewaresApplied.join(', ')}`)
+  }
+
+  lines.push(SEP)
+  lines.push('')
+  return lines.join('\n') + '\n'
+}
+
+/** Formata response streaming completa. */
+function formatMitmStreamResponse(data: StreamLogData): string {
+  const total = data.promptTokens + data.completionTokens
+  const ctxPct = ((total / data.contextWindow) * 100).toFixed(1)
+  const idx = data.messageCount
+
+  const lines: string[] = [
+    '',
+    '─── RESPONSE (STREAMING) ───',
+    '',
+    `[${ts()}] ← 200 STREAM (${data.latencyMs}ms) — ${data.chunkCount} chunks  #${data.requestNumber}`,
+    '',
+  ]
+
+  lines.push(`[${idx}] assistant`)
+  if (data.content) {
+    lines.push(indent(data.content))
+  }
+  if (data.streamToolCalls.length > 0) {
+    for (const tc of data.streamToolCalls) {
+      lines.push(indent(`→ tool_call: ${tc.name}(${tc.arguments})`))
+    }
+  }
+
+  if (data.thinkTagsStripped) {
+    lines.push(indent('(think tags stripped)'))
+  }
+  if (data.toolCallsExtracted > 0) {
+    lines.push(indent(`(${data.toolCallsExtracted} tool calls extracted from content)`))
+  }
+
+  lines.push('')
+  lines.push(`[${idx + 1}] finish: ${data.finishReason}`)
+  lines.push('')
+  lines.push(`tokens: ${data.promptTokens} prompt + ${data.completionTokens} completion = ${total}`)
+  lines.push(`context: ${total} / ${data.contextWindow} = ${ctxPct}% used`)
+  lines.push(SEP)
+  lines.push('')
+  return lines.join('\n') + '\n'
 }

@@ -24,6 +24,8 @@ export interface StreamHandlerOptions {
   config: ProxyConfig
   logger: ProxyLogger
   contextWindow: number
+  messageCount: number
+  requestNumber: number
 }
 
 /** Resultado do streaming apos conclusao. */
@@ -47,6 +49,9 @@ interface StreamContext {
   chunkCount: number
   promptTokens: number
   completionTokens: number
+  contentBuffer: string
+  streamToolCalls: Map<number, { name: string; arguments: string }>
+  finishReason: string
   lastChunkId: string | undefined
   lastModel: string | undefined
   startTime: number
@@ -75,6 +80,9 @@ export function createStreamHandler(
     chunkCount: 0,
     promptTokens: 0,
     completionTokens: 0,
+    contentBuffer: '',
+    streamToolCalls: new Map(),
+    finishReason: 'unknown',
     lastChunkId: undefined,
     lastModel: undefined,
     startTime: Date.now(),
@@ -163,6 +171,33 @@ function processLine(
   const processed = applyMiddlewares(chunk, ctx)
   if (!processed) return
 
+  const choice = processed.choices?.[0]
+
+  // Acumular conteudo para log
+  const delta = choice?.delta?.content
+  if (delta) ctx.contentBuffer += delta
+
+  // Capturar tool_calls do delta
+  const deltaToolCalls = choice?.delta?.tool_calls
+  if (deltaToolCalls) {
+    for (const tc of deltaToolCalls) {
+      const existing = ctx.streamToolCalls.get(tc.index)
+      if (existing) {
+        existing.arguments += tc.function?.arguments ?? ''
+      } else {
+        ctx.streamToolCalls.set(tc.index, {
+          name: tc.function?.name ?? '',
+          arguments: tc.function?.arguments ?? '',
+        })
+      }
+    }
+  }
+
+  // Capturar finish_reason
+  if (choice?.finish_reason) {
+    ctx.finishReason = choice.finish_reason
+  }
+
   ctx.chunkCount++
   emitChunk(processed, controller, ctx)
 }
@@ -234,6 +269,7 @@ function finishStream(
   }
 
   const logData: StreamLogData = {
+    requestNumber: ctx.options.requestNumber,
     latencyMs: Date.now() - ctx.startTime,
     chunkCount: ctx.chunkCount,
     promptTokens: ctx.promptTokens,
@@ -241,6 +277,10 @@ function finishStream(
     toolCallsExtracted: ctx.toolCallState.extractedCalls.length,
     thinkTagsStripped: result.thinkTagsStripped,
     contextWindow: ctx.options.contextWindow,
+    content: ctx.contentBuffer,
+    messageCount: ctx.options.messageCount,
+    finishReason: ctx.finishReason,
+    streamToolCalls: [...ctx.streamToolCalls.values()],
   }
   ctx.logger.logStreamComplete(logData)
 

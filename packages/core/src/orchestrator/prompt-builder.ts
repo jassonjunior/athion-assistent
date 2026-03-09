@@ -67,8 +67,15 @@ Respond in the same language the user writes in.`
  * @returns Lista de tools disponiveis para o LLM
  */
 function buildToolsSection(tools: ToolDefinition[]): string {
-  const toolList = tools.map((t) => `- ${t.name}: ${t.description}`).join('\n')
-  return `# Available Tools\n${toolList}`
+  const taskOnly = tools.filter((t) => t.name === 'task')
+  if (taskOnly.length === 0) return ''
+  const toolList = taskOnly.map((t) => `- ${t.name}: ${t.description}`).join('\n')
+  return `# Available Tools
+${toolList}
+
+IMPORTANT: You can ONLY use the "task" tool. You do NOT have direct access to any other tools (no read_file, write_file, list_files, run_command, search_files).
+All work must be delegated to agents via the "task" tool. When the task result comes back, present it to the user as your final answer.
+Do NOT try to call task again for the same work — trust the agent's result.`
 }
 
 /**
@@ -80,7 +87,7 @@ function buildAgentsSection(agents: AgentDefinition[]): string {
   const agentList = agents
     .map((a) => `- ${a.name}: ${a.description} (tools: ${a.tools.join(', ')})`)
     .join('\n')
-  return `# Available Agents\nUse the "task" tool to delegate to these agents:\n${agentList}`
+  return `# Available Agents\nDelegate work to these specialized agents using the "task" tool:\n${agentList}\n\nAfter an agent completes its task, use its result to answer the user. Do not re-run the same task.`
 }
 
 /**

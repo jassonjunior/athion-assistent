@@ -107,7 +107,7 @@ export function createTokenManager(config: TokenManagerConfig): TokenManager {
   }
 
   function detectLoop(actions: string[]): LoopDetection {
-    if (actions.length < loopThreshold * 2) {
+    if (actions.length < loopThreshold) {
       return { detected: false, repetitions: 0 }
     }
 
