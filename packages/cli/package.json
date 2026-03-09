@@ -18,6 +18,8 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "test": "vitest run",
+    "test:e2e": "vitest run --testPathPattern='e2e'",
+    "test:e2e:model": "ATHION_E2E_MODEL=1 vitest run --testPathPattern='e2e'",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit"
   },
