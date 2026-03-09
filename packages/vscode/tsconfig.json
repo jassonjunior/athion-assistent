@@ -2,11 +2,11 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "rootDir": "./src",
-    "outDir": "./dist"
+    "outDir": "./dist",
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM"],
+    "types": ["vscode", "node"]
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
-  "references": [
-    { "path": "../core" },
-    { "path": "../shared" }
-  ]
+  "references": [{ "path": "../shared" }]
 }
