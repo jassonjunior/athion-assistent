@@ -1,0 +1,45 @@
+{
+  "cli": {
+    "version": "Athion Assistent v{{version}}",
+    "help_title": "Athion — AI 编程助手",
+    "chat": {
+      "start": "正在启动聊天...",
+      "thinking": "思考中...",
+      "abort": "聊天已中断。",
+      "error": "聊天错误：{{message}}",
+      "session_created": "会话已创建：{{id}}",
+      "session_loaded": "会话已加载：{{id}}"
+    },
+    "config": {
+      "get": "{{key}} = {{value}}",
+      "set_success": "配置 '{{key}}' 已更新为 '{{value}}'",
+      "list_header": "当前配置："
+    },
+    "errors": {
+      "unknown_command": "未知命令：{{command}}",
+      "missing_argument": "缺少必要参数：{{name}}",
+      "provider_not_found": "未找到 Provider '{{provider}}'",
+      "session_not_found": "未找到会话 '{{id}}'",
+      "permission_denied": "拒绝对 {{target}} 执行 {{action}} 的权限"
+    }
+  },
+  "desktop": {
+    "app_title": "Athion",
+    "new_session": "新建会话",
+    "no_sessions": "暂无会话，请创建一个！",
+    "input_placeholder": "输入消息...（回车发送）",
+    "send": "发送",
+    "abort": "停止",
+    "thinking": "思考中...",
+    "status": {
+      "starting": "启动中...",
+      "ready": "就绪",
+      "error": "错误",
+      "stopped": "已停止"
+    },
+    "sidebar": {
+      "sessions": "会话",
+      "create": "新建会话"
+    }
+  }
+}

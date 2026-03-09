@@ -25,6 +25,15 @@ export default tseslint.config(
     },
   },
   {
+    // Arquivos de teste: describe() callbacks são naturalmente grandes
+    files: ['**/*.test.ts', '**/*.spec.ts', '**/e2e/**/*.ts'],
+    rules: {
+      'max-lines-per-function': 'off',
+      'max-lines': 'off',
+      'no-console': 'off',
+    },
+  },
+  {
     ignores: ['dist/', 'node_modules/', '*.config.js', '*.config.ts'],
   },
 )

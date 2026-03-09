@@ -1,0 +1,45 @@
+{
+  "cli": {
+    "version": "Athion Assistent v{{version}}",
+    "help_title": "Athion — Asistente de Codificación con IA",
+    "chat": {
+      "start": "Iniciando chat...",
+      "thinking": "Pensando...",
+      "abort": "Chat interrumpido.",
+      "error": "Error en el chat: {{message}}",
+      "session_created": "Sesión creada: {{id}}",
+      "session_loaded": "Sesión cargada: {{id}}"
+    },
+    "config": {
+      "get": "{{key}} = {{value}}",
+      "set_success": "Configuración '{{key}}' actualizada a '{{value}}'",
+      "list_header": "Configuración actual:"
+    },
+    "errors": {
+      "unknown_command": "Comando desconocido: {{command}}",
+      "missing_argument": "Argumento requerido ausente: {{name}}",
+      "provider_not_found": "Proveedor '{{provider}}' no encontrado",
+      "session_not_found": "Sesión '{{id}}' no encontrada",
+      "permission_denied": "Permiso denegado para {{action}} en {{target}}"
+    }
+  },
+  "desktop": {
+    "app_title": "Athion",
+    "new_session": "Nueva Sesión",
+    "no_sessions": "Sin sesiones aún. ¡Crea una!",
+    "input_placeholder": "Escribe tu mensaje... (Enter para enviar)",
+    "send": "Enviar",
+    "abort": "Detener",
+    "thinking": "Pensando...",
+    "status": {
+      "starting": "Iniciando...",
+      "ready": "Listo",
+      "error": "Error",
+      "stopped": "Detenido"
+    },
+    "sidebar": {
+      "sessions": "Sesiones",
+      "create": "Nueva Sesión"
+    }
+  }
+}
