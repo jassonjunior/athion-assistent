@@ -1,0 +1,17 @@
+{
+  "name": "@athion/desktop",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@athion/core": "workspace:*",
+    "@athion/shared": "workspace:*"
+  }
+}
