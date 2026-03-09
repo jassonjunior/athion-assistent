@@ -1,7 +1,7 @@
 /**
  * Status de uma task atribuida a um subagente.
  */
-export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'failed'
+export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'failed' | 'partial'
 
 /**
  * Task atribuida a um subagente pelo orquestrador.
@@ -20,6 +20,14 @@ export interface SubAgentTask {
   result?: string
   /** Sub-tarefas que o agente pode criar para organizar o trabalho */
   steps: TaskStep[]
+  /** Resultados acumulados de todas as continuações */
+  accumulatedResults: string[]
+  /** Índice da continuação atual (0 = primeira execução) */
+  continuationIndex: number
+  /** Máximo de continuações permitidas */
+  maxContinuations: number
+  /** Descrição do que resta fazer (preenchido ao sair com status 'partial') */
+  remainingWork?: string
   /** Timestamp de criacao */
   createdAt: Date
   /** Timestamp da ultima atualizacao */
@@ -69,6 +77,7 @@ export type SubAgentEvent =
   | { type: 'tool_result'; toolName: string; result: unknown }
   | { type: 'task_update'; task: SubAgentTask }
   | { type: 'complete'; task: SubAgentTask }
+  | { type: 'continuation_needed'; task: SubAgentTask }
   | { type: 'error'; error: Error; task: SubAgentTask }
 
 /**

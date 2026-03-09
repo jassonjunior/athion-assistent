@@ -28,6 +28,7 @@ export type OrchestratorEvent =
   | { type: 'subagent_start'; agentName: string }
   | { type: 'subagent_progress'; agentName: string; data: unknown }
   | { type: 'subagent_complete'; agentName: string; result: unknown }
+  | { type: 'subagent_continuation'; agentName: string; continuationIndex: number }
   | { type: 'finish'; usage: TokenUsage }
   | { type: 'error'; error: Error }
 
