@@ -10,7 +10,7 @@
 
 import { Box, Text, useInput } from 'ink'
 import TextInput from 'ink-text-input'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import type { Theme } from '../types.js'
 
 interface UserInputProps {
@@ -59,26 +59,45 @@ export function UserInput({ onSubmit, isDisabled, theme }: UserInputProps) {
 
   const hasSuggestions = suggestions.length > 0
 
-  // Navegação via setas (↑↓) quando há sugestões
+  // Refs sempre frescos — evita stale closure no useInput
+  const suggestionsRef = useRef(suggestions)
+  const selectedIdxRef = useRef(selectedIdx)
+  suggestionsRef.current = suggestions
+  selectedIdxRef.current = selectedIdx
+
+  // Tab + setas ↑↓ via useInput (acessa refs para nunca ter closure velha)
   useInput(
-    (_input, key) => {
-      if (!hasSuggestions) return
+    (input, key) => {
+      const sug = suggestionsRef.current
+      if (sug.length === 0) return
+
+      if (key.tab || input === '\t') {
+        const s = sug[selectedIdxRef.current]
+        if (s) setValue(s.insert)
+        setSelectedIdx(0)
+        return
+      }
       if (key.upArrow) {
-        setSelectedIdx((i) => (i === 0 ? suggestions.length - 1 : i - 1))
+        setSelectedIdx((i) => (i === 0 ? sug.length - 1 : i - 1))
       } else if (key.downArrow) {
-        setSelectedIdx((i) => (i === suggestions.length - 1 ? 0 : i + 1))
+        setSelectedIdx((i) => (i === sug.length - 1 ? 0 : i + 1))
       }
     },
     { isActive: !isDisabled },
   )
 
   function handleChange(v: string) {
-    // ink-text-input passa '\t' quando Tab é pressionado.
-    // Interceptamos aqui para autocomplete antes de qualquer setSelectedIdx reset.
-    if (v.includes('\t') && hasSuggestions) {
-      const s = suggestions[selectedIdx]
-      if (s) setValue(s.insert)
-      // não reseta selectedIdx para o cursor ficar no fim naturalmente
+    // Fallback: caso \t chegue via onChange (alguns terminais)
+    if (v.includes('\t')) {
+      const sug = suggestionsRef.current
+      if (sug.length > 0) {
+        const s = sug[selectedIdxRef.current]
+        if (s) {
+          setValue(s.insert)
+          return
+        }
+      }
+      setValue(v.replace(/\t/g, ''))
       return
     }
     setValue(v)
