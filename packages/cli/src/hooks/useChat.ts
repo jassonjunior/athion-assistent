@@ -24,6 +24,9 @@ interface UseChatReturn {
   tokens: TokenInfo | null
   sendMessage: (content: string) => Promise<void>
   clearMessages: () => void
+  addMessage: (content: string) => void
+  skillsMenuOpen: boolean
+  setSkillsMenuOpen: (open: boolean) => void
 }
 
 /** Cria mensagem de sistema local (não vai para o LLM). */
@@ -60,11 +63,16 @@ export function useChat(
   const [currentTool, setCurrentTool] = useState<ToolCallInfo | null>(null)
   const [currentAgent, setCurrentAgent] = useState<SubAgentInfo | null>(null)
   const [tokens, setTokens] = useState<TokenInfo | null>(null)
+  const [skillsMenuOpen, setSkillsMenuOpen] = useState(false)
   const streamingContentRef = useRef('')
 
   const clearMessages = useCallback(() => {
     setMessages([])
     setTokens(null)
+  }, [])
+
+  const addMessage = useCallback((content: string) => {
+    setMessages((prev) => [...prev, systemMsg(content)])
   }, [])
 
   /** Processa slash commands. Retorna true se foi um comando. */
@@ -108,9 +116,7 @@ export function useChat(
         return true
       }
       case 'skills': {
-        const skills = core.skills.list()
-        const list = skills.map((s) => `- **${s.name}**: ${s.description}`).join('\n')
-        setMessages((prev) => [...prev, systemMsg(`**Skills disponíveis:**\n${list}`)])
+        setSkillsMenuOpen(true)
         return true
       }
       case 'model': {
@@ -308,5 +314,16 @@ export function useChat(
     setCurrentTool(null)
   }
 
-  return { messages, isStreaming, currentTool, currentAgent, tokens, sendMessage, clearMessages }
+  return {
+    messages,
+    isStreaming,
+    currentTool,
+    currentAgent,
+    tokens,
+    sendMessage,
+    clearMessages,
+    addMessage,
+    skillsMenuOpen,
+    setSkillsMenuOpen,
+  }
 }

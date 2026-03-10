@@ -10,12 +10,14 @@
  */
 
 import { Box } from 'ink'
-import type { AthionCore, Session } from '@athion/core'
+import { useState } from 'react'
+import type { AthionCore, Session, SkillDefinition } from '@athion/core'
 import { StatusBar } from './StatusBar.js'
 import { MessageList } from './MessageList.js'
 import { UserInput } from './UserInput.js'
 import { PermissionPrompt } from './PermissionPrompt.js'
 import { WelcomeScreen } from './WelcomeScreen.js'
+import { SkillsMenu } from './SkillsMenu.js'
 import { useChat } from '../hooks/useChat.js'
 import { useTheme } from '../hooks/useTheme.js'
 import { useKeyboard } from '../hooks/useKeyboard.js'
@@ -33,6 +35,7 @@ export function ChatApp({ core, session: initialSession }: ChatAppProps) {
   const { session } = useSession(core, initialSession)
   const permission = usePermission(core)
   const chat = useChat(core, session.id, permission.requestPermission)
+  const [skills, setSkills] = useState<SkillDefinition[]>(() => core.skills.list())
 
   useKeyboard({
     onClear: chat.clearMessages,
@@ -68,7 +71,24 @@ export function ChatApp({ core, session: initialSession }: ChatAppProps) {
         />
       )}
 
-      <UserInput onSubmit={chat.sendMessage} isDisabled={chat.isStreaming} theme={theme} />
+      {chat.skillsMenuOpen && (
+        <SkillsMenu
+          skills={skills}
+          theme={theme}
+          onClose={() => chat.setSkillsMenuOpen(false)}
+          onMessage={chat.addMessage}
+          onSkillDeleted={(name) => {
+            core.skills.unregister(name)
+            setSkills(core.skills.list())
+          }}
+        />
+      )}
+
+      <UserInput
+        onSubmit={chat.sendMessage}
+        isDisabled={chat.isStreaming || chat.skillsMenuOpen}
+        theme={theme}
+      />
     </Box>
   )
 }
