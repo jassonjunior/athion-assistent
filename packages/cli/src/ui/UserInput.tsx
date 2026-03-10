@@ -110,6 +110,17 @@ export function UserInput({ onSubmit, isDisabled, theme }: UserInputProps) {
   }
 
   function handleSubmit(text: string) {
+    const sug = suggestionsRef.current
+    // Se há sugestões, Enter insere a selecionada (não envia ao LLM)
+    if (sug.length > 0) {
+      const s = sug[selectedIdxRef.current]
+      if (s) {
+        setValue(s.insert)
+        setInputKey((k) => k + 1)
+        setSelectedIdx(0)
+      }
+      return
+    }
     const trimmed = text.trim()
     if (!trimmed || isDisabled) return
     setValue('')
