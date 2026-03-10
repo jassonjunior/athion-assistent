@@ -4,8 +4,19 @@
   "description": "AI coding assistant with orchestrator + subagents",
   "version": "0.0.1",
   "publisher": "athion",
-  "private": true,
   "license": "MIT",
+  "icon": "image.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jassonjunior/athion-assistent"
+  },
+  "keywords": [
+    "ai",
+    "coding",
+    "assistant",
+    "llm",
+    "autocomplete"
+  ],
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -26,6 +37,7 @@
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
     "package": "vsce package --no-dependencies",
+    "publish": "vsce publish --no-dependencies",
     "test:e2e": "bunx wdio run e2e/wdio.conf.ts",
     "test:e2e:model": "ATHION_E2E_MODEL=1 bunx wdio run e2e/wdio.conf.ts"
   },
