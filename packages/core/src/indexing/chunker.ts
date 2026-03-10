@@ -1,7 +1,8 @@
 /**
  * Chunker — divide arquivos de código em chunks semânticos.
  *
- * Estratégia heurística (sem tree-sitter nativo):
+ * Estratégia primária: tree-sitter (AST real, via web-tree-sitter WASM)
+ * Fallback: heurística regex por linguagem
  *  - TypeScript/JavaScript: detecta declarações de função/classe/export const/arrow functions
  *  - Python: detecta def/class
  *  - Outros: janela deslizante com sobreposição
@@ -14,6 +15,7 @@ import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import type { ChunkType, CodeChunk } from './types'
 import { detectLanguage } from './file-walker'
+import { chunkFileWithTreeSitter } from './tree-sitter-chunker'
 
 const DEFAULT_MAX_CHUNK_LINES = 60
 const DEFAULT_MIN_CHUNK_LINES = 3
@@ -64,6 +66,7 @@ export interface ChunkerResult {
 
 /**
  * Divide um arquivo em chunks semânticos.
+ * Tenta tree-sitter (AST real) primeiro; cai para regex se não disponível.
  * Retorna chunks sem o campo `id` (gerado pelo manager com hash).
  */
 export async function chunkFile(
@@ -76,6 +79,23 @@ export async function chunkFile(
   const maxChunkLines = options.maxChunkLines ?? DEFAULT_MAX_CHUNK_LINES
   const minChunkLines = options.minChunkLines ?? DEFAULT_MIN_CHUNK_LINES
 
+  // Tenta tree-sitter primeiro
+  const tsResult = await chunkFileWithTreeSitter(filePath, maxChunkLines, minChunkLines)
+  if (tsResult) return { chunks: tsResult.chunks }
+
+  // Fallback: regex heurístico
+  return chunkFileWithRegex(filePath, maxChunkLines, minChunkLines)
+}
+
+/**
+ * Fallback: divide um arquivo usando heurística regex.
+ * Usado quando tree-sitter não está disponível ou falha.
+ */
+async function chunkFileWithRegex(
+  filePath: string,
+  maxChunkLines: number,
+  minChunkLines: number,
+): Promise<ChunkerResult> {
   let content: string
   try {
     content = await readFile(filePath, 'utf-8')
