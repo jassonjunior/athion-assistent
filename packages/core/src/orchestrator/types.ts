@@ -15,6 +15,12 @@ export interface Attachment {
 export interface UserMessage {
   content: string
   attachments?: Attachment[]
+  /**
+   * Callback chamado quando uma tool requer aprovacao do usuario (decision='ask').
+   * O retorno define se a execucao prossegue ('allow') ou e bloqueada ('deny').
+   * Se nao fornecido, tools com 'ask' retornam erro de permissao negada.
+   */
+  onPermissionRequest?: (toolName: string, target: string) => Promise<'allow' | 'deny'>
 }
 
 /**
@@ -29,6 +35,7 @@ export type OrchestratorEvent =
   | { type: 'subagent_progress'; agentName: string; data: unknown }
   | { type: 'subagent_complete'; agentName: string; result: unknown }
   | { type: 'subagent_continuation'; agentName: string; continuationIndex: number }
+  | { type: 'permission_request'; requestId: string; toolName: string; target: string }
   | { type: 'finish'; usage: TokenUsage }
   | { type: 'error'; error: Error }
 

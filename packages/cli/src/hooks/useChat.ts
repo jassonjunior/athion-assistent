@@ -25,7 +25,11 @@ interface UseChatReturn {
   sendMessage: (content: string) => Promise<void>
 }
 
-export function useChat(core: AthionCore, sessionId: string): UseChatReturn {
+export function useChat(
+  core: AthionCore,
+  sessionId: string,
+  onPermissionRequest?: (toolName: string, target: string) => Promise<'allow' | 'deny'>,
+): UseChatReturn {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const [currentTool, setCurrentTool] = useState<ToolCallInfo | null>(null)
@@ -49,7 +53,10 @@ export function useChat(core: AthionCore, sessionId: string): UseChatReturn {
       const toolCalls: ToolCallInfo[] = []
 
       try {
-        const stream = core.orchestrator.chat(sessionId, { content })
+        const stream = core.orchestrator.chat(sessionId, {
+          content,
+          ...(onPermissionRequest ? { onPermissionRequest } : {}),
+        })
 
         for await (const event of stream) {
           switch (event.type) {
@@ -90,7 +97,7 @@ export function useChat(core: AthionCore, sessionId: string): UseChatReturn {
         setCurrentAgent(null)
       }
     },
-    [core, sessionId],
+    [core, sessionId, onPermissionRequest],
   )
 
   function updateAssistantMessage(id: string, content: string, tools: ToolCallInfo[]) {

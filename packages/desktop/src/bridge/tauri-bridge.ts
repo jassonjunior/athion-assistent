@@ -70,3 +70,29 @@ export function onChatEvent(handler: (event: ChatEventNotification) => void): Pr
 export function onTrayNewChat(handler: () => void): Promise<UnlistenFn> {
   return listen('tray:new-chat', () => handler())
 }
+
+// ─── Deep Link Listeners ──────────────────────────────────────────
+
+/** athion://chat?session=<id> */
+export function onDeepLinkSession(handler: (sessionId: string) => void): Promise<UnlistenFn> {
+  return listen<string>('deep-link:session', (e) => handler(e.payload))
+}
+
+/** athion://chat?message=<texto> */
+export function onDeepLinkMessage(handler: (message: string) => void): Promise<UnlistenFn> {
+  return listen<string>('deep-link:message', (e) => handler(e.payload))
+}
+
+/** athion://new */
+export function onDeepLinkNew(handler: () => void): Promise<UnlistenFn> {
+  return listen('deep-link:new', () => handler())
+}
+
+/** athion://config?key=<k>&value=<v> */
+export function onDeepLinkConfig(
+  handler: (key: string, value: string) => void,
+): Promise<UnlistenFn> {
+  return listen<{ key: string; value: string }>('deep-link:config', (e) =>
+    handler(e.payload.key, e.payload.value),
+  )
+}

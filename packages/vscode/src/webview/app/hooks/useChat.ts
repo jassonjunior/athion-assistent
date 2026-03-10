@@ -99,6 +99,9 @@ export function useChat() {
       ])
     })
 
+    // mention:results é consumido diretamente pelo useAtMention via useMessenger
+    // Registrado aqui apenas para evitar warnings de mensagem não tratada
+
     post({ type: 'ready' })
   }, [])
 

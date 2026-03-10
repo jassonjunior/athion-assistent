@@ -1,5 +1,40 @@
 # Changes Log - Athion Assistent
 
+## Fase 6 — Polish (2026-03-09)
+
+**Branch**: `fase-6/polish`
+**Status**: Em andamento
+
+| #   | Task                                                                       | Prioridade | Status       |
+| --- | -------------------------------------------------------------------------- | ---------- | ------------ |
+| 6.1 | Testes unitários: bus, config, permissions, skills, storage, tokens, tools | Alta       | ✅ Concluído |
+| 6.2 | Testes unitários: orchestrator, subagent, provider                         | Crítica    | ✅ Concluído |
+| 6.3 | Testes E2E: CLI, VSCode, Desktop                                           | Alta       | ✅ Concluído |
+| 6.4 | Telemetria OpenTelemetry                                                   | Média      | ✅ Concluído |
+| 6.5 | i18n: 5 locales (pt-BR, en-US, es, fr, zh-CN)                              | Média      | ✅ Concluído |
+| 6.6 | CI/CD: coverage + security + E2E jobs                                      | Média      | ✅ Concluído |
+| 6.7 | Merge de feat/codebase-indexer                                             | -          | ✅ Concluído |
+
+---
+
+## Gaps — Plano de Implementação (2026-03-09)
+
+**Plano completo**: `docs/plano-gaps-implementacao.md`
+**Status**: ✅ TODOS OS 8 GAPS CONCLUÍDOS — 2026-03-09
+
+| #   | Gap                                     | Complexidade | Status       |
+| --- | --------------------------------------- | ------------ | ------------ |
+| 1   | useSession + usePermission hooks (CLI)  | Baixa        | ✅ Concluído |
+| 2   | PermissionPrompt componente (CLI TUI)   | Baixa        | ✅ Concluído |
+| 3   | Pinned messages no summarize.ts         | Baixa        | ✅ Concluído |
+| 4   | Tree-sitter no chunker (indexing)       | Alta         | ✅ Concluído |
+| 5   | @mentions de arquivos/símbolos (VSCode) | Média        | ✅ Concluído |
+| 6   | Deep links `athion://` (Tauri)          | Média        | ✅ Concluído |
+| 7   | Documentação completa (READMEs + docs/) | Baixa        | ✅ Concluído |
+| 8   | Publicação npm / Marketplace / builds   | Alta         | ✅ Concluído |
+
+---
+
 ## Fase 1: Core Foundation (branch: fase-1/core-foundation)
 
 ### 2.1 Config Manager
@@ -749,6 +784,21 @@ ATHION_EMBEDDING_URL=http://localhost:1234 athion codebase index .
 **Chat App**:
 
 - WebSocket: `{ type: 'codebase:index' }` ou `{ type: 'codebase:search', query: '...' }`
+
+---
+
+## Gap 7: Documentação Completa (READMEs + docs/)
+
+**Status**: Concluído ✅
+**Data**: 2026-03-09
+
+### Arquivos Criados
+
+- `packages/core/README.md` — Módulos, API pública (`bootstrap`/`AthionCore`), providers, token manager, codebase indexer
+- `packages/cli/README.md` — Comandos, flags globais, atalhos TUI, permissões, variáveis de ambiente
+- `packages/vscode/README.md` — Instalação, comandos palette, @mentions, slash commands, configuração settings.json
+- `packages/desktop/README.md` — Build Tauri, features (system tray, hotkey), deep links `athion://`, layout
+- `docs/architecture.md` — Diagrama ASCII completo, 4 camadas, fluxo de chat, fluxo de tool calls, tabela de módulos
 
 ---
 

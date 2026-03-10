@@ -1,4 +1,5 @@
 mod commands;
+mod deep_link;
 mod hotkeys;
 mod sidecar;
 mod tray;
@@ -28,6 +29,13 @@ pub fn run() {
             if let Err(e) = hotkeys::setup(&hotkey_handle) {
                 log::error!("Failed to register hotkeys: {}", e);
             }
+
+            // Register deep link handler (athion://)
+            let deep_link_handle = app.handle().clone();
+            app.deep_link().on_open_url(move |event| {
+                let urls = event.urls().iter().map(|u| u.to_string()).collect::<Vec<_>>();
+                deep_link::handle_urls(&deep_link_handle, urls);
+            });
 
             Ok(())
         })

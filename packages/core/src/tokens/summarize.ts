@@ -14,6 +14,19 @@ import {
 /** Quantidade de mensagens recentes a preservar (nao resumir). */
 const PRESERVE_RECENT = 6
 
+/** Prefixo que marca uma mensagem como permanente — nunca sera compactada. */
+export const PINNED_PREFIX = '[PINNED]\n'
+
+/** Marca uma mensagem como pinned (nao compactavel). */
+export function pinMessage(content: string): string {
+  return `${PINNED_PREFIX}${content}`
+}
+
+/** Retorna true se a mensagem e pinned. */
+export function isPinnedMessage(msg: { content: string }): boolean {
+  return msg.content.startsWith(PINNED_PREFIX)
+}
+
 type Message = { role: string; content: string }
 
 export interface SummarizationService {
@@ -37,42 +50,42 @@ export function createSummarizationService(deps: SummarizationDeps): Summarizati
   return { summarize }
 
   async function summarize(messages: Message[]): Promise<Message[]> {
-    const { systemMsgs, toCompress, preserved } = splitMessages(messages)
+    const { systemMsgs, pinnedMsgs, toCompress, preserved } = splitMessages(messages)
 
-    // Nada para comprimir — retorna as mensagens como estao
     if (toCompress.length === 0) {
       return messages
     }
 
-    // Monta o texto das mensagens a comprimir
     const inputText = buildCompressionInput(
       toCompress.map((m) => ({ role: m.role, content: m.content })),
     )
 
-    // Chama o LLM para gerar o resumo
     const summary = await callLlm(inputText)
 
-    // Monta resultado: system msgs + resumo + mensagens recentes preservadas
     const summaryMessage: Message = {
       role: 'system',
       content: `[Conversation Summary]\n${summary}`,
     }
 
-    return [...systemMsgs, summaryMessage, ...preserved]
+    // Ordem: system msgs → pinned (contexto permanente) → resumo → mensagens recentes
+    return [...systemMsgs, ...pinnedMsgs, summaryMessage, ...preserved]
   }
 
   function splitMessages(messages: Message[]): {
     systemMsgs: Message[]
+    pinnedMsgs: Message[]
     toCompress: Message[]
     preserved: Message[]
   } {
-    // Separar system messages (inicio) das demais
     const systemMsgs: Message[] = []
+    const pinnedMsgs: Message[] = []
     const rest: Message[] = []
 
     for (const msg of messages) {
-      if (msg.role === 'system' && rest.length === 0) {
+      if (msg.role === 'system' && rest.length === 0 && pinnedMsgs.length === 0) {
         systemMsgs.push(msg)
+      } else if (isPinnedMessage(msg)) {
+        pinnedMsgs.push(msg)
       } else {
         rest.push(msg)
       }
@@ -83,6 +96,7 @@ export function createSummarizationService(deps: SummarizationDeps): Summarizati
 
     return {
       systemMsgs,
+      pinnedMsgs,
       toCompress: rest.slice(0, cutoff),
       preserved: rest.slice(cutoff),
     }

@@ -1,0 +1,81 @@
+name: Build Desktop
+
+on:
+  push:
+    tags:
+      - 'desktop-v[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macOS (arm64)
+            runner: macos-latest
+            args: --target aarch64-apple-darwin
+            artifact: '*.dmg'
+          - platform: macOS (x64)
+            runner: macos-latest
+            args: --target x86_64-apple-darwin
+            artifact: '*.dmg'
+          - platform: Linux
+            runner: ubuntu-22.04
+            args: ''
+            artifact: '*.AppImage'
+          - platform: Windows
+            runner: windows-latest
+            args: ''
+            artifact: '*.msi'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Install Linux system deps
+        if: matrix.runner == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './packages/desktop/src-tauri -> target'
+
+      - name: Install frontend deps
+        run: bun install --frozen-lockfile
+
+      - name: Build @athion/shared
+        working-directory: packages/shared
+        run: bun run build
+
+      - name: Build desktop frontend + Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: packages/desktop
+          args: ${{ matrix.args }}
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Athion Desktop ${{ github.ref_name }}'
+          releaseBody: 'Athion Assistent Desktop App'
+          releaseDraft: true
+          prerelease: false

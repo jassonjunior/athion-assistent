@@ -1,3 +1,4 @@
+import { isPinnedMessage } from './summarize'
 import type { SummarizationService } from './summarize'
 import type { CompactionStrategy, LoopDetection, TokenBudget, TokenManager } from './types'
 
@@ -56,94 +57,13 @@ export function createTokenManager(config: TokenManagerConfig): TokenManager {
     messages: Array<{ role: string; content: string }>,
   ): Promise<Array<{ role: string; content: string }>> {
     if (messages.length <= 2) return messages
-
-    switch (strategy) {
-      case 'truncate':
-        return compactTruncate(messages)
-      case 'sliding-window':
-        return compactSlidingWindow(messages)
-      case 'summarize':
-        return compactSummarize(messages)
-    }
-  }
-
-  /**
-   * Estrategia 'summarize': chama o LLM para gerar resumo estruturado.
-   * Se o summarizer nao estiver configurado, faz fallback para sliding-window.
-   */
-  async function compactSummarize(
-    messages: Array<{ role: string; content: string }>,
-  ): Promise<Array<{ role: string; content: string }>> {
-    if (!config.summarizer) {
-      // eslint-disable-next-line no-console
-      console.warn('[tokens] Summarizer not configured, falling back to sliding-window')
-      return compactSlidingWindow(messages)
-    }
-
-    try {
-      return await config.summarizer.summarize(messages)
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error('[tokens] Summarization failed, falling back to sliding-window:', err)
-      return compactSlidingWindow(messages)
-    }
-  }
-
-  function compactTruncate(
-    messages: Array<{ role: string; content: string }>,
-  ): Array<{ role: string; content: string }> {
-    const systemMessages = messages.filter((m) => m.role === 'system')
-    const recentMessages = messages.filter((m) => m.role !== 'system').slice(-windowSize)
-    return [...systemMessages, ...recentMessages]
-  }
-
-  function compactSlidingWindow(
-    messages: Array<{ role: string; content: string }>,
-  ): Array<{ role: string; content: string }> {
-    const systemMessages = messages.filter((m) => m.role === 'system')
-    const nonSystem = messages.filter((m) => m.role !== 'system')
-
-    if (nonSystem.length <= windowSize) return messages
-
-    const kept = nonSystem.slice(-windowSize)
-    const removedCount = nonSystem.length - windowSize
-
-    const compactionNotice = {
-      role: 'system',
-      content: `[Context compacted: ${removedCount} messages were removed to free context space]`,
-    }
-
-    return [...systemMessages, compactionNotice, ...kept]
+    if (strategy === 'truncate') return truncateMessages(messages, windowSize)
+    if (strategy === 'sliding-window') return slidingWindow(messages, windowSize)
+    return compactSummarize(messages, config.summarizer, windowSize)
   }
 
   function detectLoop(actions: string[]): LoopDetection {
-    if (actions.length < loopThreshold) {
-      return { detected: false, repetitions: 0 }
-    }
-
-    for (let patternLength = 1; patternLength <= 3; patternLength++) {
-      const lastPattern = actions.slice(-patternLength)
-      let repetitions = 0
-
-      for (let i = actions.length - patternLength; i >= 0; i -= patternLength) {
-        const segment = actions.slice(i - patternLength >= 0 ? i - patternLength + 1 : 0, i + 1)
-        if (segment.length === patternLength && segment.every((a, idx) => a === lastPattern[idx])) {
-          repetitions++
-        } else {
-          break
-        }
-      }
-
-      if (repetitions >= loopThreshold) {
-        return {
-          detected: true,
-          repetitions,
-          pattern: lastPattern.join(' → '),
-        }
-      }
-    }
-
-    return { detected: false, repetitions: 0 }
+    return detectLoopPattern(actions, loopThreshold)
   }
 
   function reset(): void {
@@ -152,4 +72,60 @@ export function createTokenManager(config: TokenManagerConfig): TokenManager {
   }
 
   return { getBudget, trackUsage, needsCompaction, compact, detectLoop, reset }
+}
+
+type Msg = { role: string; content: string }
+
+async function compactSummarize(
+  messages: Msg[],
+  summarizer: SummarizationService | undefined,
+  windowSize: number,
+): Promise<Msg[]> {
+  if (!summarizer) {
+    // eslint-disable-next-line no-console
+    console.warn('[tokens] Summarizer not configured, falling back to sliding-window')
+    return slidingWindow(messages, windowSize)
+  }
+  try {
+    return await summarizer.summarize(messages)
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[tokens] Summarization failed, falling back to sliding-window:', err)
+    return slidingWindow(messages, windowSize)
+  }
+}
+
+function truncateMessages(messages: Msg[], windowSize: number): Msg[] {
+  const system = messages.filter((m) => m.role === 'system')
+  const recent = messages.filter((m) => m.role !== 'system').slice(-windowSize)
+  return [...system, ...recent]
+}
+
+function slidingWindow(messages: Msg[], windowSize: number): Msg[] {
+  const system = messages.filter((m) => m.role === 'system')
+  const pinned = messages.filter((m) => m.role !== 'system' && isPinnedMessage(m))
+  const rest = messages.filter((m) => m.role !== 'system' && !isPinnedMessage(m))
+  if (rest.length <= windowSize) return messages
+  const kept = rest.slice(-windowSize)
+  const notice = {
+    role: 'system',
+    content: `[Context compacted: ${rest.length - windowSize} messages removed]`,
+  }
+  return [...system, ...pinned, notice, ...kept]
+}
+
+function detectLoopPattern(actions: string[], loopThreshold: number): LoopDetection {
+  if (actions.length < loopThreshold) return { detected: false, repetitions: 0 }
+  for (let len = 1; len <= 3; len++) {
+    const pattern = actions.slice(-len)
+    let reps = 0
+    for (let i = actions.length - len; i >= 0; i -= len) {
+      const seg = actions.slice(Math.max(0, i - len + 1), i + 1)
+      if (seg.length === len && seg.every((a, idx) => a === pattern[idx])) reps++
+      else break
+    }
+    if (reps >= loopThreshold)
+      return { detected: true, repetitions: reps, pattern: pattern.join(' → ') }
+  }
+  return { detected: false, repetitions: 0 }
 }
