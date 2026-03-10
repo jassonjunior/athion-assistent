@@ -14,6 +14,7 @@ import type { Orchestrator } from './orchestrator/types'
 import type { PluginManager } from './plugins'
 import { createPluginManager } from './plugins'
 import { createPermissionManager } from './permissions'
+import type { PermissionManager } from './permissions/types'
 import type { ProviderLayer } from './provider'
 import { createProviderLayer } from './provider'
 import type { ProxyServer } from './server/proxy/proxy'
@@ -75,6 +76,7 @@ export interface AthionCore {
   plugins: PluginManager
   subagents: SubAgentManager
   orchestrator: Orchestrator
+  permissions: PermissionManager
   vllm: VllmManager
   proxy: ProxyServer | null
   /** Indexador de codebase — disponível quando workspacePath foi configurado */
@@ -98,11 +100,9 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
     cliArgs = {},
   } = options
 
-  // Nível 0-1: Serviços independentes
   const { bus, config, tokens, provider, skills, tools } = createBaseServices(cliArgs)
   if (skillsDir) await skills.loadFromDirectory(skillsDir)
 
-  // Nível 2-3: Storage, Permissions, Orchestrator helpers
   const resolvedDbPath = dbPath.replace('~', process.env.HOME ?? '.')
   const db = createDatabaseManager(resolvedDbPath)
   const permissions = createPermissionManager(db)
@@ -110,21 +110,8 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
   const promptBuilder = createPromptBuilder(skills)
   const toolDispatcher = createToolDispatcher(tools, permissions)
 
-  // Nível 3.5: CodebaseIndexer (antes dos agents para que search_codebase esteja disponível)
-  let indexer: CodebaseIndexer | null = null
-  if (workspacePath) {
-    const resolvedIndexDb = indexDbPath ?? join(homedir(), '.athion', 'index.db')
-    indexer = createCodebaseIndexer({
-      workspacePath,
-      dbPath: resolvedIndexDb,
-      // Embeddings opcionais — ativa se ATHION_EMBEDDING_URL estiver definida
-      embeddingBaseUrl: process.env['ATHION_EMBEDDING_URL'] ?? '',
-      embeddingModel: process.env['ATHION_EMBEDDING_MODEL'] ?? 'nomic-embed-text',
-    })
-    tools.register(createSearchCodebaseTool(indexer) as ToolDefinition)
-  }
+  const indexer = await setupIndexer(workspacePath, indexDbPath, tools)
 
-  // Nível 4-5: SubAgents + TaskTool
   const summarizer = createSummarizationService({
     provider,
     providerId: config.get('provider') as string,
@@ -134,12 +121,9 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
   for (const agent of builtinAgents) subagents.registerAgent(agent)
   tools.register(createTaskTool({ subagents }) as ToolDefinition)
 
-  // Nível 5.5: Plugins (após tools/bus/config — plugins podem registrar tools)
   const plugins = createPluginManager({ bus, config, tools, provider })
-  const resolvedPluginsDir = pluginsDir ?? '~/.athion/plugins'
-  await plugins.loadFromDirectory(resolvedPluginsDir)
+  await plugins.loadFromDirectory(pluginsDir ?? '~/.athion/plugins')
 
-  // Nível 6: Orchestrator (após subagents + plugins para incluir tudo no prompt)
   const orchestrator = createOrchestrator({
     config,
     bus,
@@ -153,35 +137,7 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
     subagents,
   })
 
-  // Nível 7: vllm-mlx + Proxy
-  const cfg = config.getAll()
-  const vllm = createVllmManager({
-    port: cfg.backendPort,
-    ttlMinutes: cfg.vllmTtlMinutes,
-  })
-
-  let proxy: ProxyServer | null = null
-  if (cfg.proxyEnabled) {
-    const proxyConfig = ProxyConfigSchema.parse({
-      proxyPort: cfg.proxyPort,
-      backendPort: cfg.backendPort,
-      contextWindow: cfg.contextWindow,
-      maxOutputTokens: cfg.maxOutputTokens,
-      logLevel: cfg.logLevel,
-    })
-    proxy = createProxy(proxyConfig)
-  }
-
-  // Auto-start vllm se habilitado
-  if (cfg.vllmAutoStart) {
-    await vllm.ensureRunning()
-  }
-
-  // Iniciar proxy se habilitado — redireciona provider pelo proxy
-  if (proxy) {
-    proxy.start()
-    process.env['ATHION_VLLM_MLX_URL'] = `${proxy.url}/v1`
-  }
+  const { vllm, proxy } = await setupVllmAndProxy(config)
 
   return {
     bus,
@@ -192,6 +148,7 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
     plugins,
     subagents,
     orchestrator,
+    permissions,
     vllm,
     proxy,
     indexer,
@@ -229,4 +186,48 @@ function createBaseServices(cliArgs: Partial<Config>) {
   const tools = createToolRegistry()
   for (const tool of BUILTIN_TOOLS) tools.register(tool as ToolDefinition)
   return { bus, config, tokens, provider, skills, tools }
+}
+
+async function setupIndexer(
+  workspacePath: string | undefined,
+  indexDbPath: string | undefined,
+  tools: ToolRegistry,
+): Promise<CodebaseIndexer | null> {
+  if (!workspacePath) return null
+  const resolvedIndexDb = indexDbPath ?? join(homedir(), '.athion', 'index.db')
+  const indexer = createCodebaseIndexer({
+    workspacePath,
+    dbPath: resolvedIndexDb,
+    embeddingBaseUrl: process.env['ATHION_EMBEDDING_URL'] ?? '',
+    embeddingModel: process.env['ATHION_EMBEDDING_MODEL'] ?? 'nomic-embed-text',
+  })
+  tools.register(createSearchCodebaseTool(indexer) as ToolDefinition)
+  return indexer
+}
+
+async function setupVllmAndProxy(
+  config: ConfigManager,
+): Promise<{ vllm: VllmManager; proxy: ProxyServer | null }> {
+  const cfg = config.getAll()
+  const vllm = createVllmManager({ port: cfg.backendPort, ttlMinutes: cfg.vllmTtlMinutes })
+
+  let proxy: ProxyServer | null = null
+  if (cfg.proxyEnabled) {
+    const proxyConfig = ProxyConfigSchema.parse({
+      proxyPort: cfg.proxyPort,
+      backendPort: cfg.backendPort,
+      contextWindow: cfg.contextWindow,
+      maxOutputTokens: cfg.maxOutputTokens,
+      logLevel: cfg.logLevel,
+    })
+    proxy = createProxy(proxyConfig)
+  }
+
+  if (cfg.vllmAutoStart) await vllm.ensureRunning()
+  if (proxy) {
+    proxy.start()
+    process.env['ATHION_VLLM_MLX_URL'] = `${proxy.url}/v1`
+  }
+
+  return { vllm, proxy }
 }

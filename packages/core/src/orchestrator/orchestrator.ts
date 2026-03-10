@@ -3,8 +3,8 @@ import type { ConfigManager } from '../config/config'
 import type { ProviderLayer } from '../provider/provider'
 import type { StreamEvent as ProviderStreamEvent } from '../provider/types'
 import type { SkillManager } from '../skills/types'
-import type { TokenManager } from '../tokens/types'
 import type { SubAgentManager } from '../subagent/types'
+import type { TokenManager } from '../tokens/types'
 import type { ToolDefinition, ToolRegistry } from '../tools/types'
 import { isOrchestratorTool } from '../tools/types'
 import type { PromptBuilder } from './prompt-builder'
@@ -64,6 +64,7 @@ interface ChatContext {
   actions: string[]
   /** Se true, proximo turno nao passa tools — forca resposta texto */
   forceTextOnly: boolean
+  onPermissionRequest?: (toolName: string, target: string) => Promise<'allow' | 'deny'>
 }
 
 /** Resultado de um turno de streaming. */
@@ -241,7 +242,17 @@ async function prepareChat(
     ...messages.map(toProviderMessage),
   ]
 
-  return { sessionId, deps, agents, messages, llmMessages, actions: [], forceTextOnly: false }
+  const ctx: ChatContext = {
+    sessionId,
+    deps,
+    agents,
+    messages,
+    llmMessages,
+    actions: [],
+    forceTextOnly: false,
+  }
+  if (message.onPermissionRequest) ctx.onPermissionRequest = message.onPermissionRequest
+  return ctx
 }
 
 /** Executa um turno de streaming com o LLM.
@@ -354,6 +365,7 @@ async function* handleToolCalls(
     yield { type: 'subagent_start', agentName }
 
     const dispatchCtx: DispatchContext = { sessionId: ctx.sessionId }
+    if (ctx.onPermissionRequest) dispatchCtx.onPermissionRequest = ctx.onPermissionRequest
     const toolResult = await toolDispatcher.dispatch(tc.name, tc.args, dispatchCtx)
 
     // Emitir subagent_complete após executar

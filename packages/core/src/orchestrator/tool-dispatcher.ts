@@ -12,6 +12,11 @@ export interface DispatchContext {
   sessionId: string
   /** Signal para cancelamento */
   signal?: AbortSignal
+  /**
+   * Callback para resolucao interativa de permissao.
+   * Chamado quando decision='ask'. Retorna 'allow' ou 'deny'.
+   */
+  onPermissionRequest?: (toolName: string, target: string) => Promise<'allow' | 'deny'>
 }
 
 /**
@@ -64,11 +69,20 @@ export function createToolDispatcher(
       }
 
       if (decision.decision === 'ask') {
-        // Por enquanto, retorna erro pedindo permissao
-        // Na Fase 3 (CLI), isso vai pausar e perguntar ao usuario
-        return {
-          success: false,
-          error: `Permission required for tool "${toolName}" on "${target}". User approval needed.`,
+        if (ctx.onPermissionRequest) {
+          const userDecision = await ctx.onPermissionRequest(toolName, target)
+          if (userDecision === 'deny') {
+            return {
+              success: false,
+              error: `Permission denied for tool "${toolName}" on "${target}"`,
+            }
+          }
+          // allow: continua para execucao
+        } else {
+          return {
+            success: false,
+            error: `Permission required for tool "${toolName}" on "${target}". No handler registered.`,
+          }
         }
       }
     }

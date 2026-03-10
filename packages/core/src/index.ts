@@ -22,7 +22,12 @@ export type { PluginContext, PluginDefinition, PluginManager } from './plugins'
 
 // Permissions
 export { createPermissionManager } from './permissions'
-export type { PermissionManager } from './permissions'
+export type {
+  PermissionManager,
+  PermissionDecision,
+  PermissionScope,
+  PermissionRule,
+} from './permissions'
 
 // Provider
 export { createProviderLayer } from './provider'

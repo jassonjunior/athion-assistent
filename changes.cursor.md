@@ -1,5 +1,23 @@
 # Changes Log - Athion Assistent
 
+## Gaps — Plano de Implementação (2026-03-09)
+
+**Plano completo**: `docs/plano-gaps-implementacao.md`
+**Status**: Planejado — 8 gaps identificados após análise das issues fechadas
+
+| #   | Gap                                     | Complexidade | Status      |
+| --- | --------------------------------------- | ------------ | ----------- |
+| 1   | useSession + usePermission hooks (CLI)  | Baixa        | ⏳ Pendente |
+| 2   | PermissionPrompt componente (CLI TUI)   | Baixa        | ⏳ Pendente |
+| 3   | Pinned messages no summarize.ts         | Baixa        | ⏳ Pendente |
+| 4   | Tree-sitter no chunker (indexing)       | Alta         | ⏳ Pendente |
+| 5   | @mentions de arquivos/símbolos (VSCode) | Média        | ⏳ Pendente |
+| 6   | Deep links `athion://` (Tauri)          | Média        | ⏳ Pendente |
+| 7   | Documentação completa (READMEs + docs/) | Baixa        | ⏳ Pendente |
+| 8   | Publicação npm / Marketplace / builds   | Alta         | ⏳ Pendente |
+
+---
+
 ## Fase 1: Core Foundation (branch: fase-1/core-foundation)
 
 ### 2.1 Config Manager
