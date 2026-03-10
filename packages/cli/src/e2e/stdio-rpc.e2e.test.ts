@@ -199,8 +199,9 @@ describe('RPC — chat streaming com modelo', () => {
     await rpc.request('session.delete', { sessionId: session.id })
 
     expect(finishEvent).not.toBeNull()
-    expect(finishEvent?.promptTokens).toBeGreaterThan(0)
-    expect(finishEvent?.completionTokens).toBeGreaterThan(0)
+    const fe = finishEvent as unknown as { promptTokens?: number; completionTokens?: number }
+    expect(fe.promptTokens).toBeGreaterThan(0)
+    expect(fe.completionTokens).toBeGreaterThan(0)
   }, 90000)
 
   it('chat.abort → interrompe o streaming', async () => {

@@ -25,9 +25,11 @@ export async function activate(context: vscode.ExtensionContext) {
 
   const config = vscode.workspace.getConfiguration('athion')
   const bunPath = config.get<string>('bunPath', 'bun')
+  const cliPath = config.get<string>('cliPath', '')
 
   bridge = new CoreBridge({
     bunPath,
+    cliPath: cliPath || undefined,
     extensionPath: context.extensionPath,
   })
 

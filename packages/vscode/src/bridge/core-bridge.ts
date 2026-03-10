@@ -28,9 +28,13 @@ export class CoreBridge {
   private cliPath: string
   private listeners = new Map<string, EventHandler[]>()
 
-  constructor(options: { bunPath?: string | undefined; extensionPath: string }) {
+  constructor(options: {
+    bunPath?: string | undefined
+    cliPath?: string | undefined
+    extensionPath: string
+  }) {
     this.bunPath = options.bunPath ?? 'bun'
-    this.cliPath = resolve(options.extensionPath, '..', 'cli', 'src', 'index.ts')
+    this.cliPath = options.cliPath ?? resolve(options.extensionPath, '..', 'cli', 'src', 'index.ts')
   }
 
   get ready(): boolean {

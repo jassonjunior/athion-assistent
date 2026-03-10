@@ -38,8 +38,10 @@ export async function serveHandler(args: { mode: string; port: number }) {
   }
 
   // Stdio mode: JSON-RPC 2.0 over stdin/stdout
+  // skipVllm=true: vllm/proxy already running externally when used as sidecar
   const core = await bootstrap({
     skillsDir: resolve(import.meta.dir, '../../core/skills'),
+    skipVllm: true,
   })
 
   const { createStdioServer } = await import('../serve/stdio-server.js')

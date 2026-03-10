@@ -1,5 +1,154 @@
 # Changes Log - Athion Assistent
 
+## Feature: Slash Commands + @Mentions no CLI (2026-03-10)
+
+**Status**: Concluído
+
+### Problema
+
+- Digitar `/` ou `@` no CLI não fazia nada
+- WelcomeScreen mostrava comandos disponíveis mas não estavam implementados
+
+### Implementação
+
+**`packages/cli/src/hooks/useChat.ts`**:
+
+- **Slash commands** interceptados antes de enviar ao LLM:
+  - `/clear` — Limpa mensagens (+ Ctrl+L)
+  - `/help` — Lista todos os comandos e menções
+  - `/agents` — Lista agentes disponíveis com descrição
+  - `/skills` — Lista skills disponíveis com descrição
+  - `/model` — Mostra modelo e provider atual
+  - `/codebase index` — Indexa projeto via CodebaseIndexer
+  - `/codebase <query>` — Busca semântica no código
+- **@mentions** — `@arquivo.ts` resolve para path absoluto e injeta conteúdo (max 200 linhas) no prompt enviado ao LLM
+- `clearMessages()` exposto no retorno do hook
+- Comando desconhecido (ex: `/foo`) passa direto ao LLM
+
+**`packages/cli/src/ui/ChatApp.tsx`**:
+
+- `Ctrl+L` agora chama `chat.clearMessages()` (antes era TODO)
+
+### Fluxo
+
+```
+/help → interceptado → mostra ajuda localmente (não vai ao LLM)
+@src/index.ts → resolve → injeta conteúdo do arquivo no prompt → envia ao LLM
+mensagem normal → envia direto ao LLM
+```
+
+---
+
+## Fix: Script ~/bin/athion — Remover FastAPI/mitmproxy (2026-03-10)
+
+**Status**: Concluído
+
+### Problema
+
+- Script `~/bin/athion` iniciava proxy FastAPI Python na :1236 antes do CLI
+- `isProxyHealthy(1236)` detectava FastAPI como saudável → CLI reutilizava → sem logging Bun
+
+### Solução
+
+- Removido start do mitmproxy e FastAPI do script
+- Script agora só garante vllm-mlx na :1237
+- Proxy Bun é iniciado pelo bootstrap do core (com logging completo)
+- `tail -f ~/.athion/logs/proxy.log` agora funciona
+
+---
+
+## Fix: Suporte a Múltiplas Instâncias do Athion (2026-03-10)
+
+**Status**: Concluído
+
+### Problema
+
+- Abrir `athion` em dois terminais causava `EADDRINUSE` na porta 1236
+- O `proxy.start()` matava o proxy da primeira instância e falhava ao rebind da porta
+
+### Solução
+
+Segunda instância detecta que o proxy já está saudável e **reutiliza** em vez de reiniciar.
+
+**`packages/core/src/server/proxy/proxy.ts`**:
+
+- `isProxyHealthy(port)` — health check via `/v1/models` com timeout 2s
+- `createProxyReuse(port)` — proxy sem ownership (start/stop são noop)
+- `ProxyServer.isOwner` — indica se este processo é dono do server
+
+**`packages/core/src/bootstrap.ts`**:
+
+- `setupVllmAndProxy()` verifica `isProxyHealthy()` antes de criar proxy
+- Se saudável → `createProxyReuse()` (log: "reusing existing proxy")
+- Se não → `createProxy()` normal (comportamento anterior)
+- `proxy.start()` só é chamado quando `proxy.isOwner === true`
+
+### Fluxo
+
+```
+Terminal 1: athion → bootstrap → proxy.start() → dono da porta 1236
+Terminal 2: athion → bootstrap → isProxyHealthy(1236) → true → reutiliza proxy existente
+```
+
+---
+
+## Fix Proxy Layer + Processos Zumbis (2026-03-10)
+
+**Status**: Concluído
+
+### Problema
+
+- O proxy interno (`packages/core/src/server/proxy/proxy.ts`) não funcionava
+- `proxyEnabled: false` como workaround temporário
+- Causa raiz: 9 processos Bun zumbis na porta 1236 com `reusePort: true`, a maioria com `backendPort: 8000` (config antiga) — OS distribuía requests aleatoriamente entre processos com porta errada
+
+### Correções
+
+**proxy.ts** (`packages/core/src/server/proxy/proxy.ts`):
+
+1. **try-catch em handleStreaming e handleNonStreaming** — fetch sem error handling causava erros HTML 500 em vez de JSON 502
+2. **Cleanup de zumbis no start()** — mata todos os processos existentes na porta antes de iniciar
+3. **Removido `reusePort: true`** — evita acúmulo de processos zumbis
+
+**config.json** (`~/.athion/config.json`):
+
+- `proxyEnabled: true` — proxy agora funciona corretamente
+
+### Fluxo funcionando
+
+CLI → Core bootstrap → Proxy (1236) → vllm-mlx (1237)
+
+- Middlewares ativos: compression, think-stripper, tool-sanitizer, safety-guard
+- Logs: request/response com tokens, latência, chunks
+
+---
+
+## UI/UX Polish — CLI + VS Code Extension (2026-03-10)
+
+**Status**: Concluído
+
+### VS Code Extension — Fix Race Condition
+
+- **Bug**: `status:update` enviado antes do React montar → mensagem perdida → input bloqueado em "Conectando..."
+- **Fix**: `chat-view-provider.ts` → no handler 'ready', reenvia `status:update` com status atual do bridge
+- **Arquivo**: `packages/vscode/src/webview/chat-view-provider.ts`
+
+### VS Code Extension — CSS Loading Fix
+
+- **Bug**: `main.css` não era gerado porque `main.tsx` não importava o CSS
+- **Fix**: Adicionado `import './styles/vscode.css'` em `packages/vscode/src/webview/app/main.tsx`
+- esbuild agora gera `dist/webview/main.css` (4.5kb)
+
+### CLI TUI — Polish Visual
+
+- **WelcomeScreen** (`packages/cli/src/ui/WelcomeScreen.tsx`): Tela de boas-vindas com logo ASCII, modelo ativo, comandos disponíveis e atalhos de teclado
+- **StatusBar**: Bordas round, layout justify-between, ícone ◆, tokens compacto "tok"
+- **UserInput**: Bordas round, ícone ❯, HelpBar com atalhos (Enter/Ctrl+L/Ctrl+C)
+- **MessageList**: Role icons (◇ Você / ◆ Athion), timestamp HH:MM, indent do conteúdo
+- **ChatApp**: WelcomeScreen quando sem mensagens, MessageList quando conversando
+
+---
+
 ## Fase 6 — Polish (2026-03-09)
 
 **Branch**: `fase-6/polish`

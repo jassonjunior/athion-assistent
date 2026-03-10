@@ -51,6 +51,8 @@ export interface BootstrapOptions {
   workspacePath?: string
   /** Caminho do banco SQLite do índice (default: ~/.athion/index.db) */
   indexDbPath?: string
+  /** Desabilita auto-start do vllm e proxy (útil quando rodando como sidecar) */
+  skipVllm?: boolean
   cliArgs?: Partial<Config>
 }
 
@@ -100,6 +102,7 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
     pluginsDir,
     workspacePath,
     indexDbPath,
+    skipVllm = false,
     cliArgs = {},
   } = options
 
@@ -146,7 +149,9 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
     subagents,
   })
 
-  const { vllm, proxy } = await setupVllmAndProxy(config)
+  const { vllm, proxy } = skipVllm
+    ? { vllm: createVllmManager({ port: 0, ttlMinutes: 0 }), proxy: null }
+    : await setupVllmAndProxy(config)
 
   log.info({ provider: config.get('provider'), model: config.get('model') }, 'bootstrap complete')
 
