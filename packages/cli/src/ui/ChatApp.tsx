@@ -15,6 +15,7 @@ import { StatusBar } from './StatusBar.js'
 import { MessageList } from './MessageList.js'
 import { UserInput } from './UserInput.js'
 import { PermissionPrompt } from './PermissionPrompt.js'
+import { WelcomeScreen } from './WelcomeScreen.js'
 import { useChat } from '../hooks/useChat.js'
 import { useTheme } from '../hooks/useTheme.js'
 import { useKeyboard } from '../hooks/useKeyboard.js'
@@ -34,27 +35,29 @@ export function ChatApp({ core, session: initialSession }: ChatAppProps) {
   const chat = useChat(core, session.id, permission.requestPermission)
 
   useKeyboard({
-    onClear: () => {
-      // TODO: limpar mensagens
-    },
+    onClear: chat.clearMessages,
   })
 
   return (
     <Box flexDirection="column" height="100%">
       <StatusBar model={model} sessionId={session.id} tokens={chat.tokens} theme={theme} />
 
-      <MessageList
-        messages={chat.messages}
-        isStreaming={chat.isStreaming}
-        streamingContent={
-          chat.isStreaming && chat.messages.length > 0
-            ? (chat.messages[chat.messages.length - 1]?.content ?? '')
-            : ''
-        }
-        currentTool={chat.currentTool}
-        currentAgent={chat.currentAgent}
-        theme={theme}
-      />
+      {chat.messages.length === 0 && !chat.isStreaming ? (
+        <WelcomeScreen model={model} theme={theme} />
+      ) : (
+        <MessageList
+          messages={chat.messages}
+          isStreaming={chat.isStreaming}
+          streamingContent={
+            chat.isStreaming && chat.messages.length > 0
+              ? (chat.messages[chat.messages.length - 1]?.content ?? '')
+              : ''
+          }
+          currentTool={chat.currentTool}
+          currentAgent={chat.currentAgent}
+          theme={theme}
+        />
+      )}
 
       {permission.pendingRequest && (
         <PermissionPrompt
