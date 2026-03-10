@@ -152,6 +152,11 @@
           "default": "bun",
           "description": "Path to the Bun executable"
         },
+        "athion.cliPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the @athion/cli entry point (index.ts). Leave empty to auto-detect from monorepo."
+        },
         "athion.inlineEnabled": {
           "type": "boolean",
           "default": true,
