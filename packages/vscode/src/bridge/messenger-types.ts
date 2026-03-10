@@ -19,6 +19,7 @@ export type WebviewToExtension =
   | { type: 'config:list' }
   | { type: 'codebase:index' }
   | { type: 'codebase:search'; query: string; limit?: number }
+  | { type: 'mention:search'; query: string }
   | { type: 'ready' }
 
 // ─── Extension → Webview ──────────────────────────────────────────
@@ -35,6 +36,15 @@ export type ExtensionToWebview =
   | { type: 'codebase:result'; results: CodebaseSearchResult[]; query: string }
   | { type: 'codebase:indexed'; totalFiles: number; totalChunks: number }
   | { type: 'codebase:error'; message: string }
+  | { type: 'mention:results'; results: MentionResult[]; query: string }
+
+export interface MentionResult {
+  file: string
+  startLine: number
+  symbolName?: string
+  chunkType: string
+  score: number
+}
 
 export interface CodebaseSearchResult {
   file: string

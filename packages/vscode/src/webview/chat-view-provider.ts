@@ -246,6 +246,30 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
       },
     )
+
+    this.messenger.on(
+      'mention:search',
+      async (
+        msg: Extract<
+          import('../bridge/messenger-types.js').WebviewToExtension,
+          { type: 'mention:search' }
+        >,
+      ) => {
+        try {
+          const result = await this.bridge.request<{
+            results: import('../bridge/messenger-types.js').MentionResult[]
+          }>('codebase.search', { query: msg.query, limit: 8 }, 10000)
+          this.messenger?.post({
+            type: 'mention:results',
+            results: result.results,
+            query: msg.query,
+          })
+        } catch {
+          // Silencioso: dropdown simplesmente não abre se indexer indisponível
+          this.messenger?.post({ type: 'mention:results', results: [], query: msg.query })
+        }
+      },
+    )
   }
 
   private getHtml(webview: vscode.Webview): string {
