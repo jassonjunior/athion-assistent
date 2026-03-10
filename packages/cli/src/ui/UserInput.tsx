@@ -46,6 +46,7 @@ const SLASH_COMMANDS: Suggestion[] = [
 export function UserInput({ onSubmit, isDisabled, theme }: UserInputProps) {
   const [value, setValue] = useState('')
   const [selectedIdx, setSelectedIdx] = useState(0)
+  const [inputKey, setInputKey] = useState(0)
 
   // Calcula sugestões com base no que foi digitado
   const suggestions = useMemo<Suggestion[]>(() => {
@@ -73,7 +74,10 @@ export function UserInput({ onSubmit, isDisabled, theme }: UserInputProps) {
 
       if (key.tab || input === '\t') {
         const s = sug[selectedIdxRef.current]
-        if (s) setValue(s.insert)
+        if (s) {
+          setValue(s.insert)
+          setInputKey((k) => k + 1) // força remount → cursor vai para o fim
+        }
         setSelectedIdx(0)
         return
       }
@@ -94,6 +98,7 @@ export function UserInput({ onSubmit, isDisabled, theme }: UserInputProps) {
         const s = sug[selectedIdxRef.current]
         if (s) {
           setValue(s.insert)
+          setInputKey((k) => k + 1) // força remount → cursor vai para o fim
           return
         }
       }
@@ -159,6 +164,7 @@ export function UserInput({ onSubmit, isDisabled, theme }: UserInputProps) {
           </Text>
         ) : (
           <TextInput
+            key={inputKey}
             value={value}
             onChange={handleChange}
             onSubmit={handleSubmit}
