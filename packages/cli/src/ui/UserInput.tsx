@@ -59,30 +59,28 @@ export function UserInput({ onSubmit, isDisabled, theme }: UserInputProps) {
 
   const hasSuggestions = suggestions.length > 0
 
-  // Navegação e autocomplete via teclado
+  // Navegação via setas (↑↓) quando há sugestões
   useInput(
     (_input, key) => {
       if (!hasSuggestions) return
-
       if (key.upArrow) {
         setSelectedIdx((i) => (i === 0 ? suggestions.length - 1 : i - 1))
-        return
-      }
-      if (key.downArrow) {
+      } else if (key.downArrow) {
         setSelectedIdx((i) => (i === suggestions.length - 1 ? 0 : i + 1))
-        return
-      }
-      if (key.tab) {
-        const s = suggestions[selectedIdx]
-        if (s) setValue(s.insert)
-        setSelectedIdx(0)
-        return
       }
     },
     { isActive: !isDisabled },
   )
 
   function handleChange(v: string) {
+    // ink-text-input passa '\t' quando Tab é pressionado.
+    // Interceptamos aqui para autocomplete antes de qualquer setSelectedIdx reset.
+    if (v.includes('\t') && hasSuggestions) {
+      const s = suggestions[selectedIdx]
+      if (s) setValue(s.insert)
+      // não reseta selectedIdx para o cursor ficar no fim naturalmente
+      return
+    }
     setValue(v)
     setSelectedIdx(0)
   }
