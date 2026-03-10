@@ -9,10 +9,18 @@ interface InputAreaProps {
   onAbort: () => void
   isStreaming: boolean
   isDisabled: boolean
+  /** Valor inicial do campo (ex: mensagem injetada via deep link). */
+  initialValue?: string
 }
 
-export function InputArea({ onSubmit, onAbort, isStreaming, isDisabled }: InputAreaProps) {
-  const [value, setValue] = useState('')
+export function InputArea({
+  onSubmit,
+  onAbort,
+  isStreaming,
+  isDisabled,
+  initialValue,
+}: InputAreaProps) {
+  const [value, setValue] = useState(initialValue ?? '')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const handleKeyDown = useCallback(

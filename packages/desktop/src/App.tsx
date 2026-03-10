@@ -5,6 +5,7 @@
 import { useCallback, useState } from 'react'
 import { useChat } from './hooks/useChat.js'
 import { useTheme } from './hooks/useTheme.js'
+import { useDeepLink } from './hooks/useDeepLink.js'
 import { MessageList } from './components/MessageList.js'
 import { InputArea } from './components/InputArea.js'
 import { Sidebar } from './components/Sidebar.js'
@@ -14,10 +15,18 @@ export function App() {
   const { messages, isStreaming, sessionId, status, sendMessage, abort, newSession } = useChat()
   const { theme, toggle: toggleTheme } = useTheme()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [pendingMessage, setPendingMessage] = useState<string | null>(null)
 
   const handleSelectSession = useCallback((_id: string) => {
     // TODO: implement session switching
   }, [])
+
+  const handleDeepLinkMessage = useCallback((message: string) => {
+    setPendingMessage(message)
+  }, [])
+
+  // Deep link handlers (athion://)
+  useDeepLink({ onNew: newSession, onMessage: handleDeepLinkMessage })
 
   return (
     <div className="flex h-screen flex-col bg-surface-950">
@@ -54,10 +63,14 @@ export function App() {
         <div className="flex flex-1 flex-col">
           <MessageList messages={messages} isStreaming={isStreaming} />
           <InputArea
-            onSubmit={sendMessage}
+            onSubmit={(content) => {
+              setPendingMessage(null)
+              sendMessage(content)
+            }}
             onAbort={abort}
             isStreaming={isStreaming}
             isDisabled={status !== 'ready'}
+            {...(pendingMessage !== null ? { initialValue: pendingMessage } : {})}
           />
         </div>
       </div>

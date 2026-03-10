@@ -3,7 +3,7 @@
 ## Gaps — Plano de Implementação (2026-03-09)
 
 **Plano completo**: `docs/plano-gaps-implementacao.md`
-**Status**: Em andamento — Gaps 1-5 concluídos
+**Status**: Em andamento — Gaps 1-6 concluídos
 
 | #   | Gap                                     | Complexidade | Status       |
 | --- | --------------------------------------- | ------------ | ------------ |
@@ -12,7 +12,7 @@
 | 3   | Pinned messages no summarize.ts         | Baixa        | ✅ Concluído |
 | 4   | Tree-sitter no chunker (indexing)       | Alta         | ✅ Concluído |
 | 5   | @mentions de arquivos/símbolos (VSCode) | Média        | ✅ Concluído |
-| 6   | Deep links `athion://` (Tauri)          | Média        | ⏳ Pendente  |
+| 6   | Deep links `athion://` (Tauri)          | Média        | ✅ Concluído |
 | 7   | Documentação completa (READMEs + docs/) | Baixa        | ⏳ Pendente  |
 | 8   | Publicação npm / Marketplace / builds   | Alta         | ⏳ Pendente  |
 
