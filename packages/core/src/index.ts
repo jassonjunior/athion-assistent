@@ -4,6 +4,10 @@ export { VERSION } from '@athion/shared'
 export { bootstrap } from './bootstrap'
 export type { AthionCore, BootstrapOptions } from './bootstrap'
 
+// Logger
+export { createLogger, logger } from './logger'
+export type { Logger, LogLevel, LogEntry } from './logger'
+
 // Bus
 export { createBus, defineBusEvent } from './bus/bus'
 export type { Bus, BusEventDef } from './bus/bus'

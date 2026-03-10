@@ -1,6 +1,7 @@
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { Bus } from './bus/bus'
+import { createLogger } from './logger'
 import { createBus } from './bus/bus'
 import type { Config, ConfigManager } from './config'
 import { createConfigManager } from './config'
@@ -91,6 +92,8 @@ export interface AthionCore {
  * console.log(core) // { bus: createBus(), config: createConfigManager(), provider: createProviderLayer(), skills: createSkillManager(), tools: createToolRegistry(), subagents: createSubAgentManager(), orchestrator: createOrchestrator(), vllm: createVllmManager(), proxy: createProxy() }
  */
 export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionCore> {
+  const log = createLogger('bootstrap')
+
   const {
     dbPath = '~/.athion/data.db',
     skillsDir,
@@ -100,8 +103,13 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
     cliArgs = {},
   } = options
 
+  log.info({ dbPath, workspacePath }, 'initializing Athion core')
+
   const { bus, config, tokens, provider, skills, tools } = createBaseServices(cliArgs)
-  if (skillsDir) await skills.loadFromDirectory(skillsDir)
+  if (skillsDir) {
+    log.debug({ skillsDir }, 'loading skills')
+    await skills.loadFromDirectory(skillsDir)
+  }
 
   const resolvedDbPath = dbPath.replace('~', process.env.HOME ?? '.')
   const db = createDatabaseManager(resolvedDbPath)
@@ -111,6 +119,7 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
   const toolDispatcher = createToolDispatcher(tools, permissions)
 
   const indexer = await setupIndexer(workspacePath, indexDbPath, tools)
+  if (indexer) log.info({ workspacePath }, 'codebase indexer ready')
 
   const summarizer = createSummarizationService({
     provider,
@@ -138,6 +147,8 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
   })
 
   const { vllm, proxy } = await setupVllmAndProxy(config)
+
+  log.info({ provider: config.get('provider'), model: config.get('model') }, 'bootstrap complete')
 
   return {
     bus,
