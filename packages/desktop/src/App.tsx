@@ -3,6 +3,7 @@
  */
 
 import { useCallback, useState } from 'react'
+import iconUrl from './assets/icon.png'
 import { useChat } from './hooks/useChat.js'
 import { useTheme } from './hooks/useTheme.js'
 import { useDeepLink } from './hooks/useDeepLink.js'
@@ -32,7 +33,10 @@ export function App() {
     <div className="flex h-screen flex-col bg-surface-950">
       {/* Header */}
       <header className="flex items-center justify-between border-b border-surface-800 bg-surface-950 px-4 py-2">
-        <h1 className="text-sm font-semibold text-neutral-300">Athion Assistent</h1>
+        <div className="flex items-center gap-2">
+          <img src={iconUrl} alt="Athion" className="h-5 w-5 rounded" />
+          <h1 className="text-sm font-semibold text-neutral-300">Athion Assistent</h1>
+        </div>
         <div className="flex items-center gap-2">
           <button
             onClick={toggleTheme}

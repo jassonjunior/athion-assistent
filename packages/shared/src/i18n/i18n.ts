@@ -58,7 +58,8 @@ export function getLocale(): SupportedLocale {
   return currentLocale ?? detectLocale()
 }
 
-type DeepRecord = Record<string, string | DeepRecord>
+type DeepRecordValue = string | { [key: string]: DeepRecordValue }
+type DeepRecord = { [key: string]: DeepRecordValue }
 
 /**
  * Navega em um objeto aninhado usando dot-notation.
