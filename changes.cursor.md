@@ -1,5 +1,22 @@
 # Changes Log - Athion Assistent
 
+## Fase 6 — Polish (2026-03-09)
+
+**Branch**: `fase-6/polish`
+**Status**: Em andamento
+
+| #   | Task                                                                       | Prioridade | Status       |
+| --- | -------------------------------------------------------------------------- | ---------- | ------------ |
+| 6.1 | Testes unitários: bus, config, permissions, skills, storage, tokens, tools | Alta       | ✅ Concluído |
+| 6.2 | Testes unitários: orchestrator, subagent, provider                         | Crítica    | ✅ Concluído |
+| 6.3 | Testes E2E: CLI, VSCode, Desktop                                           | Alta       | ✅ Concluído |
+| 6.4 | Telemetria OpenTelemetry                                                   | Média      | ✅ Concluído |
+| 6.5 | i18n: 5 locales (pt-BR, en-US, es, fr, zh-CN)                              | Média      | ✅ Concluído |
+| 6.6 | CI/CD: coverage + security + E2E jobs                                      | Média      | ✅ Concluído |
+| 6.7 | Merge de feat/codebase-indexer                                             | -          | ✅ Concluído |
+
+---
+
 ## Gaps — Plano de Implementação (2026-03-09)
 
 **Plano completo**: `docs/plano-gaps-implementacao.md`
