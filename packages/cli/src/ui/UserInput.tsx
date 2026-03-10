@@ -1,12 +1,16 @@
 /**
  * UserInput — Campo de entrada de texto do usuário.
- * Usa ink-text-input para captura de texto.
- * Enter envia a mensagem, desabilitado durante streaming.
+ *
+ * Funcionalidades:
+ * - Autocomplete de slash commands ao digitar "/"
+ * - Sugestão de @mentions ao digitar "@"
+ * - Tab para autocompletar sugestão selecionada
+ * - Setas ↑↓ para navegar nas sugestões
  */
 
-import { Box, Text } from 'ink'
+import { Box, Text, useInput } from 'ink'
 import TextInput from 'ink-text-input'
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import type { Theme } from '../types.js'
 
 interface UserInputProps {
@@ -15,30 +19,143 @@ interface UserInputProps {
   theme: Theme
 }
 
+interface Suggestion {
+  label: string
+  description: string
+  insert: string
+}
+
+const SLASH_COMMANDS: Suggestion[] = [
+  { label: '/help', description: 'Mostrar todos os comandos', insert: '/help' },
+  { label: '/clear', description: 'Limpar histórico de mensagens', insert: '/clear' },
+  { label: '/agents', description: 'Listar agentes disponíveis', insert: '/agents' },
+  { label: '/skills', description: 'Listar skills disponíveis', insert: '/skills' },
+  { label: '/model', description: 'Mostrar modelo e provider', insert: '/model' },
+  {
+    label: '/codebase-index',
+    description: 'Indexar projeto para busca',
+    insert: '/codebase-index',
+  },
+  {
+    label: '/codebase-search',
+    description: 'Buscar no código: /codebase-search <q>',
+    insert: '/codebase-search ',
+  },
+]
+
 export function UserInput({ onSubmit, isDisabled, theme }: UserInputProps) {
   const [value, setValue] = useState('')
+  const [selectedIdx, setSelectedIdx] = useState(0)
+
+  // Calcula sugestões com base no que foi digitado
+  const suggestions = useMemo<Suggestion[]>(() => {
+    if (!value.startsWith('/') && !value.startsWith('@')) return []
+    if (value.startsWith('/')) {
+      if (value === '/') return SLASH_COMMANDS
+      return SLASH_COMMANDS.filter((s) => s.label.startsWith(value))
+    }
+    return []
+  }, [value])
+
+  const hasSuggestions = suggestions.length > 0
+
+  // Navegação e autocomplete via teclado
+  useInput(
+    (_input, key) => {
+      if (!hasSuggestions) return
+
+      if (key.upArrow) {
+        setSelectedIdx((i) => (i === 0 ? suggestions.length - 1 : i - 1))
+        return
+      }
+      if (key.downArrow) {
+        setSelectedIdx((i) => (i === suggestions.length - 1 ? 0 : i + 1))
+        return
+      }
+      if (key.tab) {
+        const s = suggestions[selectedIdx]
+        if (s) setValue(s.insert)
+        setSelectedIdx(0)
+        return
+      }
+    },
+    { isActive: !isDisabled },
+  )
+
+  function handleChange(v: string) {
+    setValue(v)
+    setSelectedIdx(0)
+  }
 
   function handleSubmit(text: string) {
     const trimmed = text.trim()
     if (!trimmed || isDisabled) return
     setValue('')
+    setSelectedIdx(0)
     onSubmit(trimmed)
   }
 
   return (
-    <Box borderStyle="single" borderColor={isDisabled ? theme.muted : theme.primary} paddingX={1}>
-      <Text color={theme.primary} bold>
-        {'> '}
-      </Text>
-      {isDisabled ? (
-        <Text color={theme.muted}>Aguardando resposta...</Text>
-      ) : (
-        <TextInput
-          value={value}
-          onChange={setValue}
-          onSubmit={handleSubmit}
-          placeholder="Digite sua mensagem..."
-        />
+    <Box flexDirection="column">
+      {/* Painel de sugestões */}
+      {hasSuggestions && (
+        <Box
+          flexDirection="column"
+          borderStyle="round"
+          borderColor={theme.accent}
+          paddingX={1}
+          marginBottom={0}
+        >
+          {suggestions.map((s, i) => {
+            const isSelected = i === selectedIdx
+            return (
+              <Box key={s.label} gap={1}>
+                <Text color={isSelected ? theme.accent : theme.muted} bold={isSelected}>
+                  {isSelected ? '▶ ' : '  '}
+                </Text>
+                <Text color={isSelected ? theme.accent : theme.secondary} bold={isSelected}>
+                  {s.label}
+                </Text>
+                <Text color={theme.muted}>
+                  {'  '}
+                  {s.description}
+                </Text>
+              </Box>
+            )
+          })}
+          <Box marginTop={0}>
+            <Text color={theme.muted} dimColor>
+              ↑↓ navegar │ Tab autocompletar
+            </Text>
+          </Box>
+        </Box>
+      )}
+
+      {/* Input */}
+      <Box borderStyle="round" borderColor={isDisabled ? theme.muted : theme.primary} paddingX={1}>
+        <Text color={isDisabled ? theme.muted : theme.accent} bold>
+          {'❯ '}
+        </Text>
+        {isDisabled ? (
+          <Text color={theme.muted} italic>
+            Aguardando resposta...
+          </Text>
+        ) : (
+          <TextInput
+            value={value}
+            onChange={handleChange}
+            onSubmit={handleSubmit}
+            placeholder="Digite sua mensagem ou / para comandos..."
+          />
+        )}
+      </Box>
+
+      {!isDisabled && (
+        <Box justifyContent="center" paddingX={1}>
+          <Text color={theme.muted} dimColor>
+            Enter enviar │ Ctrl+L limpar │ Ctrl+C sair
+          </Text>
+        </Box>
       )}
     </Box>
   )

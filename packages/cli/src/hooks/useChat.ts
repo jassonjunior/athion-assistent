@@ -72,8 +72,11 @@ export function useChat(
     const trimmed = content.trim()
     if (!trimmed.startsWith('/')) return false
 
-    const [cmd, ...args] = trimmed.slice(1).split(/\s+/)
-    const arg = args.join(' ')
+    // Extrai o comando (tudo após "/" até o primeiro espaço) e o argumento restante
+    const withoutSlash = trimmed.slice(1)
+    const spaceIdx = withoutSlash.indexOf(' ')
+    const cmd = spaceIdx === -1 ? withoutSlash : withoutSlash.slice(0, spaceIdx)
+    const arg = spaceIdx === -1 ? '' : withoutSlash.slice(spaceIdx + 1).trim()
 
     switch (cmd) {
       case 'clear': {
@@ -90,8 +93,8 @@ export function useChat(
               '- `/agents` — Listar agentes disponíveis\n' +
               '- `/skills` — Listar skills disponíveis\n' +
               '- `/model` — Mostrar modelo atual\n' +
-              '- `/codebase index` — Indexar projeto\n' +
-              '- `/codebase <query>` — Buscar no código\n\n' +
+              '- `/codebase-index` — Indexar projeto\n' +
+              '- `/codebase-search <query>` — Buscar no código\n\n' +
               '**Menções:**\n' +
               '- `@arquivo.ts` — Inclui conteúdo do arquivo no prompt',
           ),
@@ -119,55 +122,69 @@ export function useChat(
         ])
         return true
       }
-      case 'codebase': {
+      case 'codebase-index': {
         if (!core.indexer) {
           setMessages((prev) => [
             ...prev,
-            systemMsg('Indexador não disponível. Inicie com `workspacePath` configurado.'),
+            systemMsg('Indexador não disponível. Verifique o workspacePath.'),
           ])
           return true
         }
-        if (arg === 'index' || arg === '') {
-          setMessages((prev) => [...prev, systemMsg('Indexando codebase...')])
-          core.indexer
-            .indexWorkspace()
-            .then((stats: { totalFiles: number; totalChunks: number }) => {
-              setMessages((prev) => [
-                ...prev,
-                systemMsg(`Indexado: ${stats.totalFiles} arquivos, ${stats.totalChunks} chunks.`),
-              ])
-            })
-            .catch((err: Error) => {
-              setMessages((prev) => [...prev, systemMsg(`Erro: ${err.message}`)])
-            })
-        } else {
-          core.indexer
-            .search(arg)
-            .then(
-              (
-                results: Array<{ chunk: { filePath: string; startLine: number }; score: number }>,
-              ) => {
-                if (results.length === 0) {
-                  setMessages((prev) => [...prev, systemMsg(`Nenhum resultado para "${arg}".`)])
-                } else {
-                  const list = results
-                    .slice(0, 10)
-                    .map(
-                      (r, i) =>
-                        `${i + 1}. \`${r.chunk.filePath}:${r.chunk.startLine}\` [${Math.round(r.score * 100)}%]`,
-                    )
-                    .join('\n')
-                  setMessages((prev) => [
-                    ...prev,
-                    systemMsg(`**Resultados para "${arg}":**\n${list}`),
-                  ])
-                }
-              },
-            )
-            .catch((err: Error) => {
-              setMessages((prev) => [...prev, systemMsg(`Erro: ${err.message}`)])
-            })
+        setMessages((prev) => [...prev, systemMsg('Indexando codebase...')])
+        core.indexer
+          .indexWorkspace()
+          .then((stats: { totalFiles: number; totalChunks: number }) => {
+            setMessages((prev) => [
+              ...prev,
+              systemMsg(`Indexado: ${stats.totalFiles} arquivos, ${stats.totalChunks} chunks.`),
+            ])
+          })
+          .catch((err: Error) => {
+            setMessages((prev) => [...prev, systemMsg(`Erro: ${err.message}`)])
+          })
+        return true
+      }
+      case 'codebase-search': {
+        if (!core.indexer) {
+          setMessages((prev) => [
+            ...prev,
+            systemMsg('Indexador não disponível. Execute `/codebase-index` primeiro.'),
+          ])
+          return true
         }
+        if (!arg) {
+          setMessages((prev) => [...prev, systemMsg('Uso: `/codebase-search <query>`')])
+          return true
+        }
+        core.indexer
+          .search(arg)
+          .then(
+            (results: Array<{ chunk: { filePath: string; startLine: number }; score: number }>) => {
+              if (results.length === 0) {
+                setMessages((prev) => [
+                  ...prev,
+                  systemMsg(
+                    `Nenhum resultado para "${arg}". Execute \`/codebase-index\` primeiro.`,
+                  ),
+                ])
+              } else {
+                const list = results
+                  .slice(0, 10)
+                  .map(
+                    (r, i) =>
+                      `${i + 1}. \`${r.chunk.filePath}:${r.chunk.startLine}\` [${Math.round(r.score * 100)}%]`,
+                  )
+                  .join('\n')
+                setMessages((prev) => [
+                  ...prev,
+                  systemMsg(`**Resultados para "${arg}":**\n${list}`),
+                ])
+              }
+            },
+          )
+          .catch((err: Error) => {
+            setMessages((prev) => [...prev, systemMsg(`Erro: ${err.message}`)])
+          })
         return true
       }
       default:

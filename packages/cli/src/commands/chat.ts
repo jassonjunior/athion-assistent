@@ -40,6 +40,7 @@ export async function chatHandler(args: ChatArgs) {
 
   const core = await bootstrap({
     skillsDir: resolve(import.meta.dir, '../../core/skills'),
+    workspacePath: process.cwd(),
   })
 
   if (args.message) {
