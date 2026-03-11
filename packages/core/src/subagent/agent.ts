@@ -59,6 +59,8 @@ export async function* runSubAgent(
   const modelName = config.model?.model ?? deps.defaultModel
   const resultParts: string[] = []
   let agentDone = false
+  // Conta turns consecutivos sem tool calls — permite 1 nudge antes de concluir
+  let noToolCallStreak = 0
 
   for (let turn = 0; turn < maxTurns; turn++) {
     if (signal?.aborted) {
@@ -99,11 +101,25 @@ export async function* runSubAgent(
     }
 
     if (toolCalls.length === 0) {
-      if (assistantContent) messages.push({ role: 'assistant', content: assistantContent })
+      messages.push({ role: 'assistant', content: assistantContent })
+      noToolCallStreak++
+
+      // Permite 1 nudge quando o modelo descreve intenção sem chamar ferramentas.
+      // Na segunda vez consecutiva sem tool calls, aceita o resultado como final.
+      if (noToolCallStreak === 1 && Object.keys(providerTools).length > 0 && turn < maxTurns - 1) {
+        messages.push({
+          role: 'user',
+          content:
+            'You described what you plan to do but did not call any tools. Please call the appropriate tool(s) now to continue the task.',
+        })
+        continue
+      }
+
       agentDone = true
       break
     }
 
+    noToolCallStreak = 0
     pushAssistantWithToolCalls(messages, assistantContent, toolCalls)
     yield* processToolCalls(toolCalls, allowedTools, messages, resultParts, deps, config)
   }
