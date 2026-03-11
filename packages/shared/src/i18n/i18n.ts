@@ -116,7 +116,7 @@ function resolve(obj: DeepRecord, key: string): DeepRecordValue | undefined {
   for (const part of parts) {
     if (typeof current !== 'object' || Array.isArray(current) || !(part in current))
       return undefined
-    const next = (current as DeepRecord)[part]
+    const next: DeepRecordValue | undefined = (current as DeepRecord)[part]
     if (next === undefined) return undefined
     current = next
   }

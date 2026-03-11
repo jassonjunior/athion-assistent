@@ -163,10 +163,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
         const resolvedContent = resolveAtMentions(msg.content, wsRoot)
 
-        await this.bridge.request('chat.send', {
-          sessionId: this.activeSessionId,
-          content: resolvedContent,
-        })
+        await this.bridge.request(
+          'chat.send',
+          {
+            sessionId: this.activeSessionId,
+            content: resolvedContent,
+          },
+          300000,
+        ) // 5 min — AI responses with tool calls can take a while
 
         this.messenger?.post({ type: 'chat:complete' })
       },
