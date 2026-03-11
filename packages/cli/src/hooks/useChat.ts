@@ -20,10 +20,12 @@ import type { ChatMessage, SubAgentInfo, TokenInfo, ToolCallInfo } from '../type
 interface UseChatReturn {
   messages: ChatMessage[]
   isStreaming: boolean
+  streamingContent: string
   currentTool: ToolCallInfo | null
   currentAgent: SubAgentInfo | null
   tokens: TokenInfo | null
   sendMessage: (content: string) => Promise<void>
+  abort: () => void
   clearMessages: () => void
   addMessage: (content: string) => void
   skillsMenuOpen: boolean
@@ -65,7 +67,9 @@ export function useChat(
   const [currentAgent, setCurrentAgent] = useState<SubAgentInfo | null>(null)
   const [tokens, setTokens] = useState<TokenInfo | null>(null)
   const [skillsMenuOpen, setSkillsMenuOpen] = useState(false)
+  const [streamingContent, setStreamingContent] = useState('')
   const streamingContentRef = useRef('')
+  const abortRef = useRef(false)
 
   const clearMessages = useCallback(() => {
     setMessages([])
@@ -315,6 +319,10 @@ export function useChat(
     }
   }
 
+  const abort = useCallback(() => {
+    abortRef.current = true
+  }, [])
+
   const sendMessage = useCallback(
     async (content: string) => {
       // Slash commands interceptados localmente
@@ -332,6 +340,8 @@ export function useChat(
       setMessages((prev) => [...prev, userMsg])
       setIsStreaming(true)
       streamingContentRef.current = ''
+      setStreamingContent('')
+      abortRef.current = false
 
       const assistantId = crypto.randomUUID()
       const toolCalls: ToolCallInfo[] = []
@@ -343,10 +353,11 @@ export function useChat(
         })
 
         for await (const event of stream) {
+          if (abortRef.current) break
           switch (event.type) {
             case 'content':
               streamingContentRef.current += event.content
-              updateAssistantMessage(assistantId, streamingContentRef.current, toolCalls)
+              setStreamingContent(streamingContentRef.current)
               break
 
             case 'tool_call':
@@ -375,8 +386,13 @@ export function useChat(
               break
           }
         }
+        // Adiciona a mensagem completa ao histórico após o loop
+        if (streamingContentRef.current) {
+          updateAssistantMessage(assistantId, streamingContentRef.current, toolCalls)
+        }
       } finally {
         setIsStreaming(false)
+        setStreamingContent('')
         setCurrentTool(null)
         setCurrentAgent(null)
       }
@@ -434,10 +450,12 @@ export function useChat(
   return {
     messages,
     isStreaming,
+    streamingContent,
     currentTool,
     currentAgent,
     tokens,
     sendMessage,
+    abort,
     clearMessages,
     addMessage,
     skillsMenuOpen,

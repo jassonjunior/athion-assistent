@@ -42,6 +42,7 @@ export function ChatApp({ core, session: initialSession }: ChatAppProps) {
 
   useKeyboard({
     onClear: chat.clearMessages,
+    onAbort: chat.abort,
   })
 
   return (
@@ -60,11 +61,7 @@ export function ChatApp({ core, session: initialSession }: ChatAppProps) {
         <MessageList
           messages={chat.messages}
           isStreaming={chat.isStreaming}
-          streamingContent={
-            chat.isStreaming && chat.messages.length > 0
-              ? (chat.messages[chat.messages.length - 1]?.content ?? '')
-              : ''
-          }
+          streamingContent={chat.streamingContent}
           currentTool={chat.currentTool}
           currentAgent={chat.currentAgent}
           theme={theme}
@@ -106,6 +103,8 @@ export function ChatApp({ core, session: initialSession }: ChatAppProps) {
         onSubmit={chat.sendMessage}
         isDisabled={chat.isStreaming || chat.skillsMenuOpen}
         theme={theme}
+        skills={skills}
+        workspacePath={process.cwd()}
       />
     </Box>
   )

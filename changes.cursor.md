@@ -1077,3 +1077,39 @@ Usuário: /clear-skill
 → core.skills.clearActive()
 → Modo automático (trigger-based) retoma
 ```
+
+---
+
+## Feature: Esc aborta streaming no CLI (2026-03-10)
+
+**Status**: Concluído ✅
+**Branch**: `fase-6/polish`
+
+### Arquivos modificados
+
+**`packages/cli/src/hooks/useChat.ts`**:
+
+- Adicionado `abortRef = useRef(false)` para cancelamento sem stale closure
+- `abortRef.current = false` no início de cada `sendMessage`
+- `if (abortRef.current) break` dentro do `for await` do stream
+- `abort()` exposto no retorno do hook — seta `abortRef.current = true`
+
+**`packages/cli/src/hooks/useKeyboard.ts`**:
+
+- Adicionado `onAbort?: () => void` ao interface `UseKeyboardOptions`
+- `key.escape` → chama `onAbort()`
+
+**`packages/cli/src/ui/ChatApp.tsx`**:
+
+- Passa `onAbort: chat.abort` para `useKeyboard`
+
+**`packages/cli/src/ui/UserInput.tsx`**:
+
+- `key.escape` no `useInput` fecha o autocomplete (`setFileSuggestions([])`)
+- Hint de teclado atualizado: `Esc abortar` adicionado
+
+### VSCode e Desktop
+
+- Botão "Parar" já existia e estava corretamente conectado ao `abort()` em ambos os surfaces
+- VSCode: `chat.abort()` → `post({ type: 'chat:abort' })` → handler no `chat-view-provider.ts`
+- Desktop: `abort()` → `bridge.chatAbort(sessionId)` → sidecar interrompe o stream

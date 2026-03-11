@@ -87,6 +87,10 @@ export async function skillClearActive(): Promise<void> {
   await invoke('skill_clear_active')
 }
 
+export async function filesList(prefix: string, cwd?: string): Promise<{ files: string[] }> {
+  return invoke('files_list', { prefix, cwd })
+}
+
 // ─── Status ──────────────────────────────────────────────────────
 
 export async function ping(): Promise<{ pong: boolean }> {

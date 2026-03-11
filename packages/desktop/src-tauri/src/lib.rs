@@ -67,6 +67,7 @@ pub fn run() {
             commands::skill_set_active,
             commands::skill_clear_active,
             commands::skill_list,
+            commands::files_list,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

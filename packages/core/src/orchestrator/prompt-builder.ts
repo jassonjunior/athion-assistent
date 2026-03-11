@@ -107,10 +107,18 @@ Do NOT try to call task again for the same work — trust the agent's result.`
  * @returns Lista de subagentes disponiveis via task tool
  */
 function buildAgentsSection(agents: AgentDefinition[]): string {
-  const agentList = agents
-    .map((a) => `- ${a.name}: ${a.description} (tools: ${a.tools.join(', ')})`)
-    .join('\n')
-  return `# Available Agents\nDelegate work to these specialized agents using the "task" tool:\n${agentList}\n\nAfter an agent completes its task, use its result to answer the user. Do not re-run the same task.`
+  const agentList = agents.map((a) => `- "${a.name}": ${a.description}`).join('\n')
+  return `# Available Agents
+Delegate work using the "task" tool. You MUST use the agent names EXACTLY as shown (in quotes below). Do not invent, abbreviate, or vary the names.
+
+${agentList}
+
+Rules:
+- Use "search" for any codebase analysis, code reading, or investigation tasks
+- Use "coder" for writing or modifying files
+- Use "explainer" for explaining code or concepts
+- Use "code-review" for reviewing code quality
+- After an agent completes, use its result to answer the user. Do not re-run the same task.`
 }
 
 /**

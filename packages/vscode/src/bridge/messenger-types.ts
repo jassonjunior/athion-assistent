@@ -24,6 +24,8 @@ export type WebviewToExtension =
   | { type: 'skills:install'; name: string }
   | { type: 'skill:setActive'; name: string }
   | { type: 'skill:clearActive' }
+  | { type: 'skill:list' }
+  | { type: 'files:list'; prefix: string }
   | { type: 'ready' }
 
 // ─── Extension → Webview ──────────────────────────────────────────
@@ -44,6 +46,8 @@ export type ExtensionToWebview =
   | { type: 'skills:found'; results: SkillSearchResult[]; query?: string }
   | { type: 'skills:installed'; name: string; success: boolean; error?: string }
   | { type: 'skill:active'; name: string | null }
+  | { type: 'skill:list:result'; skills: SkillInfo[] }
+  | { type: 'files:list:result'; files: string[]; prefix: string }
 
 export interface MentionResult {
   file: string
@@ -71,6 +75,12 @@ export interface SkillSearchResult {
   description: string
   version: string
   author?: string
+}
+
+export interface SkillInfo {
+  name: string
+  description: string
+  triggers: string[]
 }
 
 export type CoreStatus = 'starting' | 'ready' | 'error' | 'stopped'

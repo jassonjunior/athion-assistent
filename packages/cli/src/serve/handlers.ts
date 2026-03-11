@@ -60,7 +60,35 @@ export function createHandlers(core: AthionCore, notify: NotifyFn): RpcHandlers 
       const s = core.skills.getActive()
       return s ? { name: s.name, description: s.description } : null
     },
+    // File prefix search (for autocomplete)
+    'files.list': async (params: unknown) => {
+      const { prefix = '', cwd } = params as { prefix?: string; cwd?: string }
+      const files = await listFilesByPrefix(prefix, cwd ?? process.cwd())
+      return { files }
+    },
   }
+}
+
+// ─── File Search ─────────────────────────────────────────────────────
+
+const IGNORED_DIRS = new Set(['node_modules', '.git', 'dist', '.next', 'build', 'coverage'])
+
+async function listFilesByPrefix(prefix: string, cwd: string, limit = 10): Promise<string[]> {
+  const results: string[] = []
+  try {
+    // Pattern: if prefix contains '/', treat as path — else search filename anywhere
+    const pattern = prefix.includes('/') ? `${prefix}*` : `**/*${prefix}*`
+    const glob = new Bun.Glob(pattern)
+    for await (const file of glob.scan({ cwd, onlyFiles: true })) {
+      const parts = file.split('/')
+      if (parts.some((p) => IGNORED_DIRS.has(p))) continue
+      results.push(file)
+      if (results.length >= limit) break
+    }
+  } catch {
+    // ignore glob errors (invalid pattern etc)
+  }
+  return results
 }
 
 // ─── Chat Handlers ──────────────────────────────────────────────────

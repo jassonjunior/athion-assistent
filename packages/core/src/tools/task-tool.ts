@@ -5,7 +5,18 @@ import { defineTool } from './registry'
 const taskToolParams = z.object({
   agent: z.string().describe('Name of the sub-agent to delegate to'),
   description: z.string().describe('Detailed description of what the agent should do'),
-  steps: z.array(z.string()).optional().describe('Optional list of steps for the agent to follow'),
+  steps: z
+    .preprocess((val) => {
+      if (typeof val === 'string') {
+        try {
+          return JSON.parse(val)
+        } catch {
+          return val
+        }
+      }
+      return val
+    }, z.array(z.string()).optional())
+    .describe('Optional list of steps for the agent to follow'),
 })
 type TaskToolParams = z.infer<typeof taskToolParams>
 export interface TaskToolDeps {
@@ -124,12 +135,46 @@ async function executeTask(subagents: SubAgentManager, params: TaskToolParams) {
 }
 
 /**
+ * Palavras-chave que o LLM frequentemente usa → agente correto.
+ * Evita que erros como "codebase-analysis" vão para o agente errado.
+ */
+const KEYWORD_AGENT_MAP: Record<string, string> = {
+  codebase: 'search',
+  analysis: 'search',
+  analyze: 'search',
+  analyzer: 'search',
+  project: 'search',
+  inspector: 'search',
+  reader: 'search',
+  investigate: 'search',
+  explore: 'search',
+  fix: 'debugger',
+  diagnose: 'debugger',
+  bug: 'debugger',
+  generate: 'coder',
+  create: 'coder',
+  implement: 'coder',
+  test: 'test-writer',
+  spec: 'test-writer',
+  review: 'code-review',
+  audit: 'code-review',
+  refactor: 'refactorer',
+  restructure: 'refactorer',
+  explain: 'explainer',
+  document: 'explainer',
+}
+
+/**
  * Fuzzy match: finds the closest agent name when LLM sends a slight variation.
- * Matches by prefix, suffix, or substring containment.
- * e.g. "code-review" → "code-reviewer", "reviewer" → "code-reviewer"
+ * Priority:
+ *   1. Prefix/suffix containment  (e.g. "code-reviewer" → "code-review")
+ *   2. Substring containment      (e.g. "review" → "code-review")
+ *   3. Keyword map                 (e.g. "codebase-analysis" → "search")
+ *   4. Word-level overlap (≥60% length similarity to avoid "codebase"→"code")
  */
 function fuzzyMatchAgent(subagents: SubAgentManager, name: string) {
   const normalized = name.toLowerCase().replace(/[_\s]/g, '-')
+  const requestedWords = normalized.split('-').filter(Boolean)
   const agents = subagents.list()
 
   // 1. One name starts with / ends with the other
@@ -139,12 +184,38 @@ function fuzzyMatchAgent(subagents: SubAgentManager, name: string) {
     }
   }
 
-  // 2. Substring match (e.g. "review" matches "code-reviewer")
+  // 2. Substring containment
   for (const a of agents) {
     if (a.name.includes(normalized) || normalized.includes(a.name)) {
       return subagents.getAgent(a.name)
     }
   }
+
+  // 3. Keyword map — highest-priority keyword wins
+  for (const word of requestedWords) {
+    const mapped = KEYWORD_AGENT_MAP[word]
+    if (mapped) return subagents.getAgent(mapped)
+  }
+
+  // 4. Word-level overlap with 60% length similarity guard
+  // (prevents "codebase" from matching "code" in "code-review")
+  let bestScore = 0
+  let bestAgent: (typeof agents)[0] | undefined
+  for (const a of agents) {
+    const agentWords = a.name.split('-').filter(Boolean)
+    const score = requestedWords.filter((w) =>
+      agentWords.some((aw) => {
+        if (aw === w) return true
+        const [shorter, longer] = aw.length <= w.length ? [aw, w] : [w, aw]
+        return longer.startsWith(shorter) && shorter.length / longer.length >= 0.6
+      }),
+    ).length
+    if (score > bestScore) {
+      bestScore = score
+      bestAgent = a
+    }
+  }
+  if (bestAgent && bestScore > 0) return subagents.getAgent(bestAgent.name)
 
   return undefined
 }

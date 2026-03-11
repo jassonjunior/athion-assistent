@@ -278,6 +278,42 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       }
     })
 
+    this.messenger.on('skill:list', async () => {
+      try {
+        const skills = await this.bridge.request<
+          import('../bridge/messenger-types.js').SkillInfo[]
+        >('skill.list', {})
+        this.messenger?.post({ type: 'skill:list:result', skills })
+      } catch {
+        this.messenger?.post({ type: 'skill:list:result', skills: [] })
+      }
+    })
+
+    this.messenger.on(
+      'files:list',
+      async (
+        msg: Extract<
+          import('../bridge/messenger-types.js').WebviewToExtension,
+          { type: 'files:list' }
+        >,
+      ) => {
+        try {
+          const result = await this.bridge.request<{ files: string[] }>(
+            'files.list',
+            { prefix: msg.prefix },
+            10000,
+          )
+          this.messenger?.post({
+            type: 'files:list:result',
+            files: result.files,
+            prefix: msg.prefix,
+          })
+        } catch {
+          this.messenger?.post({ type: 'files:list:result', files: [], prefix: msg.prefix })
+        }
+      },
+    )
+
     this.messenger.on(
       'skills:find',
       async (

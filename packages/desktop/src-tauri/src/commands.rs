@@ -148,3 +148,14 @@ pub async fn plugin_install(
         .request("plugin.install", Some(json!({ "name": name })))
         .await
 }
+
+#[tauri::command]
+pub async fn files_list(
+    state: State<'_, SidecarState>,
+    prefix: String,
+    cwd: Option<String>,
+) -> Result<Value, String> {
+    state
+        .request("files.list", Some(json!({ "prefix": prefix, "cwd": cwd })))
+        .await
+}
