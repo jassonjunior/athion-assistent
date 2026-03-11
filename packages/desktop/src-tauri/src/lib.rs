@@ -1,3 +1,6 @@
+use tauri::Manager;
+use tauri_plugin_deep_link::DeepLinkExt;
+
 mod commands;
 mod deep_link;
 mod hotkeys;
@@ -12,6 +15,14 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_deep_link::init())
         .setup(|app| {
+            // Set app icon for dev mode (macOS dock)
+            if let Some(window) = app.get_webview_window("main") {
+                let icon_bytes = include_bytes!("../icons/128x128@2x.png");
+                if let Ok(icon) = tauri::image::Image::from_bytes(icon_bytes) {
+                    let _ = window.set_icon(Some(icon));
+                }
+            }
+
             let handle = app.handle().clone();
 
             // Start sidecar (Bun core process)
@@ -33,7 +44,7 @@ pub fn run() {
             // Register deep link handler (athion://)
             let deep_link_handle = app.handle().clone();
             app.deep_link().on_open_url(move |event| {
-                let urls = event.urls().iter().map(|u| u.to_string()).collect::<Vec<_>>();
+                let urls: Vec<String> = event.urls().into_iter().map(|u| u.to_string()).collect();
                 deep_link::handle_urls(&deep_link_handle, urls);
             });
 
@@ -51,6 +62,11 @@ pub fn run() {
             commands::config_set,
             commands::config_list,
             commands::sidecar_status,
+            commands::plugin_search,
+            commands::plugin_install,
+            commands::skill_set_active,
+            commands::skill_clear_active,
+            commands::skill_list,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

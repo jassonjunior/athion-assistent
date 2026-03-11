@@ -95,6 +95,8 @@ pub async fn start(app: &AppHandle) -> Result<(), String> {
     let bun_path = find_bun().map_err(|e| format!("bun not found: {e}"))?;
     let cli_path = find_cli_path(app);
 
+    log::info!("Starting sidecar: {} {} serve --mode=stdio", bun_path, cli_path);
+
     let mut child = Command::new(&bun_path)
         .arg(&cli_path)
         .arg("serve")
@@ -248,25 +250,31 @@ fn find_bun() -> Result<String, String> {
 }
 
 /// Find the CLI entry point relative to the app
-fn find_cli_path(app: &AppHandle) -> String {
-    // In dev: use workspace path
-    let resource = app
-        .path()
-        .resource_dir()
-        .unwrap_or_default();
+fn find_cli_path(_app: &AppHandle) -> String {
+    // In dev mode, find the monorepo root by traversing up from current dir
+    let cwd = std::env::current_dir().unwrap_or_default();
 
-    // Try workspace-relative path first (dev mode)
-    let dev_path = std::env::current_dir()
-        .unwrap_or_default()
-        .join("packages/cli/src/index.ts");
-
-    if dev_path.exists() {
-        return dev_path.to_string_lossy().to_string();
+    // Try from current dir, up to 5 levels
+    let mut dir = cwd.clone();
+    for _ in 0..5 {
+        let candidate = dir.join("packages/cli/src/index.ts");
+        if candidate.exists() {
+            return candidate.to_string_lossy().to_string();
+        }
+        if !dir.pop() {
+            break;
+        }
     }
 
-    // Fallback: bundled resource
-    resource
-        .join("cli/index.ts")
+    // Fallback: absolute path (dev convenience)
+    let home = std::env::var("HOME").unwrap_or_default();
+    let fallback = format!("{home}/Desenvolvimento/Pessoais/Desenvolvimento/Athion/athion-assistent/packages/cli/src/index.ts");
+    if std::path::Path::new(&fallback).exists() {
+        return fallback;
+    }
+
+    // Last resort
+    cwd.join("packages/cli/src/index.ts")
         .to_string_lossy()
         .to_string()
 }

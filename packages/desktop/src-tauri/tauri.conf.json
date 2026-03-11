@@ -6,7 +6,7 @@
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "bun run dev",
+    "beforeDevCommand": "bunx --bun vite",
     "beforeBuildCommand": "bun run build"
   },
   "app": {
@@ -38,10 +38,6 @@
     ]
   },
   "plugins": {
-    "shell": {},
-    "global-shortcut": {},
-    "notification": {},
-    "clipboard-manager": {},
     "deep-link": {
       "desktop": {
         "schemes": ["athion"]
