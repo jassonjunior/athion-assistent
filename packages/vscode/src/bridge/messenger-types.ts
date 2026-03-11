@@ -20,6 +20,10 @@ export type WebviewToExtension =
   | { type: 'codebase:index' }
   | { type: 'codebase:search'; query: string; limit?: number }
   | { type: 'mention:search'; query: string }
+  | { type: 'skills:find'; query?: string }
+  | { type: 'skills:install'; name: string }
+  | { type: 'skill:setActive'; name: string }
+  | { type: 'skill:clearActive' }
   | { type: 'ready' }
 
 // ─── Extension → Webview ──────────────────────────────────────────
@@ -37,6 +41,9 @@ export type ExtensionToWebview =
   | { type: 'codebase:indexed'; totalFiles: number; totalChunks: number }
   | { type: 'codebase:error'; message: string }
   | { type: 'mention:results'; results: MentionResult[]; query: string }
+  | { type: 'skills:found'; results: SkillSearchResult[]; query?: string }
+  | { type: 'skills:installed'; name: string; success: boolean; error?: string }
+  | { type: 'skill:active'; name: string | null }
 
 export interface MentionResult {
   file: string
@@ -56,6 +63,14 @@ export interface CodebaseSearchResult {
   score: number
   source: string
   content: string
+}
+
+export interface SkillSearchResult {
+  packageName: string
+  pluginName: string
+  description: string
+  version: string
+  author?: string
 }
 
 export type CoreStatus = 'starting' | 'ready' | 'error' | 'stopped'
