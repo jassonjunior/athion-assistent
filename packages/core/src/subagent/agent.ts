@@ -107,10 +107,11 @@ export async function* runSubAgent(
       // Permite 1 nudge quando o modelo descreve intenção sem chamar ferramentas.
       // Na segunda vez consecutiva sem tool calls, aceita o resultado como final.
       if (noToolCallStreak === 1 && Object.keys(providerTools).length > 0 && turn < maxTurns - 1) {
+        const intent = assistantContent.trim().slice(0, 300)
+        const toolNames = Object.keys(providerTools).join(', ')
         messages.push({
           role: 'user',
-          content:
-            'You described what you plan to do but did not call any tools. Please call the appropriate tool(s) now to continue the task.',
+          content: `You said: "${intent}"\n\nYou did not call any tool. If you want to proceed with a specific action, call the exact tool now (available: ${toolNames}). If your analysis is already complete, provide your final summary directly.`,
         })
         continue
       }

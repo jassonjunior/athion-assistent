@@ -265,6 +265,15 @@ describe('runSubAgent — error handling', () => {
     // Deve ter chamado streamChat 2x: 1 original + 1 após nudge
     expect(callCount).toBe(2)
 
+    // Nudge deve referenciar o que o modelo disse + listar tools disponíveis
+    const messages = (provider.streamChat as ReturnType<typeof vi.fn>).mock.calls[1]?.[0]?.messages
+    const nudgeMsg = (messages as Array<{ role: string; content: string }>)?.find(
+      (m) => m.role === 'user' && m.content.includes('You said:'),
+    )
+    expect(nudgeMsg).toBeDefined()
+    expect(nudgeMsg?.content).toContain('read_file') // lista tools disponíveis
+    expect(nudgeMsg?.content).toContain('Resposta 1') // referencia o que o modelo disse
+
     // Tarefa deve terminar como completa (segundo texto aceito como resposta final)
     const completeEvent = events.find((e) => (e as { type: string }).type === 'complete')
     expect(completeEvent).toBeDefined()
