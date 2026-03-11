@@ -7,6 +7,7 @@ import type { ChatMessage } from '../hooks/useChat.js'
 import { CodeBlock } from './CodeBlock.js'
 import { ToolCallCard } from './ToolCallCard.js'
 import { useFeedbackPhrase } from '../hooks/useFeedbackPhrase.js'
+import { t } from '@athion/shared'
 
 interface MessageListProps {
   messages: ChatMessage[]
@@ -28,8 +29,8 @@ export function MessageList({ messages, isStreaming }: MessageListProps) {
     return (
       <div className="message-list empty" ref={containerRef}>
         <div className="empty-state">
-          <p>Como posso ajudar?</p>
-          <p className="hint">Selecione código no editor e use Cmd+Shift+E para explicar.</p>
+          <p>{t('vscode.ui.welcome')}</p>
+          <p className="hint">{t('vscode.ui.welcome_hint')}</p>
         </div>
       </div>
     )
@@ -39,7 +40,9 @@ export function MessageList({ messages, isStreaming }: MessageListProps) {
     <div className="message-list" ref={containerRef}>
       {messages.map((msg) => (
         <div key={msg.id} className={`message ${msg.role}`}>
-          <div className="message-role">{msg.role === 'user' ? 'Você' : 'Athion'}</div>
+          <div className="message-role">
+            {msg.role === 'user' ? t('vscode.ui.you') : t('vscode.ui.assistant')}
+          </div>
           <div className="message-content">
             <FormattedContent content={msg.content} />
           </div>

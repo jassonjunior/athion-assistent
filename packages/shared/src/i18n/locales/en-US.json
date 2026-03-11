@@ -41,5 +41,56 @@
       "sessions": "Sessions",
       "create": "New Session"
     }
+  },
+  "vscode": {
+    "ui": {
+      "you": "You",
+      "assistant": "Athion",
+      "welcome": "How can I help?",
+      "welcome_hint": "Select code in the editor and use Cmd+Shift+E to explain.",
+      "placeholder": "Type your message... (/ commands, @ file)",
+      "placeholder_disabled": "Connecting...",
+      "abort": "Stop",
+      "new_session": "New session",
+      "loading": "Loading..."
+    }
+  },
+  "feedback": {
+    "loading_phrases": [
+      "Calibrating the flux capacitor...",
+      "Trying to exit Vim...",
+      "Converting coffee into code...",
+      "Resolving dependencies... and existential crises...",
+      "The cake is not a lie, it's just loading...",
+      "Rewriting in Rust... just kidding (or not)...",
+      "Consulting Stack Overflow for the 47th time...",
+      "Channeling the Force...",
+      "Waiting for respawn...",
+      "Debugging reality...",
+      "Checking if the electrons are okay...",
+      "Processing... like a 1980s mainframe...",
+      "Running git blame on the universe...",
+      "Almost there... (blatant lie)...",
+      "Invoking the JavaScript gods...",
+      "Removing past console.logs...",
+      "Compressing space-time into an array...",
+      "Negotiating with the garbage collector...",
+      "Counting bits by hand to save resources...",
+      "Syncing with the Matrix...",
+      "Asking Copilot... who also doesn't know...",
+      "Initiating controlled panic protocol...",
+      "Reading the documentation for the first time...",
+      "Applying 15 layers of abstraction...",
+      "Reverting to the last working commit...",
+      "Pressing F to continue...",
+      "Computing the answer to everything... it's 42...",
+      "Trying not to break prod...",
+      "Deploying on Friday at 4:59 PM...",
+      "Waiting for CI/CD to finish...",
+      "Merging PR without conflicts (a dream)...",
+      "Compiling promises into reality...",
+      "Hunting the bug that only appears in prod...",
+      "Horizontally scaling creativity..."
+    ]
   }
 }

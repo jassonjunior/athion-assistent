@@ -13,6 +13,7 @@ import { useAtMention } from '../hooks/useAtMention.js'
 import { useInputAutocomplete } from '../hooks/useInputAutocomplete.js'
 import { MentionDropdown } from './MentionDropdown.js'
 import { AutocompleteDropdown } from './AutocompleteDropdown.js'
+import { t } from '@athion/shared'
 
 interface InputAreaProps {
   onSubmit: (content: string) => void
@@ -168,7 +169,7 @@ export function InputArea({ onSubmit, onAbort, isStreaming, isDisabled }: InputA
             onChange={handleInput}
             onKeyDown={handleKeyDownCombined}
             placeholder={
-              isDisabled ? 'Conectando...' : 'Digite sua mensagem... (/ comandos, @ arquivo)'
+              isDisabled ? t('vscode.ui.placeholder_disabled') : t('vscode.ui.placeholder')
             }
             disabled={isDisabled}
             rows={1}

@@ -50,6 +50,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       })
     })
 
+    // Send locale to webview (VSCode language or athion.language setting)
+    const config = vscode.workspace.getConfiguration('athion')
+    const locale: string = config.get('language') ?? vscode.env.language ?? 'pt-BR'
+    this.messenger.post({ type: 'locale:set', locale })
+
     // Send status to webview
     this.messenger.post({
       type: 'status:update',

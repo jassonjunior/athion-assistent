@@ -41,5 +41,56 @@
       "sessions": "Sesiones",
       "create": "Nueva Sesión"
     }
+  },
+  "vscode": {
+    "ui": {
+      "you": "Tú",
+      "assistant": "Athion",
+      "welcome": "¿Cómo puedo ayudarte?",
+      "welcome_hint": "Selecciona código en el editor y usa Cmd+Shift+E para explicar.",
+      "placeholder": "Escribe tu mensaje... (/ comandos, @ archivo)",
+      "placeholder_disabled": "Conectando...",
+      "abort": "Detener",
+      "new_session": "Nueva sesión",
+      "loading": "Cargando..."
+    }
+  },
+  "feedback": {
+    "loading_phrases": [
+      "Calibrando el condensador de flujo...",
+      "Intentando salir de Vim...",
+      "Convirtiendo café en código...",
+      "Resolviendo dependencias... y crisis existenciales...",
+      "El pastel no es mentira, solo está cargando...",
+      "Reescribiendo en Rust... en broma (o no)...",
+      "Consultando Stack Overflow por 47ª vez...",
+      "Canalizando la Fuerza...",
+      "Esperando el respawn...",
+      "Depurando la realidad...",
+      "Verificando que los electrones estén bien...",
+      "Procesando... como un mainframe de los 80...",
+      "Haciendo git blame al universo...",
+      "Casi listo... (mentira descarada)...",
+      "Invocando a los dioses de JavaScript...",
+      "Eliminando console.logs del pasado...",
+      "Comprimiendo el espacio-tiempo en un array...",
+      "Negociando con el garbage collector...",
+      "Contando bits a mano para ahorrar...",
+      "Sincronizando con la Matrix...",
+      "Preguntando a Copilot... que tampoco sabe...",
+      "Iniciando protocolo de pánico controlado...",
+      "Leyendo la documentación por primera vez...",
+      "Aplicando 15 capas de abstracción...",
+      "Revirtiendo al último commit funcional...",
+      "Presionando F para continuar...",
+      "Calculando la respuesta a todo... es 42...",
+      "Intentando no romper producción...",
+      "Desplegando el viernes a las 17:59...",
+      "Esperando que termine el CI/CD...",
+      "Mergeando PR sin conflictos (sueño)...",
+      "Compilando promesas en realidad...",
+      "Buscando el bug que solo aparece en prod...",
+      "Escalando horizontalmente la creatividad..."
+    ]
   }
 }

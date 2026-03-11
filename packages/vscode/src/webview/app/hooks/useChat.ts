@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useMessenger } from './useMessenger.js'
 import { createChatEventHandler, flushAssistant, type ChatRefs } from './chat-events.js'
+import { initI18n } from '@athion/shared'
 
 export interface ChatMessage {
   id: string
@@ -82,6 +83,7 @@ export function useChat() {
   useEffect(() => {
     const handleEvent = createChatEventHandler(refs, setMessages, setIsStreaming)
 
+    on('locale:set', (d: unknown) => initI18n((d as { locale: string }).locale))
     on('status:update', (d: unknown) => setStatus((d as { status: CoreStatus }).status))
     on('session:active', (d: unknown) => {
       const s = (d as { session: { id: string; title: string } }).session

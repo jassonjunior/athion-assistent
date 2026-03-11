@@ -50,6 +50,7 @@ export type ExtensionToWebview =
   | { type: 'skill:list:result'; skills: SkillInfo[] }
   | { type: 'files:list:result'; files: string[]; prefix: string }
   | { type: 'agents:list:result'; agents: AgentInfo[] }
+  | { type: 'locale:set'; locale: string }
 
 export interface MentionResult {
   file: string

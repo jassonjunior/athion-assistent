@@ -41,5 +41,56 @@
       "sessions": "Sessions",
       "create": "Nouvelle Session"
     }
+  },
+  "vscode": {
+    "ui": {
+      "you": "Vous",
+      "assistant": "Athion",
+      "welcome": "Comment puis-je vous aider ?",
+      "welcome_hint": "Sélectionnez du code dans l'éditeur et utilisez Cmd+Shift+E pour expliquer.",
+      "placeholder": "Tapez votre message... (/ commandes, @ fichier)",
+      "placeholder_disabled": "Connexion en cours...",
+      "abort": "Arrêter",
+      "new_session": "Nouvelle session",
+      "loading": "Chargement..."
+    }
+  },
+  "feedback": {
+    "loading_phrases": [
+      "Calibrage du condensateur de flux...",
+      "Tentative de sortie de Vim...",
+      "Conversion du café en code...",
+      "Résolution des dépendances... et des crises existentielles...",
+      "Le gâteau n'est pas un mensonge, il charge seulement...",
+      "Réécriture en Rust... pour rire (ou pas)...",
+      "Consultation de Stack Overflow pour la 47e fois...",
+      "Canalisation de la Force...",
+      "En attente du respawn...",
+      "Débogage de la réalité...",
+      "Vérification que les électrons vont bien...",
+      "Traitement... comme un mainframe des années 80...",
+      "Exécution de git blame sur l'univers...",
+      "Presque là... (mensonge éhonté)...",
+      "Invocation des dieux de JavaScript...",
+      "Suppression des console.logs du passé...",
+      "Compression de l'espace-temps dans un tableau...",
+      "Négociation avec le garbage collector...",
+      "Comptage des bits à la main pour économiser...",
+      "Synchronisation avec la Matrice...",
+      "Demande à Copilot... qui ne sait pas non plus...",
+      "Initiation du protocole de panique contrôlée...",
+      "Lecture de la documentation pour la première fois...",
+      "Application de 15 couches d'abstraction...",
+      "Retour au dernier commit fonctionnel...",
+      "Appui sur F pour continuer...",
+      "Calcul de la réponse à tout... c'est 42...",
+      "Tentative de ne pas casser la prod...",
+      "Déploiement le vendredi à 17h59...",
+      "Attente de la fin du CI/CD...",
+      "Merge de PR sans conflits (rêve)...",
+      "Compilation des promesses en réalité...",
+      "Recherche du bug qui n'apparaît qu'en prod...",
+      "Mise à l'échelle horizontale de la créativité..."
+    ]
   }
 }

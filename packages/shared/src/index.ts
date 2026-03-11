@@ -1,7 +1,7 @@
 export const VERSION = '0.0.2'
 
 // i18n
-export { t, initI18n, getLocale, interpolate } from './i18n/i18n.js'
+export { t, ta, initI18n, setLocale, getLocale, interpolate } from './i18n/i18n.js'
 export type { SupportedLocale } from './i18n/i18n.js'
 
 export { RPC_ERRORS, isResponse, isNotification, isRequest } from './protocol.js'
