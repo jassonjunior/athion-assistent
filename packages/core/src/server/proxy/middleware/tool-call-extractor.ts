@@ -3,6 +3,10 @@ import type { OpenAIStreamChunk } from '../types'
 const TAG_START = '<tool_call>'
 const TAG_END = '</tool_call>'
 
+// Qwen3/vllm format: [Calling tool: name({"arg":"val"})]
+const BRACKET_START = '[Calling tool: '
+const BRACKET_END = ')]'
+
 /** Tool call parseada */
 interface ParsedToolCall {
   id: string
@@ -13,6 +17,7 @@ interface ParsedToolCall {
 /** Estado do extractor para streaming */
 export interface ToolCallExtractorState {
   insideToolCall: boolean
+  insideBracketCall: boolean
   buffer: string
   pending: string
   extractedCalls: ParsedToolCall[]
@@ -24,11 +29,21 @@ export interface ToolCallExtractorState {
  * @returns ToolCallExtractorState
  */
 export function createToolCallExtractorState(): ToolCallExtractorState {
-  return { insideToolCall: false, buffer: '', pending: '', extractedCalls: [], hasToolCalls: false }
+  return {
+    insideToolCall: false,
+    insideBracketCall: false,
+    buffer: '',
+    pending: '',
+    extractedCalls: [],
+    hasToolCalls: false,
+  }
 }
 
 /**
  * Processa conteudo texto, extraindo tool calls.
+ * Suporta dois formatos:
+ * - XML: <tool_call>...</tool_call>
+ * - Bracket (Qwen3/vllm): [Calling tool: name({"arg":"val"})]
  * @param content - Texto do chunk
  * @param state - Estado mutavel do extractor
  * @returns Texto a emitir ou null (suprimido)
@@ -38,11 +53,19 @@ export function processContent(content: string, state: ToolCallExtractorState): 
     return handleInsideToolCall(content, state)
   }
 
+  if (state.insideBracketCall) {
+    return handleInsideBracketCall(content, state)
+  }
+
   const text = state.pending + content
   state.pending = ''
 
   if (text.includes(TAG_START)) {
     return handleTagStart(text, state)
+  }
+
+  if (text.includes(BRACKET_START)) {
+    return handleBracketStart(text, state)
   }
 
   return handlePartialTag(text, state)
@@ -107,14 +130,73 @@ function handleTagStart(text: string, state: ToolCallExtractorState): string | n
 }
 
 /**
- * Verifica se ha tag parcial no final do texto.
+ * Processa conteudo quando estamos dentro de um [Calling tool: ...] bracket call.
+ * @param content - Texto do chunk
+ * @param state - Estado mutavel
+ * @returns Texto ou null
+ */
+function handleInsideBracketCall(content: string, state: ToolCallExtractorState): string | null {
+  state.buffer += content
+
+  if (!state.buffer.includes(BRACKET_END)) return null
+
+  const endIdx = state.buffer.indexOf(BRACKET_END)
+  const tcText = state.buffer.slice(0, endIdx)
+  const after = state.buffer.slice(endIdx + BRACKET_END.length)
+  state.insideBracketCall = false
+  state.buffer = ''
+
+  const parsed = parseBracketFormat(tcText)
+  if (parsed) state.extractedCalls.push(parsed)
+
+  if (after.trim()) return processContent(after, state)
+  return null
+}
+
+/**
+ * Processa quando encontramos BRACKET_START no texto.
+ * @param text - Texto completo (pending + content)
+ * @param state - Estado mutavel
+ * @returns Texto antes da tag ou null
+ */
+function handleBracketStart(text: string, state: ToolCallExtractorState): string | null {
+  state.insideBracketCall = true
+  state.hasToolCalls = true
+  const startIdx = text.indexOf(BRACKET_START)
+  const before = text.slice(0, startIdx)
+  const after = text.slice(startIdx + BRACKET_START.length)
+  state.buffer = after
+
+  if (state.buffer.includes(BRACKET_END)) {
+    const endIdx = state.buffer.indexOf(BRACKET_END)
+    const tcText = state.buffer.slice(0, endIdx)
+    const remaining = state.buffer.slice(endIdx + BRACKET_END.length)
+    state.insideBracketCall = false
+    state.buffer = ''
+
+    const parsed = parseBracketFormat(tcText)
+    if (parsed) state.extractedCalls.push(parsed)
+
+    if (remaining.trim()) {
+      const more = processContent(remaining, state)
+      const combined = (before || '') + (more || '')
+      return combined.trim() ? combined : null
+    }
+  }
+
+  return before.trim() ? before : null
+}
+
+/**
+ * Verifica se ha tag parcial no final do texto (XML ou bracket).
  * @param text - Texto a verificar
  * @param state - Estado mutavel
  * @returns Texto a emitir ou null
  */
 function handlePartialTag(text: string, state: ToolCallExtractorState): string | null {
-  const maxLen = Math.min(TAG_START.length - 1, text.length)
-  for (let len = maxLen; len > 0; len--) {
+  // Verifica partial <tool_call>
+  const maxXmlLen = Math.min(TAG_START.length - 1, text.length)
+  for (let len = maxXmlLen; len > 0; len--) {
     const suffix = text.slice(-len)
     if (TAG_START.startsWith(suffix)) {
       state.pending = suffix
@@ -122,6 +204,18 @@ function handlePartialTag(text: string, state: ToolCallExtractorState): string |
       return forward || null
     }
   }
+
+  // Verifica partial [Calling tool:
+  const maxBracketLen = Math.min(BRACKET_START.length - 1, text.length)
+  for (let len = maxBracketLen; len > 0; len--) {
+    const suffix = text.slice(-len)
+    if (BRACKET_START.startsWith(suffix)) {
+      state.pending = suffix
+      const forward = text.slice(0, -len)
+      return forward || null
+    }
+  }
+
   return text
 }
 
@@ -266,6 +360,39 @@ function parseJsonFormat(text: string): ParsedToolCall | null {
     }
   } catch {
     return null
+  }
+}
+
+/**
+ * Parseia formato bracket Qwen3: name({"arg":"val"})
+ * O texto recebido é tudo após "[Calling tool: " e antes de ")]".
+ * Exemplo: 'read_file({"path":"/some/file"}' → name="read_file", args={path:"/some/file"}
+ * @param text - Texto entre BRACKET_START e BRACKET_END
+ * @returns ParsedToolCall ou null
+ */
+function parseBracketFormat(text: string): ParsedToolCall | null {
+  const trimmed = text.trim()
+  if (!trimmed) return null
+
+  const parenIdx = trimmed.indexOf('(')
+  if (parenIdx === -1) return null
+
+  const name = trimmed.slice(0, parenIdx).trim()
+  if (!name) return null
+
+  // Tudo após '(' é o JSON dos argumentos (sem o ')' final, já removido pelo BRACKET_END)
+  const argsStr = trimmed.slice(parenIdx + 1).trim()
+
+  try {
+    const args = JSON.parse(argsStr) as Record<string, unknown>
+    return {
+      id: `call_${crypto.randomUUID().slice(0, 8)}`,
+      name,
+      arguments: typeof args === 'object' && args !== null ? args : {},
+    }
+  } catch {
+    // Args malformados: retorna call sem argumentos
+    return { id: `call_${crypto.randomUUID().slice(0, 8)}`, name, arguments: {} }
   }
 }
 
