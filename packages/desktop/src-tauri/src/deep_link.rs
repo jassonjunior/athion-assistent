@@ -1,16 +1,14 @@
-/**
- * deep_link — Handler para URLs athion://*.
- *
- * Esquemas suportados:
- *   athion://chat?session=<id>          → abre sessão específica
- *   athion://chat?message=<texto>       → abre com mensagem pré-preenchida
- *   athion://new                        → cria nova sessão
- *   athion://config?key=<k>&value=<v>  → configura uma chave
- *
- * Ao ser processada, a URL emite um evento para o frontend React via app_handle.emit().
- */
+/// deep_link — Handler para URLs athion deep links.
+///
+/// Esquemas suportados:
+///   athion://chat?session=<id>          → abre sessão específica
+///   athion://chat?message=<texto>       → abre com mensagem pré-preenchida
+///   athion://new                        → cria nova sessão
+///   athion://config?key=<k>&value=<v>  → configura uma chave
+///
+/// Ao ser processada, a URL emite um evento para o frontend React via app_handle.emit().
 
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use url::Url;
 
 /// Processa uma lista de URLs recebidas via deep link.
@@ -30,7 +28,7 @@ fn dispatch(app: &AppHandle, url: &Url) {
 
     match (host, path) {
         ("chat", _) => handle_chat(app, url),
-        ("new", _) | ("new", "/") => handle_new_session(app),
+        ("new", _) => handle_new_session(app),
         ("config", _) => handle_config(app, url),
         _ => log::warn!("[deep_link] Rota desconhecida: {}://{}{}", url.scheme(), host, path),
     }

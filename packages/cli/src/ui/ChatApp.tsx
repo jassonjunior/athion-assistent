@@ -10,12 +10,14 @@
  */
 
 import { Box } from 'ink'
-import type { AthionCore, Session } from '@athion/core'
+import { useState } from 'react'
+import type { AthionCore, Session, SkillDefinition } from '@athion/core'
 import { StatusBar } from './StatusBar.js'
 import { MessageList } from './MessageList.js'
 import { UserInput } from './UserInput.js'
 import { PermissionPrompt } from './PermissionPrompt.js'
 import { WelcomeScreen } from './WelcomeScreen.js'
+import { SkillsMenu } from './SkillsMenu.js'
 import { useChat } from '../hooks/useChat.js'
 import { useTheme } from '../hooks/useTheme.js'
 import { useKeyboard } from '../hooks/useKeyboard.js'
@@ -33,14 +35,25 @@ export function ChatApp({ core, session: initialSession }: ChatAppProps) {
   const { session } = useSession(core, initialSession)
   const permission = usePermission(core)
   const chat = useChat(core, session.id, permission.requestPermission)
+  const [skills, setSkills] = useState<SkillDefinition[]>(() => core.skills.list())
+  const [activeSkill, setActiveSkill] = useState<string | undefined>(
+    () => core.skills.getActive()?.name,
+  )
 
   useKeyboard({
     onClear: chat.clearMessages,
+    onAbort: chat.abort,
   })
 
   return (
     <Box flexDirection="column" height="100%">
-      <StatusBar model={model} sessionId={session.id} tokens={chat.tokens} theme={theme} />
+      <StatusBar
+        model={model}
+        sessionId={session.id}
+        tokens={chat.tokens}
+        activeSkill={activeSkill}
+        theme={theme}
+      />
 
       {chat.messages.length === 0 && !chat.isStreaming ? (
         <WelcomeScreen model={model} theme={theme} />
@@ -48,11 +61,7 @@ export function ChatApp({ core, session: initialSession }: ChatAppProps) {
         <MessageList
           messages={chat.messages}
           isStreaming={chat.isStreaming}
-          streamingContent={
-            chat.isStreaming && chat.messages.length > 0
-              ? (chat.messages[chat.messages.length - 1]?.content ?? '')
-              : ''
-          }
+          streamingContent={chat.streamingContent}
           currentTool={chat.currentTool}
           currentAgent={chat.currentAgent}
           theme={theme}
@@ -68,7 +77,35 @@ export function ChatApp({ core, session: initialSession }: ChatAppProps) {
         />
       )}
 
-      <UserInput onSubmit={chat.sendMessage} isDisabled={chat.isStreaming} theme={theme} />
+      {chat.skillsMenuOpen && (
+        <SkillsMenu
+          skills={skills}
+          activeSkillName={activeSkill}
+          theme={theme}
+          onClose={() => chat.setSkillsMenuOpen(false)}
+          onMessage={chat.addMessage}
+          onSkillDeleted={(name) => {
+            core.skills.unregister(name)
+            setSkills(core.skills.list())
+          }}
+          onSkillActivated={(name) => {
+            if (name) {
+              core.skills.setActive(name)
+            } else {
+              core.skills.clearActive()
+            }
+            setActiveSkill(name)
+          }}
+        />
+      )}
+
+      <UserInput
+        onSubmit={chat.sendMessage}
+        isDisabled={chat.isStreaming || chat.skillsMenuOpen}
+        theme={theme}
+        skills={skills}
+        workspacePath={process.cwd()}
+      />
     </Box>
   )
 }

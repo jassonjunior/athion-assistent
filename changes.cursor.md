@@ -990,3 +990,126 @@ ATHION_EMBEDDING_URL=http://localhost:1234 athion codebase index .
 - A busca FTS é instantânea (~0ms); o gargalo é o LLM
 - FTS5 com tokenizer trigram pode retornar resultados parciais (esperado)
 - `embeddingBaseUrl: ''` no bootstrap não ativa embeddings (verificar se precisa ser `undefined`)
+
+---
+
+## Feature: /find-skills + Skill Explícita em CLI, VSCode e Desktop (2026-03-10)
+
+**Status**: Concluído ✅
+
+### Descrição
+
+Implementação de dois sistemas paralelos de skills:
+
+1. **Implícito**: skills ativadas automaticamente por triggers de keywords (já existia)
+2. **Explícito**: usuário escolhe e ativa uma skill que persiste para as próximas mensagens
+
+### Novos Comandos (todos os 3 surfaces)
+
+- `/find-skills [query]` — busca skills no npm registry (`athion-plugin-*`)
+- `/install-skill <nome>` — instala skill do registry
+- `/use-skill <nome>` — ativa skill explicitamente
+- `/clear-skill` — desativa skill ativa
+
+### Auto-load de Skills Claude Code
+
+Skills do Claude Code em `~/.claude/skills/` carregadas automaticamente.
+Suporte a formato YAML frontmatter (`---`) além do formato Athion original.
+
+### Arquivos Modificados
+
+**`packages/core/src/skills/parser.ts`**:
+
+- Dual-format parser: detecta `---\n` para YAML frontmatter ou usa parser Athion
+- `SKILL.md` → nome vem do diretório pai
+- `parseYamlFrontmatter()` manual sem dependências
+
+**`packages/core/src/bootstrap.ts`**:
+
+- Auto-load de `~/.claude/skills/` e `~/.athion/skills/`
+
+**`packages/core/src/skills/types.ts` + `manager.ts`**:
+
+- `setActive(name)`, `getActive()`, `clearActive()` adicionados
+
+**`packages/core/src/orchestrator/prompt-builder.ts`**:
+
+- Bloco `# ACTIVE SKILL` injetado com máxima prioridade antes das outras skills
+
+**CLI (`packages/cli/src/`)**:
+
+- `ui/SkillsMenu.tsx`: ação "Usar skill" (toggle), "Desativar skill ✓" quando ativa, indicador `●`
+- `ui/StatusBar.tsx`: mostra `● skillName` quando skill ativa
+- `ui/ChatApp.tsx`: `activeSkill` state, conecta SkillsMenu com core.skills
+- `ui/UserInput.tsx`: autocomplete com `/use-skill`, `/clear-skill`, `/find-skills`, `/install-skill`
+- `hooks/useChat.ts`: handlers para todos os novos slash commands
+
+**VSCode (`packages/vscode/src/`)**:
+
+- `bridge/messenger-types.ts`: novos tipos para skill:setActive, skills:find, etc.
+- `webview/chat-view-provider.ts`: handlers RPC
+- `webview/app/hooks/useChat.ts`: `activeSkill` state + slash commands
+
+**Desktop (`packages/desktop/src/`)**:
+
+- `src-tauri/src/commands.rs`: novos Rust commands
+- `src-tauri/src/lib.rs`: registro dos commands
+- `bridge/tauri-bridge.ts`: funções de bridge
+- `hooks/useChat.ts`: `activeSkill` + slash commands
+
+**`packages/cli/src/serve/handlers.ts`**:
+
+- Handlers RPC: `plugin.search`, `plugin.install`, `skill.list`, `skill.setActive`, `skill.clearActive`
+
+**`packages/core/src/index.ts`**:
+
+- Exporta `createPluginInstaller`, `PluginSearchResult`, `InstallResult`
+
+### Fluxo de Ativação Explícita
+
+```
+Usuário: /use-skill commit
+→ core.skills.setActive('commit')
+→ PromptBuilder injeta "# ACTIVE SKILL: commit\n<instruções>"
+→ Todo response usa instruções da skill
+
+Usuário: /clear-skill
+→ core.skills.clearActive()
+→ Modo automático (trigger-based) retoma
+```
+
+---
+
+## Feature: Esc aborta streaming no CLI (2026-03-10)
+
+**Status**: Concluído ✅
+**Branch**: `fase-6/polish`
+
+### Arquivos modificados
+
+**`packages/cli/src/hooks/useChat.ts`**:
+
+- Adicionado `abortRef = useRef(false)` para cancelamento sem stale closure
+- `abortRef.current = false` no início de cada `sendMessage`
+- `if (abortRef.current) break` dentro do `for await` do stream
+- `abort()` exposto no retorno do hook — seta `abortRef.current = true`
+
+**`packages/cli/src/hooks/useKeyboard.ts`**:
+
+- Adicionado `onAbort?: () => void` ao interface `UseKeyboardOptions`
+- `key.escape` → chama `onAbort()`
+
+**`packages/cli/src/ui/ChatApp.tsx`**:
+
+- Passa `onAbort: chat.abort` para `useKeyboard`
+
+**`packages/cli/src/ui/UserInput.tsx`**:
+
+- `key.escape` no `useInput` fecha o autocomplete (`setFileSuggestions([])`)
+- Hint de teclado atualizado: `Esc abortar` adicionado
+
+### VSCode e Desktop
+
+- Botão "Parar" já existia e estava corretamente conectado ao `abort()` em ambos os surfaces
+- VSCode: `chat.abort()` → `post({ type: 'chat:abort' })` → handler no `chat-view-provider.ts`
+- Desktop: `abort()` → `bridge.chatAbort(sessionId)` → sidecar interrompe o stream

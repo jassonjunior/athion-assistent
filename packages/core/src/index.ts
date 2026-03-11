@@ -21,8 +21,14 @@ export { createOrchestrator } from './orchestrator/orchestrator'
 export type { Orchestrator, OrchestratorEvent, Session, UserMessage } from './orchestrator/types'
 
 // Plugins
-export { createPluginManager } from './plugins'
-export type { PluginContext, PluginDefinition, PluginManager } from './plugins'
+export { createPluginManager, createPluginInstaller } from './plugins'
+export type {
+  PluginContext,
+  PluginDefinition,
+  PluginManager,
+  PluginSearchResult,
+  InstallResult,
+} from './plugins'
 
 // Permissions
 export { createPermissionManager } from './permissions'

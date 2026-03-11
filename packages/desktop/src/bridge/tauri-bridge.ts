@@ -51,6 +51,46 @@ export async function configList(): Promise<Record<string, unknown>> {
   return invoke('config_list')
 }
 
+// ─── Plugin/Skills ───────────────────────────────────────────────
+
+export interface SkillSearchResult {
+  packageName: string
+  pluginName: string
+  description: string
+  version: string
+  author?: string
+}
+
+export async function pluginSearch(query?: string): Promise<{ results: SkillSearchResult[] }> {
+  return invoke('plugin_search', { query })
+}
+
+export async function pluginInstall(name: string): Promise<{ success: boolean; error?: string }> {
+  return invoke('plugin_install', { name })
+}
+
+export interface SkillInfo {
+  name: string
+  description: string
+  triggers: string[]
+}
+
+export async function skillList(): Promise<SkillInfo[]> {
+  return invoke('skill_list')
+}
+
+export async function skillSetActive(name: string): Promise<void> {
+  await invoke('skill_set_active', { name })
+}
+
+export async function skillClearActive(): Promise<void> {
+  await invoke('skill_clear_active')
+}
+
+export async function filesList(prefix: string, cwd?: string): Promise<{ files: string[] }> {
+  return invoke('files_list', { prefix, cwd })
+}
+
 // ─── Status ──────────────────────────────────────────────────────
 
 export async function ping(): Promise<{ pong: boolean }> {

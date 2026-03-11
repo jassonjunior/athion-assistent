@@ -19,7 +19,7 @@ import type { PermissionManager } from './permissions/types'
 import type { ProviderLayer } from './provider'
 import { createProviderLayer } from './provider'
 import type { ProxyServer } from './server/proxy/proxy'
-import { createProxy } from './server/proxy/proxy'
+import { createProxy, createProxyReuse, isProxyHealthy } from './server/proxy/proxy'
 import { ProxyConfigSchema } from './server/proxy/types'
 import type { VllmManager } from './server/vllm-manager'
 import { createVllmManager } from './server/vllm-manager'
@@ -109,9 +109,31 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
   log.info({ dbPath, workspacePath }, 'initializing Athion core')
 
   const { bus, config, tokens, provider, skills, tools } = createBaseServices(cliArgs)
+
+  // Set ATHION_VLLM_MLX_URL from backendPort if not already set
+  if (!process.env['ATHION_VLLM_MLX_URL']) {
+    const port = config.get('backendPort')
+    process.env['ATHION_VLLM_MLX_URL'] = `http://localhost:${port}/v1`
+    log.debug({ port }, 'set ATHION_VLLM_MLX_URL from backendPort')
+  }
+
   if (skillsDir) {
-    log.debug({ skillsDir }, 'loading skills')
+    log.debug({ skillsDir }, 'loading skills from skillsDir')
     await skills.loadFromDirectory(skillsDir)
+  }
+
+  // Auto-carrega skills do Claude Code (~/.claude/skills/) se existirem
+  const claudeSkillsDir = join(homedir(), '.claude', 'skills')
+  const claudeLoaded = await skills.loadFromDirectory(claudeSkillsDir)
+  if (claudeLoaded > 0) {
+    log.info({ claudeSkillsDir, count: claudeLoaded }, 'loaded Claude Code skills')
+  }
+
+  // Auto-carrega skills do Athion (~/.athion/skills/) se existirem
+  const athionSkillsDir = join(homedir(), '.athion', 'skills')
+  const athionLoaded = await skills.loadFromDirectory(athionSkillsDir)
+  if (athionLoaded > 0) {
+    log.info({ athionSkillsDir, count: athionLoaded }, 'loaded Athion user skills')
   }
 
   const resolvedDbPath = dbPath.replace('~', process.env.HOME ?? '.')
@@ -224,24 +246,34 @@ async function setupIndexer(
 async function setupVllmAndProxy(
   config: ConfigManager,
 ): Promise<{ vllm: VllmManager; proxy: ProxyServer | null }> {
+  const log = createLogger('bootstrap')
   const cfg = config.getAll()
   const vllm = createVllmManager({ port: cfg.backendPort, ttlMinutes: cfg.vllmTtlMinutes })
 
   let proxy: ProxyServer | null = null
   if (cfg.proxyEnabled) {
-    const proxyConfig = ProxyConfigSchema.parse({
-      proxyPort: cfg.proxyPort,
-      backendPort: cfg.backendPort,
-      contextWindow: cfg.contextWindow,
-      maxOutputTokens: cfg.maxOutputTokens,
-      logLevel: cfg.logLevel,
-    })
-    proxy = createProxy(proxyConfig)
+    // Verifica se já existe um proxy saudável na porta (outra instância do Athion)
+    const alreadyRunning = await isProxyHealthy(cfg.proxyPort)
+    if (alreadyRunning) {
+      log.info({ port: cfg.proxyPort }, 'reusing existing proxy (another instance is running)')
+      proxy = createProxyReuse(cfg.proxyPort)
+    } else {
+      const proxyConfig = ProxyConfigSchema.parse({
+        proxyPort: cfg.proxyPort,
+        backendPort: cfg.backendPort,
+        contextWindow: cfg.contextWindow,
+        maxOutputTokens: cfg.maxOutputTokens,
+        logLevel: cfg.logLevel,
+      })
+      proxy = createProxy(proxyConfig)
+    }
   }
 
   if (cfg.vllmAutoStart) await vllm.ensureRunning()
-  if (proxy) {
+  if (proxy && proxy.isOwner) {
     proxy.start()
+  }
+  if (proxy) {
     process.env['ATHION_VLLM_MLX_URL'] = `${proxy.url}/v1`
   }
 

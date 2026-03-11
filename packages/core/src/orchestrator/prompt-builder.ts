@@ -39,9 +39,15 @@ export function createPromptBuilder(skills: SkillManager): PromptBuilder {
       sections.push(buildAgentsSection(agents))
     }
 
-    const activeSkills = skills.list()
-    if (activeSkills.length > 0) {
-      sections.push(buildSkillsSection(activeSkills))
+    // Skill explicitamente ativa pelo usuário — injeta com destaque ANTES das demais
+    const activeSkill = skills.getActive()
+    if (activeSkill) {
+      sections.push(buildActiveSkillSection(activeSkill))
+    }
+
+    const allSkills = skills.list().filter((s) => s.name !== activeSkill?.name)
+    if (allSkills.length > 0) {
+      sections.push(buildSkillsSection(allSkills))
     }
 
     sections.push(buildSessionContext(session))
@@ -101,10 +107,35 @@ Do NOT try to call task again for the same work — trust the agent's result.`
  * @returns Lista de subagentes disponiveis via task tool
  */
 function buildAgentsSection(agents: AgentDefinition[]): string {
-  const agentList = agents
-    .map((a) => `- ${a.name}: ${a.description} (tools: ${a.tools.join(', ')})`)
-    .join('\n')
-  return `# Available Agents\nDelegate work to these specialized agents using the "task" tool:\n${agentList}\n\nAfter an agent completes its task, use its result to answer the user. Do not re-run the same task.`
+  const agentList = agents.map((a) => `- "${a.name}": ${a.description}`).join('\n')
+  return `# Available Agents
+Delegate work using the "task" tool. You MUST use the agent names EXACTLY as shown (in quotes below). Do not invent, abbreviate, or vary the names.
+
+${agentList}
+
+Rules:
+- Use "search" for any codebase analysis, code reading, or investigation tasks
+- Use "coder" for writing or modifying files
+- Use "explainer" for explaining code or concepts
+- Use "code-review" for reviewing code quality
+- After an agent completes, use its result to answer the user. Do not re-run the same task.`
+}
+
+/**
+ * Skill explicitamente ativada pelo usuário — injetada com destaque máximo.
+ */
+function buildActiveSkillSection(skill: {
+  name: string
+  description: string
+  instructions: string
+}): string {
+  return `# ACTIVE SKILL: ${skill.name}
+The user has explicitly activated the "${skill.name}" skill for this interaction.
+You MUST follow these instructions precisely:
+
+${skill.instructions}
+
+This is your primary directive for this conversation. Apply it to every response.`
 }
 
 /**
@@ -114,7 +145,7 @@ function buildAgentsSection(agents: AgentDefinition[]): string {
  */
 function buildSkillsSection(activeSkills: Array<{ name: string; instructions: string }>): string {
   const skillBlocks = activeSkills.map((s) => `## Skill: ${s.name}\n${s.instructions}`).join('\n\n')
-  return `# Active Skills\n${skillBlocks}`
+  return `# Available Skills\n${skillBlocks}`
 }
 
 /**

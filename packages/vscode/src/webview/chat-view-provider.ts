@@ -124,6 +124,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     if (!this.messenger) return
 
     this.messenger.on('ready', async () => {
+      // Re-send current bridge status (initial post may have been lost before React mounted)
+      this.messenger?.post({
+        type: 'status:update',
+        status: this.bridge.ready ? 'ready' : 'starting',
+      })
       // Create initial session when webview is ready
       await this.createSession()
     })
@@ -242,6 +247,118 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           this.messenger?.post({
             type: 'codebase:error',
             message: err instanceof Error ? err.message : String(err),
+          })
+        }
+      },
+    )
+
+    this.messenger.on(
+      'skill:setActive',
+      async (
+        msg: Extract<
+          import('../bridge/messenger-types.js').WebviewToExtension,
+          { type: 'skill:setActive' }
+        >,
+      ) => {
+        try {
+          await this.bridge.request('skill.setActive', { name: msg.name })
+          this.messenger?.post({ type: 'skill:active', name: msg.name })
+        } catch {
+          /* silencioso */
+        }
+      },
+    )
+
+    this.messenger.on('skill:clearActive', async () => {
+      try {
+        await this.bridge.request('skill.clearActive', {})
+        this.messenger?.post({ type: 'skill:active', name: null })
+      } catch {
+        /* silencioso */
+      }
+    })
+
+    this.messenger.on('skill:list', async () => {
+      try {
+        const skills = await this.bridge.request<
+          import('../bridge/messenger-types.js').SkillInfo[]
+        >('skill.list', {})
+        this.messenger?.post({ type: 'skill:list:result', skills })
+      } catch {
+        this.messenger?.post({ type: 'skill:list:result', skills: [] })
+      }
+    })
+
+    this.messenger.on(
+      'files:list',
+      async (
+        msg: Extract<
+          import('../bridge/messenger-types.js').WebviewToExtension,
+          { type: 'files:list' }
+        >,
+      ) => {
+        try {
+          const result = await this.bridge.request<{ files: string[] }>(
+            'files.list',
+            { prefix: msg.prefix },
+            10000,
+          )
+          this.messenger?.post({
+            type: 'files:list:result',
+            files: result.files,
+            prefix: msg.prefix,
+          })
+        } catch {
+          this.messenger?.post({ type: 'files:list:result', files: [], prefix: msg.prefix })
+        }
+      },
+    )
+
+    this.messenger.on(
+      'skills:find',
+      async (
+        msg: Extract<
+          import('../bridge/messenger-types.js').WebviewToExtension,
+          { type: 'skills:find' }
+        >,
+      ) => {
+        try {
+          const result = await this.bridge.request<{
+            results: import('../bridge/messenger-types.js').SkillSearchResult[]
+          }>('plugin.search', { query: msg.query }, 30000)
+          this.messenger?.post({ type: 'skills:found', results: result.results, query: msg.query })
+        } catch {
+          this.messenger?.post({ type: 'skills:found', results: [], query: msg.query })
+        }
+      },
+    )
+
+    this.messenger.on(
+      'skills:install',
+      async (
+        msg: Extract<
+          import('../bridge/messenger-types.js').WebviewToExtension,
+          { type: 'skills:install' }
+        >,
+      ) => {
+        try {
+          const result = await this.bridge.request<{ success: boolean; error?: string }>(
+            'plugin.install',
+            { name: msg.name },
+            60000,
+          )
+          this.messenger?.post({
+            type: 'skills:installed',
+            name: msg.name,
+            success: result.success,
+            error: result.error,
+          })
+        } catch (err) {
+          this.messenger?.post({
+            type: 'skills:installed',
+            name: msg.name,
+            success: false,
+            error: err instanceof Error ? err.message : String(err),
           })
         }
       },

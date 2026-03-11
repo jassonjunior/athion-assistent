@@ -13,17 +13,23 @@
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { useCallback, useRef, useState } from 'react'
+import { createPluginInstaller } from '@athion/core'
 import type { AthionCore } from '@athion/core'
 import type { ChatMessage, SubAgentInfo, TokenInfo, ToolCallInfo } from '../types.js'
 
 interface UseChatReturn {
   messages: ChatMessage[]
   isStreaming: boolean
+  streamingContent: string
   currentTool: ToolCallInfo | null
   currentAgent: SubAgentInfo | null
   tokens: TokenInfo | null
   sendMessage: (content: string) => Promise<void>
+  abort: () => void
   clearMessages: () => void
+  addMessage: (content: string) => void
+  skillsMenuOpen: boolean
+  setSkillsMenuOpen: (open: boolean) => void
 }
 
 /** Cria mensagem de sistema local (não vai para o LLM). */
@@ -60,11 +66,18 @@ export function useChat(
   const [currentTool, setCurrentTool] = useState<ToolCallInfo | null>(null)
   const [currentAgent, setCurrentAgent] = useState<SubAgentInfo | null>(null)
   const [tokens, setTokens] = useState<TokenInfo | null>(null)
+  const [skillsMenuOpen, setSkillsMenuOpen] = useState(false)
+  const [streamingContent, setStreamingContent] = useState('')
   const streamingContentRef = useRef('')
+  const abortRef = useRef(false)
 
   const clearMessages = useCallback(() => {
     setMessages([])
     setTokens(null)
+  }, [])
+
+  const addMessage = useCallback((content: string) => {
+    setMessages((prev) => [...prev, systemMsg(content)])
   }, [])
 
   /** Processa slash commands. Retorna true se foi um comando. */
@@ -72,8 +85,11 @@ export function useChat(
     const trimmed = content.trim()
     if (!trimmed.startsWith('/')) return false
 
-    const [cmd, ...args] = trimmed.slice(1).split(/\s+/)
-    const arg = args.join(' ')
+    // Extrai o comando (tudo após "/" até o primeiro espaço) e o argumento restante
+    const withoutSlash = trimmed.slice(1)
+    const spaceIdx = withoutSlash.indexOf(' ')
+    const cmd = spaceIdx === -1 ? withoutSlash : withoutSlash.slice(0, spaceIdx)
+    const arg = spaceIdx === -1 ? '' : withoutSlash.slice(spaceIdx + 1).trim()
 
     switch (cmd) {
       case 'clear': {
@@ -88,10 +104,14 @@ export function useChat(
               '- `/clear` — Limpar mensagens\n' +
               '- `/help` — Mostrar esta ajuda\n' +
               '- `/agents` — Listar agentes disponíveis\n' +
-              '- `/skills` — Listar skills disponíveis\n' +
+              '- `/skills` — Gerenciar skills instaladas\n' +
+              '- `/find-skills [query]` — Buscar novas skills no registry\n' +
+              '- `/install-skill <nome>` — Instalar uma skill\n' +
+              '- `/use-skill <nome>` — Ativar uma skill explicitamente\n' +
+              '- `/clear-skill` — Desativar skill ativa\n' +
               '- `/model` — Mostrar modelo atual\n' +
-              '- `/codebase index` — Indexar projeto\n' +
-              '- `/codebase <query>` — Buscar no código\n\n' +
+              '- `/codebase-index` — Indexar projeto\n' +
+              '- `/codebase-search <query>` — Buscar no código\n\n' +
               '**Menções:**\n' +
               '- `@arquivo.ts` — Inclui conteúdo do arquivo no prompt',
           ),
@@ -105,9 +125,7 @@ export function useChat(
         return true
       }
       case 'skills': {
-        const skills = core.skills.list()
-        const list = skills.map((s) => `- **${s.name}**: ${s.description}`).join('\n')
-        setMessages((prev) => [...prev, systemMsg(`**Skills disponíveis:**\n${list}`)])
+        setSkillsMenuOpen(true)
         return true
       }
       case 'model': {
@@ -119,61 +137,191 @@ export function useChat(
         ])
         return true
       }
-      case 'codebase': {
+      case 'codebase-index': {
         if (!core.indexer) {
           setMessages((prev) => [
             ...prev,
-            systemMsg('Indexador não disponível. Inicie com `workspacePath` configurado.'),
+            systemMsg('Indexador não disponível. Verifique o workspacePath.'),
           ])
           return true
         }
-        if (arg === 'index' || arg === '') {
-          setMessages((prev) => [...prev, systemMsg('Indexando codebase...')])
-          core.indexer
-            .indexWorkspace()
-            .then((stats: { totalFiles: number; totalChunks: number }) => {
+        setMessages((prev) => [...prev, systemMsg('Indexando codebase...')])
+        core.indexer
+          .indexWorkspace()
+          .then((stats: { totalFiles: number; totalChunks: number }) => {
+            setMessages((prev) => [
+              ...prev,
+              systemMsg(`Indexado: ${stats.totalFiles} arquivos, ${stats.totalChunks} chunks.`),
+            ])
+          })
+          .catch((err: Error) => {
+            setMessages((prev) => [...prev, systemMsg(`Erro: ${err.message}`)])
+          })
+        return true
+      }
+      case 'use-skill': {
+        if (!arg) {
+          const skillList = core.skills
+            .list()
+            .map((s) => `- \`${s.name}\` — ${s.description}`)
+            .join('\n')
+          setMessages((prev) => [
+            ...prev,
+            systemMsg(`**Skills disponíveis:**\n${skillList}\n\nUso: \`/use-skill <nome>\``),
+          ])
+          return true
+        }
+        const skill = core.skills.get(arg)
+        if (!skill) {
+          setMessages((prev) => [
+            ...prev,
+            systemMsg(
+              `Skill \`${arg}\` não encontrada. Use \`/use-skill\` para ver as disponíveis.`,
+            ),
+          ])
+          return true
+        }
+        core.skills.setActive(arg)
+        setMessages((prev) => [
+          ...prev,
+          systemMsg(
+            `**Skill \`${skill.name}\` ativada!** ●\n\n*${skill.description}*\n\nAs instruções desta skill serão aplicadas nas próximas mensagens. Use \`/clear-skill\` para desativar.`,
+          ),
+        ])
+        return true
+      }
+      case 'clear-skill': {
+        const active = core.skills.getActive()
+        core.skills.clearActive()
+        setMessages((prev) => [
+          ...prev,
+          systemMsg(
+            active
+              ? `Skill \`${active.name}\` desativada. Voltando ao modo automático.`
+              : 'Nenhuma skill ativa.',
+          ),
+        ])
+        return true
+      }
+      case 'find-skills': {
+        setMessages((prev) => [...prev, systemMsg('Buscando skills disponíveis...')])
+        const installer = createPluginInstaller()
+        installer
+          .search(arg || undefined)
+          .then((results) => {
+            if (results.length === 0) {
               setMessages((prev) => [
                 ...prev,
-                systemMsg(`Indexado: ${stats.totalFiles} arquivos, ${stats.totalChunks} chunks.`),
+                systemMsg(
+                  arg
+                    ? `Nenhuma skill encontrada para "${arg}".`
+                    : 'Nenhuma skill disponível no registry ainda.',
+                ),
               ])
-            })
-            .catch((err: Error) => {
-              setMessages((prev) => [...prev, systemMsg(`Erro: ${err.message}`)])
-            })
-        } else {
-          core.indexer
-            .search(arg)
-            .then(
-              (
-                results: Array<{ chunk: { filePath: string; startLine: number }; score: number }>,
-              ) => {
-                if (results.length === 0) {
-                  setMessages((prev) => [...prev, systemMsg(`Nenhum resultado para "${arg}".`)])
-                } else {
-                  const list = results
-                    .slice(0, 10)
-                    .map(
-                      (r, i) =>
-                        `${i + 1}. \`${r.chunk.filePath}:${r.chunk.startLine}\` [${Math.round(r.score * 100)}%]`,
-                    )
-                    .join('\n')
-                  setMessages((prev) => [
-                    ...prev,
-                    systemMsg(`**Resultados para "${arg}":**\n${list}`),
-                  ])
-                }
-              },
-            )
-            .catch((err: Error) => {
-              setMessages((prev) => [...prev, systemMsg(`Erro: ${err.message}`)])
-            })
+              return
+            }
+            const list = results
+              .map(
+                (r) =>
+                  `- **${r.pluginName}** \`v${r.version}\`${r.author ? ` — ${r.author}` : ''}\n  ${r.description}`,
+              )
+              .join('\n')
+            setMessages((prev) => [
+              ...prev,
+              systemMsg(
+                `**Skills disponíveis${arg ? ` para "${arg}"` : ''}:**\n\n${list}\n\n` +
+                  `Para instalar: \`/install-skill <nome>\``,
+              ),
+            ])
+          })
+          .catch((err: Error) => {
+            setMessages((prev) => [...prev, systemMsg(`Erro ao buscar skills: ${err.message}`)])
+          })
+        return true
+      }
+      case 'install-skill': {
+        if (!arg) {
+          setMessages((prev) => [...prev, systemMsg('Uso: `/install-skill <nome>`')])
+          return true
         }
+        setMessages((prev) => [...prev, systemMsg(`Instalando skill \`${arg}\`...`)])
+        const installer = createPluginInstaller()
+        installer
+          .install(arg)
+          .then(async (result) => {
+            if (!result.success) {
+              setMessages((prev) => [
+                ...prev,
+                systemMsg(`Erro ao instalar: ${result.error ?? 'desconhecido'}`),
+              ])
+              return
+            }
+            if (result.installedPath) {
+              await core.skills.loadFromDirectory(result.installedPath)
+            }
+            setMessages((prev) => [
+              ...prev,
+              systemMsg(
+                `Skill \`${result.pluginName}\` instalada com sucesso! Use \`/skills\` para ver.`,
+              ),
+            ])
+          })
+          .catch((err: Error) => {
+            setMessages((prev) => [...prev, systemMsg(`Erro: ${err.message}`)])
+          })
+        return true
+      }
+      case 'codebase-search': {
+        if (!core.indexer) {
+          setMessages((prev) => [
+            ...prev,
+            systemMsg('Indexador não disponível. Execute `/codebase-index` primeiro.'),
+          ])
+          return true
+        }
+        if (!arg) {
+          setMessages((prev) => [...prev, systemMsg('Uso: `/codebase-search <query>`')])
+          return true
+        }
+        core.indexer
+          .search(arg)
+          .then(
+            (results: Array<{ chunk: { filePath: string; startLine: number }; score: number }>) => {
+              if (results.length === 0) {
+                setMessages((prev) => [
+                  ...prev,
+                  systemMsg(
+                    `Nenhum resultado para "${arg}". Execute \`/codebase-index\` primeiro.`,
+                  ),
+                ])
+              } else {
+                const list = results
+                  .slice(0, 10)
+                  .map(
+                    (r, i) =>
+                      `${i + 1}. \`${r.chunk.filePath}:${r.chunk.startLine}\` [${Math.round(r.score * 100)}%]`,
+                  )
+                  .join('\n')
+                setMessages((prev) => [
+                  ...prev,
+                  systemMsg(`**Resultados para "${arg}":**\n${list}`),
+                ])
+              }
+            },
+          )
+          .catch((err: Error) => {
+            setMessages((prev) => [...prev, systemMsg(`Erro: ${err.message}`)])
+          })
         return true
       }
       default:
         return false
     }
   }
+
+  const abort = useCallback(() => {
+    abortRef.current = true
+  }, [])
 
   const sendMessage = useCallback(
     async (content: string) => {
@@ -192,6 +340,8 @@ export function useChat(
       setMessages((prev) => [...prev, userMsg])
       setIsStreaming(true)
       streamingContentRef.current = ''
+      setStreamingContent('')
+      abortRef.current = false
 
       const assistantId = crypto.randomUUID()
       const toolCalls: ToolCallInfo[] = []
@@ -203,10 +353,11 @@ export function useChat(
         })
 
         for await (const event of stream) {
+          if (abortRef.current) break
           switch (event.type) {
             case 'content':
               streamingContentRef.current += event.content
-              updateAssistantMessage(assistantId, streamingContentRef.current, toolCalls)
+              setStreamingContent(streamingContentRef.current)
               break
 
             case 'tool_call':
@@ -235,8 +386,13 @@ export function useChat(
               break
           }
         }
+        // Adiciona a mensagem completa ao histórico após o loop
+        if (streamingContentRef.current) {
+          updateAssistantMessage(assistantId, streamingContentRef.current, toolCalls)
+        }
       } finally {
         setIsStreaming(false)
+        setStreamingContent('')
         setCurrentTool(null)
         setCurrentAgent(null)
       }
@@ -291,5 +447,18 @@ export function useChat(
     setCurrentTool(null)
   }
 
-  return { messages, isStreaming, currentTool, currentAgent, tokens, sendMessage, clearMessages }
+  return {
+    messages,
+    isStreaming,
+    streamingContent,
+    currentTool,
+    currentAgent,
+    tokens,
+    sendMessage,
+    abort,
+    clearMessages,
+    addMessage,
+    skillsMenuOpen,
+    setSkillsMenuOpen,
+  }
 }

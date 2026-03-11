@@ -6,6 +6,7 @@
  * e envia cada OrchestratorEvent como notificação JSON-RPC ao client.
  */
 
+import { createPluginInstaller } from '@athion/core'
 import type { AthionCore } from '@athion/core'
 
 type NotifyFn = (method: string, params?: unknown) => void
@@ -15,6 +16,8 @@ export type RpcHandlers = Record<string, Handler>
 
 /** Active abort controllers for chat sessions */
 const activeChats = new Map<string, AbortController>()
+
+const pluginInstaller = createPluginInstaller()
 
 export function createHandlers(core: AthionCore, notify: NotifyFn): RpcHandlers {
   return {
@@ -36,7 +39,56 @@ export function createHandlers(core: AthionCore, notify: NotifyFn): RpcHandlers 
     'codebase.search': (params: unknown) => handleCodebaseSearch(core, params),
     'codebase.status': async () => handleCodebaseStatus(core),
     'codebase.clear': async () => handleCodebaseClear(core),
+    // Plugin/Skills discovery
+    'plugin.search': (params: unknown) => handlePluginSearch(params),
+    'plugin.install': (params: unknown) => handlePluginInstall(core, params),
+    // Skill activation
+    'skill.list': async () =>
+      core.skills
+        .list()
+        .map((s) => ({ name: s.name, description: s.description, triggers: s.triggers })),
+    'skill.setActive': (params: unknown) => {
+      const { name } = params as { name: string }
+      core.skills.setActive(name)
+      return Promise.resolve({ ok: true, name })
+    },
+    'skill.clearActive': async () => {
+      core.skills.clearActive()
+      return { ok: true }
+    },
+    'skill.getActive': async () => {
+      const s = core.skills.getActive()
+      return s ? { name: s.name, description: s.description } : null
+    },
+    // File prefix search (for autocomplete)
+    'files.list': async (params: unknown) => {
+      const { prefix = '', cwd } = params as { prefix?: string; cwd?: string }
+      const files = await listFilesByPrefix(prefix, cwd ?? process.cwd())
+      return { files }
+    },
   }
+}
+
+// ─── File Search ─────────────────────────────────────────────────────
+
+const IGNORED_DIRS = new Set(['node_modules', '.git', 'dist', '.next', 'build', 'coverage'])
+
+async function listFilesByPrefix(prefix: string, cwd: string, limit = 10): Promise<string[]> {
+  const results: string[] = []
+  try {
+    // Pattern: if prefix contains '/', treat as path — else search filename anywhere
+    const pattern = prefix.includes('/') ? `${prefix}*` : `**/*${prefix}*`
+    const glob = new Bun.Glob(pattern)
+    for await (const file of glob.scan({ cwd, onlyFiles: true })) {
+      const parts = file.split('/')
+      if (parts.some((p) => IGNORED_DIRS.has(p))) continue
+      results.push(file)
+      if (results.length >= limit) break
+    }
+  } catch {
+    // ignore glob errors (invalid pattern etc)
+  }
+  return results
 }
 
 // ─── Chat Handlers ──────────────────────────────────────────────────
@@ -264,6 +316,24 @@ function handleCodebaseClear(core: AthionCore): unknown {
   }
   core.indexer.clear()
   return { ok: true }
+}
+
+// ─── Plugin/Skills Handlers ─────────────────────────────────────────
+
+async function handlePluginSearch(params: unknown): Promise<unknown> {
+  const { query } = (params as { query?: string }) ?? {}
+  const results = await pluginInstaller.search(query)
+  return { results }
+}
+
+async function handlePluginInstall(core: AthionCore, params: unknown): Promise<unknown> {
+  const { name } = params as { name: string }
+  const result = await pluginInstaller.install(name)
+  if (result.success && result.installedPath) {
+    // Tenta carregar a skill do pacote instalado
+    await core.skills.loadFromDirectory(result.installedPath)
+  }
+  return result
 }
 
 // ─── Completion Handler ─────────────────────────────────────────────

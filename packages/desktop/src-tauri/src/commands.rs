@@ -108,3 +108,54 @@ pub async fn sidecar_status(
     let running = state.is_running().await;
     Ok(json!({ "running": running }))
 }
+
+#[tauri::command]
+pub async fn skill_set_active(
+    state: State<'_, SidecarState>,
+    name: String,
+) -> Result<Value, String> {
+    state
+        .request("skill.setActive", Some(json!({ "name": name })))
+        .await
+}
+
+#[tauri::command]
+pub async fn skill_clear_active(state: State<'_, SidecarState>) -> Result<Value, String> {
+    state.request("skill.clearActive", None).await
+}
+
+#[tauri::command]
+pub async fn skill_list(state: State<'_, SidecarState>) -> Result<Value, String> {
+    state.request("skill.list", None).await
+}
+
+#[tauri::command]
+pub async fn plugin_search(
+    state: State<'_, SidecarState>,
+    query: Option<String>,
+) -> Result<Value, String> {
+    state
+        .request("plugin.search", Some(json!({ "query": query })))
+        .await
+}
+
+#[tauri::command]
+pub async fn plugin_install(
+    state: State<'_, SidecarState>,
+    name: String,
+) -> Result<Value, String> {
+    state
+        .request("plugin.install", Some(json!({ "name": name })))
+        .await
+}
+
+#[tauri::command]
+pub async fn files_list(
+    state: State<'_, SidecarState>,
+    prefix: String,
+    cwd: Option<String>,
+) -> Result<Value, String> {
+    state
+        .request("files.list", Some(json!({ "prefix": prefix, "cwd": cwd })))
+        .await
+}

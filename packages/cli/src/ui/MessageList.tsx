@@ -37,7 +37,7 @@ export function MessageList({
       {isStreaming && (
         <Box flexDirection="column" marginY={1}>
           <Text color={theme.secondary} bold>
-            Assistant
+            ◆ Athion
           </Text>
           <StreamingMessage content={streamingContent} theme={theme} />
           {currentTool && <ToolCallDisplay toolCall={currentTool} theme={theme} />}
@@ -49,15 +49,23 @@ export function MessageList({
 }
 
 function MessageBubble({ message, theme }: { message: ChatMessage; theme: Theme }) {
-  const roleColor = message.role === 'user' ? theme.primary : theme.secondary
-  const roleLabel = message.role === 'user' ? 'You' : 'Assistant'
+  const isUser = message.role === 'user'
+  const roleColor = isUser ? theme.primary : theme.secondary
+  const roleIcon = isUser ? '◇' : '◆'
+  const roleLabel = isUser ? 'Você' : 'Athion'
 
   return (
     <Box flexDirection="column" marginY={1}>
-      <Text color={roleColor} bold>
-        {roleLabel}
-      </Text>
-      <Box marginLeft={message.role === 'user' ? 0 : 0}>
+      <Box>
+        <Text color={roleColor} bold>
+          {roleIcon} {roleLabel}
+        </Text>
+        <Text color={theme.muted} dimColor>
+          {' '}
+          {message.timestamp.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+        </Text>
+      </Box>
+      <Box marginLeft={2} flexDirection="column">
         <Markdown content={message.content} theme={theme} />
       </Box>
       {message.toolCalls?.map((tc) => (

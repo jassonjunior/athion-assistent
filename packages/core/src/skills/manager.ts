@@ -16,6 +16,7 @@ import type { SkillDefinition, SkillManager } from './types'
  */
 export function createSkillManager(): SkillManager {
   const skills = new Map<string, SkillDefinition>()
+  let activeSkillName: string | undefined
 
   /**
    * Carrega skills de um diretório (busca arquivos .md recursivamente).
@@ -101,5 +102,27 @@ export function createSkillManager(): SkillManager {
     return Array.from(skills.values())
   }
 
-  return { loadFromDirectory, register, unregister, get, findByTrigger, list }
+  function setActive(name: string): void {
+    activeSkillName = name
+  }
+
+  function getActive(): SkillDefinition | undefined {
+    return activeSkillName ? skills.get(activeSkillName) : undefined
+  }
+
+  function clearActive(): void {
+    activeSkillName = undefined
+  }
+
+  return {
+    loadFromDirectory,
+    register,
+    unregister,
+    get,
+    findByTrigger,
+    list,
+    setActive,
+    getActive,
+    clearActive,
+  }
 }

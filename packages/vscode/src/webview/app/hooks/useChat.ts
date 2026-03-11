@@ -37,6 +37,7 @@ export function useChat() {
   const [isStreaming, setIsStreaming] = useState(false)
   const [session, setSession] = useState<SessionInfo | null>(null)
   const [status, setStatus] = useState<CoreStatus>('starting')
+  const [activeSkill, setActiveSkill] = useState<string | null>(null)
   const refs: ChatRefs = {
     content: useRef(''),
     toolCalls: useRef<ToolCallInfo[]>([]),
@@ -99,6 +100,54 @@ export function useChat() {
       ])
     })
 
+    on('skills:found', (d: unknown) => {
+      const data = d as {
+        results: Array<{
+          pluginName: string
+          description: string
+          version: string
+          author?: string
+        }>
+        query?: string
+      }
+      let content: string
+      if (data.results.length === 0) {
+        content = data.query
+          ? `Nenhuma skill encontrada para "${data.query}".`
+          : 'Nenhuma skill disponível no registry ainda.'
+      } else {
+        const list = data.results
+          .map(
+            (r) =>
+              `- **${r.pluginName}** \`v${r.version}\`${r.author ? ` — ${r.author}` : ''}\n  ${r.description}`,
+          )
+          .join('\n')
+        content =
+          `**Skills disponíveis${data.query ? ` para "${data.query}"` : ''}:**\n\n${list}\n\n` +
+          `Para instalar: \`/install-skill <nome>\``
+      }
+      setMessages((prev) => [
+        ...prev,
+        { id: `skills-found-${Date.now()}`, role: 'assistant' as const, content },
+      ])
+    })
+
+    on('skill:active', (d: unknown) => {
+      const data = d as { name: string | null }
+      setActiveSkill(data.name)
+    })
+
+    on('skills:installed', (d: unknown) => {
+      const data = d as { name: string; success: boolean; error?: string }
+      const content = data.success
+        ? `Skill \`${data.name}\` instalada com sucesso! Use \`/skills\` para ver.`
+        : `Erro ao instalar skill \`${data.name}\`: ${data.error ?? 'desconhecido'}`
+      setMessages((prev) => [
+        ...prev,
+        { id: `skills-inst-${Date.now()}`, role: 'assistant' as const, content },
+      ])
+    })
+
     // mention:results é consumido diretamente pelo useAtMention via useMessenger
     // Registrado aqui apenas para evitar warnings de mensagem não tratada
 
@@ -108,6 +157,78 @@ export function useChat() {
   const sendMessage = useCallback(
     (content: string) => {
       if (!content.trim() || isStreaming) return
+
+      // /use-skill <nome>
+      const useSkillMatch = content.trim().match(/^\/use-skill\s+(\S+)$/)
+      if (useSkillMatch) {
+        const name = useSkillMatch[1] ?? ''
+        setMessages((prev) => [
+          ...prev,
+          { id: `msg-${++refs.messageId.current}`, role: 'user' as const, content },
+        ])
+        post({ type: 'skill:setActive', name })
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `sys-${Date.now()}`,
+            role: 'assistant' as const,
+            content: `Skill \`${name}\` ativada! ● As instruções desta skill serão aplicadas nas próximas mensagens. Use \`/clear-skill\` para desativar.`,
+          },
+        ])
+        return
+      }
+
+      // /clear-skill
+      if (content.trim() === '/clear-skill') {
+        setMessages((prev) => [
+          ...prev,
+          { id: `msg-${++refs.messageId.current}`, role: 'user' as const, content },
+        ])
+        post({ type: 'skill:clearActive' })
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `sys-${Date.now()}`,
+            role: 'assistant' as const,
+            content: 'Skill desativada. Voltando ao modo automático.',
+          },
+        ])
+        return
+      }
+
+      // Slash command: /find-skills [query]
+      const findSkillsMatch = content.trim().match(/^\/find-skills\s*(.*)$/)
+      if (findSkillsMatch) {
+        const query = (findSkillsMatch[1] ?? '').trim()
+        setMessages((prev) => [
+          ...prev,
+          { id: `msg-${++refs.messageId.current}`, role: 'user' as const, content },
+          {
+            id: `msg-sys-${Date.now()}`,
+            role: 'assistant' as const,
+            content: 'Buscando skills disponíveis...',
+          },
+        ])
+        post({ type: 'skills:find', query: query || undefined })
+        return
+      }
+
+      // Slash command: /install-skill <nome>
+      const installSkillMatch = content.trim().match(/^\/install-skill\s+(\S+)$/)
+      if (installSkillMatch) {
+        const name = installSkillMatch[1] ?? ''
+        setMessages((prev) => [
+          ...prev,
+          { id: `msg-${++refs.messageId.current}`, role: 'user' as const, content },
+          {
+            id: `msg-sys-${Date.now()}`,
+            role: 'assistant' as const,
+            content: `Instalando skill \`${name}\`...`,
+          },
+        ])
+        post({ type: 'skills:install', name })
+        return
+      }
 
       // Slash command: /codebase [query] ou /codebase index
       const codebaseMatch = content.trim().match(/^\/codebase\s*(.*)$/)
@@ -149,5 +270,5 @@ export function useChat() {
     post({ type: 'session:create' })
   }, [post, refs])
 
-  return { messages, isStreaming, session, status, sendMessage, abort, newSession }
+  return { messages, isStreaming, session, status, activeSkill, sendMessage, abort, newSession }
 }
