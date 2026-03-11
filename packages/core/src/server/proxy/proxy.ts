@@ -22,6 +22,8 @@ export interface ProxyServer {
   stop(): void
   readonly port: number
   readonly url: string
+  /** true se este processo é dono do server (false = reusando proxy externo) */
+  readonly isOwner: boolean
 }
 
 /** Dependencias internas do proxy. */
@@ -34,6 +36,39 @@ interface ProxyDeps {
   contextLimit: number
   _lastMessageCount: number
   _requestCounter: number
+}
+
+/** Verifica se o proxy já está rodando e saudável na porta. */
+export async function isProxyHealthy(port: number): Promise<boolean> {
+  try {
+    const res = await fetch(`http://localhost:${port}/v1/models`, {
+      signal: AbortSignal.timeout(2000),
+    })
+    return res.ok || res.status === 502 // 502 = proxy ok, backend down — proxy está vivo
+  } catch {
+    return false
+  }
+}
+
+/** Cria um proxy que reutiliza um servidor existente (sem ownership). */
+export function createProxyReuse(port: number): ProxyServer {
+  return {
+    start() {
+      /* noop — proxy externo já está rodando */
+    },
+    stop() {
+      /* noop — não somos donos do server */
+    },
+    get port() {
+      return port
+    },
+    get url() {
+      return `http://localhost:${port}`
+    },
+    get isOwner() {
+      return false
+    },
+  }
 }
 
 /** Cria e retorna o proxy server. */
@@ -58,28 +93,20 @@ export function createProxy(config: ProxyConfig): ProxyServer {
 
   return {
     start() {
-      try {
-        server = Bun.serve({
-          port: config.proxyPort,
-          reusePort: true,
-          idleTimeout: 255,
-          fetch: (req) => handleRequest(req, deps),
-        })
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        if (msg.includes('EADDRINUSE') || msg.includes('in use')) {
-          logger.warn(`Port ${config.proxyPort} in use, killing previous process...`)
-          Bun.spawnSync(['kill', '-9', ...findPidsOnPort(config.proxyPort)])
-          server = Bun.serve({
-            port: config.proxyPort,
-            reusePort: true,
-            idleTimeout: 255,
-            fetch: (req) => handleRequest(req, deps),
-          })
-        } else {
-          throw err
-        }
+      // Limpa processos zumbis na porta antes de iniciar
+      const existingPids = findPidsOnPort(config.proxyPort)
+      if (existingPids.length > 0) {
+        logger.warn(
+          `Killing ${existingPids.length} existing process(es) on port ${config.proxyPort}`,
+        )
+        Bun.spawnSync(['kill', '-9', ...existingPids])
       }
+
+      server = Bun.serve({
+        port: config.proxyPort,
+        idleTimeout: 255,
+        fetch: (req) => handleRequest(req, deps),
+      })
       logger.info(`Proxy listening on http://localhost:${config.proxyPort}`, {
         backend: deps.backend,
         contextWindow: config.contextWindow,
@@ -94,6 +121,9 @@ export function createProxy(config: ProxyConfig): ProxyServer {
     },
     get url() {
       return `http://localhost:${config.proxyPort}`
+    },
+    get isOwner() {
+      return true
     },
   }
 }
@@ -163,36 +193,42 @@ async function handleChatCompletions(req: Request, deps: ProxyDeps): Promise<Res
 async function handleStreaming(body: OpenAIChatRequest, deps: ProxyDeps): Promise<Response> {
   const target = `${deps.backend}/v1/chat/completions`
 
-  const res = await fetch(target, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-
-  if (!res.ok) {
-    const errText = await res.text()
-    deps.logger.error('Backend streaming error', {
-      status: res.status,
-      body: errText.slice(0, 200),
+  try {
+    const res = await fetch(target, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
     })
-    return new Response(errText, { status: res.status })
+
+    if (!res.ok) {
+      const errText = await res.text()
+      deps.logger.error('Backend streaming error', {
+        status: res.status,
+        body: errText.slice(0, 200),
+      })
+      return new Response(errText, { status: res.status })
+    }
+
+    const stream = createStreamHandler(res, {
+      config: deps.config,
+      logger: deps.logger,
+      contextWindow: deps.config.contextWindow,
+      messageCount: deps._lastMessageCount,
+      requestNumber: deps._requestCounter,
+    })
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      },
+    })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    deps.logger.error('Backend streaming fetch failed', { error: msg, target })
+    return Response.json({ error: { message: msg, type: 'proxy_error' } }, { status: 502 })
   }
-
-  const stream = createStreamHandler(res, {
-    config: deps.config,
-    logger: deps.logger,
-    contextWindow: deps.config.contextWindow,
-    messageCount: deps._lastMessageCount,
-    requestNumber: deps._requestCounter,
-  })
-
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-    },
-  })
 }
 
 /** Trata request non-streaming. */
@@ -203,36 +239,42 @@ async function handleNonStreaming(
 ): Promise<Response> {
   const target = `${deps.backend}/v1/chat/completions`
 
-  const res = await fetch(target, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
+  try {
+    const res = await fetch(target, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
 
-  if (!res.ok) {
-    const errText = await res.text()
-    deps.logger.error('Backend error', { status: res.status, body: errText.slice(0, 200) })
-    return new Response(errText, { status: res.status })
-  }
-
-  let response = (await res.json()) as OpenAIChatResponse
-
-  // Post-middlewares
-  if (deps.config.thinkStripperEnabled) {
-    response = thinkStripper(response)
-  }
-  if (deps.config.toolSanitizerEnabled) {
-    response = toolSanitizer(response)
-  }
-  if (deps.config.safetyGuardEnabled) {
-    const safetyResult = safetyGuard(response)
-    if (safetyResult.blocked) {
-      return Response.json(safetyResult.response)
+    if (!res.ok) {
+      const errText = await res.text()
+      deps.logger.error('Backend error', { status: res.status, body: errText.slice(0, 200) })
+      return new Response(errText, { status: res.status })
     }
-  }
 
-  logResponse(response, startTime, deps)
-  return Response.json(response)
+    let response = (await res.json()) as OpenAIChatResponse
+
+    // Post-middlewares
+    if (deps.config.thinkStripperEnabled) {
+      response = thinkStripper(response)
+    }
+    if (deps.config.toolSanitizerEnabled) {
+      response = toolSanitizer(response)
+    }
+    if (deps.config.safetyGuardEnabled) {
+      const safetyResult = safetyGuard(response)
+      if (safetyResult.blocked) {
+        return Response.json(safetyResult.response)
+      }
+    }
+
+    logResponse(response, startTime, deps)
+    return Response.json(response)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    deps.logger.error('Backend non-streaming fetch failed', { error: msg, target })
+    return Response.json({ error: { message: msg, type: 'proxy_error' } }, { status: 502 })
+  }
 }
 
 /** Loga dados do request recebido. */

@@ -62,4 +62,21 @@ export interface SkillManager {
    * @returns Array com todas as definições de skills
    */
   list(): SkillDefinition[]
+
+  /**
+   * Ativa uma skill explicitamente para uso na próxima interação.
+   * A skill ativa é injetada com destaque no system prompt.
+   * @param name - Nome da skill a ativar
+   */
+  setActive(name: string): void
+
+  /**
+   * Retorna a skill ativa no momento, ou undefined se nenhuma.
+   */
+  getActive(): SkillDefinition | undefined
+
+  /**
+   * Remove a skill ativa (volta ao modo automático por triggers).
+   */
+  clearActive(): void
 }

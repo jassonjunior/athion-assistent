@@ -39,9 +39,15 @@ export function createPromptBuilder(skills: SkillManager): PromptBuilder {
       sections.push(buildAgentsSection(agents))
     }
 
-    const activeSkills = skills.list()
-    if (activeSkills.length > 0) {
-      sections.push(buildSkillsSection(activeSkills))
+    // Skill explicitamente ativa pelo usuário — injeta com destaque ANTES das demais
+    const activeSkill = skills.getActive()
+    if (activeSkill) {
+      sections.push(buildActiveSkillSection(activeSkill))
+    }
+
+    const allSkills = skills.list().filter((s) => s.name !== activeSkill?.name)
+    if (allSkills.length > 0) {
+      sections.push(buildSkillsSection(allSkills))
     }
 
     sections.push(buildSessionContext(session))
@@ -108,13 +114,30 @@ function buildAgentsSection(agents: AgentDefinition[]): string {
 }
 
 /**
+ * Skill explicitamente ativada pelo usuário — injetada com destaque máximo.
+ */
+function buildActiveSkillSection(skill: {
+  name: string
+  description: string
+  instructions: string
+}): string {
+  return `# ACTIVE SKILL: ${skill.name}
+The user has explicitly activated the "${skill.name}" skill for this interaction.
+You MUST follow these instructions precisely:
+
+${skill.instructions}
+
+This is your primary directive for this conversation. Apply it to every response.`
+}
+
+/**
  * Skills ativas com suas instrucoes.
  * @param activeSkills - Skills ativas
  * @returns Skills ativas com suas instrucoes
  */
 function buildSkillsSection(activeSkills: Array<{ name: string; instructions: string }>): string {
   const skillBlocks = activeSkills.map((s) => `## Skill: ${s.name}\n${s.instructions}`).join('\n\n')
-  return `# Active Skills\n${skillBlocks}`
+  return `# Available Skills\n${skillBlocks}`
 }
 
 /**
