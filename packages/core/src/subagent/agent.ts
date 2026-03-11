@@ -303,6 +303,15 @@ function buildAgentPrompt(
 
   sections.push(`You are the "${config.name}" agent. ${config.description}`)
 
+  if (config.tools.includes('search_codebase')) {
+    sections.push(`# Search Protocol (MANDATORY)
+You have access to two search tools. Always use them in this order:
+1. **search_codebase** — semantic search over the indexed codebase. Use this FIRST for any code-related question.
+2. **search_files** — grep-based text search. Use this ONLY if search_codebase returns 0 results, or if you need to find an exact string/regex match that semantic search missed.
+
+Never skip search_codebase. Never use search_files as the first tool when searching for code.`)
+  }
+
   if (task.continuationIndex > 0 && task.accumulatedResults.length > 0) {
     const compressed = compressAccumulatedResults(task.accumulatedResults, MAX_ACCUMULATED_CHARS)
     sections.push(`# CONTINUATION (run ${task.continuationIndex + 1})
