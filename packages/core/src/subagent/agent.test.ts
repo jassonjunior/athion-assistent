@@ -187,6 +187,44 @@ describe('runSubAgent — error handling', () => {
     expect(callArgs?.model).toBe('test-model')
   })
 
+  it('injeta Search Protocol quando search_codebase está nos tools', async () => {
+    const deps = makeDeps([
+      { type: 'content', content: 'Done' },
+      { type: 'finish', usage: { promptTokens: 5, completionTokens: 3, totalTokens: 8 } },
+    ])
+
+    const config = makeConfig({ tools: ['search_codebase', 'search_files', 'read_file'] })
+    for await (const ev of runSubAgent(config, makeTask(), deps)) {
+      void ev
+    }
+
+    const callArgs = (deps.provider.streamChat as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]
+    const systemMsg = (callArgs?.messages as Array<{ role: string; content: string }>).find(
+      (m) => m.role === 'system',
+    )
+    expect(systemMsg?.content).toContain('Search Protocol')
+    expect(systemMsg?.content).toContain('search_codebase')
+    expect(systemMsg?.content).toContain('FIRST')
+  })
+
+  it('não injeta Search Protocol quando search_codebase não está nos tools', async () => {
+    const deps = makeDeps([
+      { type: 'content', content: 'Done' },
+      { type: 'finish', usage: { promptTokens: 5, completionTokens: 3, totalTokens: 8 } },
+    ])
+
+    const config = makeConfig({ tools: ['read_file', 'write_file'] })
+    for await (const ev of runSubAgent(config, makeTask(), deps)) {
+      void ev
+    }
+
+    const callArgs = (deps.provider.streamChat as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]
+    const systemMsg = (callArgs?.messages as Array<{ role: string; content: string }>).find(
+      (m) => m.role === 'system',
+    )
+    expect(systemMsg?.content).not.toContain('Search Protocol')
+  })
+
   it('respeita maxTurns para prevenir loops infinitos', async () => {
     // Provider sempre retorna tool_call sem finish — força uso de maxTurns
     let callCount = 0
