@@ -29,8 +29,28 @@ const SLASH_COMMANDS: Suggestion[] = [
   { label: '/help', description: 'Mostrar todos os comandos', insert: '/help' },
   { label: '/clear', description: 'Limpar histórico de mensagens', insert: '/clear' },
   { label: '/agents', description: 'Listar agentes disponíveis', insert: '/agents' },
-  { label: '/skills', description: 'Listar skills disponíveis', insert: '/skills' },
+  { label: '/skills', description: 'Gerenciar skills instaladas', insert: '/skills' },
+  {
+    label: '/find-skills',
+    description: 'Buscar e instalar novas skills: /find-skills [query]',
+    insert: '/find-skills ',
+  },
   { label: '/model', description: 'Mostrar modelo e provider', insert: '/model' },
+  {
+    label: '/use-skill',
+    description: 'Ativar uma skill explicitamente: /use-skill <nome>',
+    insert: '/use-skill ',
+  },
+  {
+    label: '/clear-skill',
+    description: 'Desativar a skill ativa',
+    insert: '/clear-skill',
+  },
+  {
+    label: '/install-skill',
+    description: 'Instalar uma skill: /install-skill <nome>',
+    insert: '/install-skill ',
+  },
   {
     label: '/codebase-index',
     description: 'Indexar projeto para busca',
@@ -110,17 +130,6 @@ export function UserInput({ onSubmit, isDisabled, theme }: UserInputProps) {
   }
 
   function handleSubmit(text: string) {
-    const sug = suggestionsRef.current
-    // Se há sugestões, Enter insere a selecionada (não envia ao LLM)
-    if (sug.length > 0) {
-      const s = sug[selectedIdxRef.current]
-      if (s) {
-        setValue(s.insert)
-        setInputKey((k) => k + 1)
-        setSelectedIdx(0)
-      }
-      return
-    }
     const trimmed = text.trim()
     if (!trimmed || isDisabled) return
     setValue('')

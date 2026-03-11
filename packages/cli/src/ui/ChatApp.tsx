@@ -36,6 +36,9 @@ export function ChatApp({ core, session: initialSession }: ChatAppProps) {
   const permission = usePermission(core)
   const chat = useChat(core, session.id, permission.requestPermission)
   const [skills, setSkills] = useState<SkillDefinition[]>(() => core.skills.list())
+  const [activeSkill, setActiveSkill] = useState<string | undefined>(
+    () => core.skills.getActive()?.name,
+  )
 
   useKeyboard({
     onClear: chat.clearMessages,
@@ -43,7 +46,13 @@ export function ChatApp({ core, session: initialSession }: ChatAppProps) {
 
   return (
     <Box flexDirection="column" height="100%">
-      <StatusBar model={model} sessionId={session.id} tokens={chat.tokens} theme={theme} />
+      <StatusBar
+        model={model}
+        sessionId={session.id}
+        tokens={chat.tokens}
+        activeSkill={activeSkill}
+        theme={theme}
+      />
 
       {chat.messages.length === 0 && !chat.isStreaming ? (
         <WelcomeScreen model={model} theme={theme} />
@@ -74,12 +83,21 @@ export function ChatApp({ core, session: initialSession }: ChatAppProps) {
       {chat.skillsMenuOpen && (
         <SkillsMenu
           skills={skills}
+          activeSkillName={activeSkill}
           theme={theme}
           onClose={() => chat.setSkillsMenuOpen(false)}
           onMessage={chat.addMessage}
           onSkillDeleted={(name) => {
             core.skills.unregister(name)
             setSkills(core.skills.list())
+          }}
+          onSkillActivated={(name) => {
+            if (name) {
+              core.skills.setActive(name)
+            } else {
+              core.skills.clearActive()
+            }
+            setActiveSkill(name)
           }}
         />
       )}

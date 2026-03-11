@@ -17,17 +17,27 @@ import type { Theme } from '../types.js'
 
 interface SkillsMenuProps {
   skills: SkillDefinition[]
+  activeSkillName: string | undefined
   onClose: () => void
   onMessage: (msg: string) => void
   onSkillDeleted: (name: string) => void
+  onSkillActivated: (name: string | undefined) => void
   theme: Theme
 }
 
 type Mode = 'list' | 'actions'
 
-const ACTIONS = ['Ver conteúdo', 'Editar arquivo', 'Excluir skill'] as const
+const ACTIONS = ['Usar skill', 'Ver conteúdo', 'Editar arquivo', 'Excluir skill'] as const
 
-export function SkillsMenu({ skills, onClose, onMessage, onSkillDeleted, theme }: SkillsMenuProps) {
+export function SkillsMenu({
+  skills,
+  activeSkillName,
+  onClose,
+  onMessage,
+  onSkillDeleted,
+  onSkillActivated,
+  theme,
+}: SkillsMenuProps) {
   const [mode, setMode] = useState<Mode>('list')
   const [skillIdx, setSkillIdx] = useState(0)
   const [actionIdx, setActionIdx] = useState(0)
@@ -88,15 +98,31 @@ export function SkillsMenu({ skills, onClose, onMessage, onSkillDeleted, theme }
 
   function executeAction(ai: number, skill: SkillDefinition) {
     if (ai === 0) {
+      // Usar skill — ativa explicitamente
+      const isAlreadyActive = activeSkillName === skill.name
+      if (isAlreadyActive) {
+        onSkillActivated(undefined)
+        onMessage(`Skill \`${skill.name}\` desativada. Voltando ao modo automático.`)
+      } else {
+        onSkillActivated(skill.name)
+        onMessage(
+          `**Skill \`${skill.name}\` ativada!**\n\n` +
+            `*${skill.description}*\n\n` +
+            `As instruções desta skill serão aplicadas nas próximas mensagens.\n` +
+            `Para desativar: abra \`/skills\` e selecione "Usar skill" novamente.`,
+        )
+      }
+      onClose()
+    } else if (ai === 1) {
       // Ver conteúdo
       onMessage(
         `**Skill: ${skill.name}**\n\n` +
           `*${skill.description}*\n\n` +
-          `**Triggers:** ${skill.triggers.join(', ')}\n\n` +
+          `**Triggers:** ${skill.triggers.join(', ') || '(nenhum)'}\n\n` +
           `**Instruções:**\n${skill.instructions}`,
       )
       onClose()
-    } else if (ai === 1) {
+    } else if (ai === 2) {
       // Editar — abre no editor do sistema
       if (!skill.sourcePath) {
         onMessage(`Skill \`${skill.name}\` não tem arquivo fonte para editar.`)
@@ -108,7 +134,6 @@ export function SkillsMenu({ skills, onClose, onMessage, onSkillDeleted, theme }
         execSync(`${editor} "${skill.sourcePath}"`, { stdio: 'ignore' })
         onMessage(`Abrindo \`${skill.sourcePath}\` no editor...`)
       } catch {
-        // Fallback: tenta abrir com open (macOS)
         try {
           execSync(`open "${skill.sourcePath}"`, { stdio: 'ignore' })
           onMessage(`Abrindo \`${skill.sourcePath}\`...`)
@@ -117,7 +142,7 @@ export function SkillsMenu({ skills, onClose, onMessage, onSkillDeleted, theme }
         }
       }
       onClose()
-    } else if (ai === 2) {
+    } else if (ai === 3) {
       // Excluir
       if (!skill.sourcePath) {
         onMessage(`Skill \`${skill.name}\` não tem arquivo fonte para excluir.`)
@@ -161,14 +186,25 @@ export function SkillsMenu({ skills, onClose, onMessage, onSkillDeleted, theme }
         <>
           {skills.map((skill, i) => {
             const isSelected = i === skillIdx
+            const isActive = skill.name === activeSkillName
             return (
               <Box key={skill.name} gap={1}>
                 <Text color={isSelected ? theme.accent : theme.muted} bold={isSelected}>
                   {isSelected ? '▶' : ' '}
                 </Text>
-                <Text color={isSelected ? theme.accent : theme.secondary} bold={isSelected}>
+                <Text
+                  color={
+                    isActive
+                      ? (theme.success ?? theme.accent)
+                      : isSelected
+                        ? theme.accent
+                        : theme.secondary
+                  }
+                  bold={isSelected || isActive}
+                >
                   {skill.name}
                 </Text>
+                {isActive && <Text color={theme.success ?? theme.accent}> ●</Text>}
                 <Text color={theme.muted}>{skill.description}</Text>
               </Box>
             )
@@ -188,17 +224,26 @@ export function SkillsMenu({ skills, onClose, onMessage, onSkillDeleted, theme }
           </Box>
           {ACTIONS.map((action, i) => {
             const isSelected = i === actionIdx
-            const colors = ['', theme.warning, theme.error]
+            // 0=Usar(success/warning), 1=Ver(accent), 2=Editar(warning), 3=Excluir(error)
+            const colors = [theme.success ?? theme.accent, theme.accent, theme.warning, theme.error]
+            const isActiveSkill = i === 0 && selectedSkill && activeSkillName === selectedSkill.name
+            const label = i === 0 && isActiveSkill ? 'Desativar skill ✓' : action
             return (
               <Box key={action} gap={1}>
                 <Text color={isSelected ? theme.accent : theme.muted} bold={isSelected}>
                   {isSelected ? '▶' : ' '}
                 </Text>
                 <Text
-                  color={isSelected ? (colors[i] ?? theme.accent) : theme.secondary}
-                  bold={isSelected}
+                  color={
+                    isSelected
+                      ? (colors[i] ?? theme.accent)
+                      : isActiveSkill
+                        ? (theme.success ?? theme.accent)
+                        : theme.secondary
+                  }
+                  bold={isSelected || isActiveSkill}
                 >
-                  {action}
+                  {label}
                 </Text>
               </Box>
             )
