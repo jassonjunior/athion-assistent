@@ -1,14 +1,13 @@
 /**
- * useInputAutocomplete — Autocomplete sem LLM para o InputArea (VSCode webview).
+ * useInputAutocomplete — Autocomplete com navegação em menu/submenu.
  *
- * Detecta dois padrões no texto:
- *  1. `/use-skill <prefix>` → lista skills filtradas por prefix
- *  2. `@<prefix>` (já tratado por useAtMention, mas aqui: sem codebase indexer)
- *     → lista arquivos via files:list message
+ * Fluxo de navegação:
+ *  1. `/prefix`           → command picker (lista todos os comandos)
+ *  2. `/skills <filter>`  → skills browser (lista skills, filtra em tempo real)
+ *  3. `/use-skill <pre>`  → autocomplete de skill por nome
+ *  4. `@<prefix>`         → autocomplete de arquivo
  *
- * Comunicação com extensão:
- *  - `skill:list` → `skill:list:result`   (carrega skills uma vez)
- *  - `files:list` → `files:list:result`  (lazy, por prefix)
+ * Seleção no skills-browser executa `/use-skill <nome>` diretamente.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -18,27 +17,87 @@ import type { SkillInfo } from '../../../bridge/messenger-types.js'
 export interface AutocompleteItem {
   label: string
   description?: string
-  /** Texto completo a inserir no campo quando selecionado */
+  /** Texto completo a inserir/submeter quando selecionado */
   insertValue: string
+  /** Quando true, não adiciona espaço no final ao inserir */
+  noTrailingSpace?: boolean
+  /** Badge exibido à direita do label (ex: "ativar") */
+  badge?: string
 }
+
+export type AutocompleteMode = 'command' | 'skills-browser' | 'skill' | 'file' | null
 
 export interface UseInputAutocompleteReturn {
   isOpen: boolean
   items: AutocompleteItem[]
   selectedIndex: number
-  /** Tipo do autocomplete ativo */
-  mode: 'skill' | 'file' | null
-  /** Chama a cada mudança de valor + posição do cursor */
+  mode: AutocompleteMode
   handleChange: (value: string, cursorPos: number) => void
-  /** Intercepta teclado. Retorna true se consumiu o evento. */
   handleKeyDown: (e: React.KeyboardEvent) => boolean
-  /** Retorna o novo valor do campo após inserção da sugestão selecionada */
   insertSelected: (currentValue: string, cursorPos: number) => string | null
+  /** true quando a seleção deve ser submetida imediatamente (sem outro Enter) */
+  shouldSubmitOnInsert: (newValue: string) => boolean
   close: () => void
 }
 
-const SKILL_PATTERN = /^\/use-skill\s+(\S*)$/
+// ── Definição dos slash commands ────────────────────────────────────────────
+
+interface SlashCommand {
+  name: string
+  description: string
+  hasArgs?: boolean
+  /** Se true, ao selecionar abre um submenu em vez de executar */
+  hasSubmenu?: boolean
+}
+
+const SLASH_COMMANDS: SlashCommand[] = [
+  { name: '/clear', description: 'Limpar mensagens' },
+  { name: '/help', description: 'Mostrar ajuda e comandos disponíveis' },
+  { name: '/agents', description: 'Listar agentes disponíveis' },
+  {
+    name: '/skills',
+    description: 'Navegar e ativar skills instaladas',
+    hasSubmenu: true,
+    hasArgs: true,
+  },
+  { name: '/use-skill', description: 'Ativar skill pelo nome', hasArgs: true },
+  { name: '/clear-skill', description: 'Desativar skill ativa' },
+  { name: '/find-skills', description: 'Buscar skills no registry', hasArgs: true },
+  { name: '/install-skill', description: 'Instalar skill do registry', hasArgs: true },
+  { name: '/model', description: 'Mostrar modelo e provider atuais' },
+  { name: '/codebase-index', description: 'Indexar o workspace atual' },
+  { name: '/codebase-search', description: 'Buscar semanticamente no código', hasArgs: true },
+]
+
+// ── Padrões de detecção (ordem importa) ────────────────────────────────────
+
+/** /use-skill <prefix> — com espaço obrigatório */
+const USE_SKILL_PATTERN = /^\/use-skill\s+(\S*)$/
+/** /skills <filter> — com espaço (submenu de skills) */
+const SKILLS_BROWSE_PATTERN = /^\/skills\s(.*)$/
+/** Qualquer /comando sem espaço */
+const SLASH_PATTERN = /^(\/\S*)$/
+/** @arquivo */
 const FILE_PATTERN = /@(\S*)$/
+
+/** Função pura — pode ser chamada de dentro de closures/listeners sem deps de hook */
+function buildSkillItemsFrom(skills: SkillInfo[], filter: string): AutocompleteItem[] {
+  const f = filter.toLowerCase()
+  return skills
+    .filter(
+      (s) => !f || s.name.toLowerCase().includes(f) || s.description.toLowerCase().includes(f),
+    )
+    .slice(0, 12)
+    .map(
+      (s): AutocompleteItem => ({
+        label: s.name,
+        description: s.description,
+        insertValue: `/use-skill ${s.name}`,
+        noTrailingSpace: true,
+        badge: 'ativar',
+      }),
+    )
+}
 
 export function useInputAutocomplete(): UseInputAutocompleteReturn {
   const { post, on } = useMessenger()
@@ -46,37 +105,37 @@ export function useInputAutocomplete(): UseInputAutocompleteReturn {
   const [isOpen, setIsOpen] = useState(false)
   const [items, setItems] = useState<AutocompleteItem[]>([])
   const [selectedIndex, setSelectedIndex] = useState(0)
-  const [mode, setMode] = useState<'skill' | 'file' | null>(null)
+  const [mode, setMode] = useState<AutocompleteMode>(null)
 
-  // Skills carregadas (lazy, uma vez só)
   const skillsRef = useRef<SkillInfo[]>([])
   const skillsLoadedRef = useRef(false)
-  // Guarda posição do @ para substituição
   const atStartRef = useRef<number>(-1)
-  // Último prefix de arquivo buscado
   const lastFilePrefixRef = useRef<string | null>(null)
+  /** Guarda o filtro atual quando estamos no skills-browser, para re-renderizar ao receber skills */
+  const skillsBrowserFilterRef = useRef<string | null>(null)
 
-  // ── Listeners ──────────────────────────────────────────────────────
+  // ── Listeners ───────────────────────────────────────────────────────────
 
   useEffect(() => {
     on('skill:list:result', (d: unknown) => {
       const { skills } = d as { skills: SkillInfo[] }
       skillsRef.current = skills
       skillsLoadedRef.current = true
-      // Se autocomplete de skill está aberto, re-filtra
-      setItems((prev) => {
-        if (prev.length === 0) return prev
-        return prev // will be recalculated by handleChange
-      })
+      // Se o skills-browser estava aguardando os dados, re-renderiza com o filtro atual
+      if (skillsBrowserFilterRef.current !== null) {
+        const filtered = buildSkillItemsFrom(skills, skillsBrowserFilterRef.current)
+        setItems(filtered)
+        setSelectedIndex(0)
+        setIsOpen(true)
+      }
     })
 
     on('files:list:result', (d: unknown) => {
       const { files, prefix } = d as { files: string[]; prefix: string }
-      // Só aplica se ainda estamos esperando por esse prefix
       if (prefix !== lastFilePrefixRef.current) return
       const mapped: AutocompleteItem[] = files.map((f) => ({
         label: '@' + f,
-        insertValue: f, // será combinado com o texto antes do @
+        insertValue: f,
       }))
       setItems(mapped)
       setSelectedIndex(0)
@@ -84,7 +143,7 @@ export function useInputAutocomplete(): UseInputAutocompleteReturn {
     })
   }, [on])
 
-  // ── Helpers ────────────────────────────────────────────────────────
+  // ── Helpers ─────────────────────────────────────────────────────────────
 
   function loadSkills() {
     if (!skillsLoadedRef.current) {
@@ -99,19 +158,24 @@ export function useInputAutocomplete(): UseInputAutocompleteReturn {
     setMode(null)
     atStartRef.current = -1
     lastFilePrefixRef.current = null
+    skillsBrowserFilterRef.current = null
   }, [])
 
-  // ── handleChange ───────────────────────────────────────────────────
+  function buildSkillItems(filter: string): AutocompleteItem[] {
+    return buildSkillItemsFrom(skillsRef.current, filter)
+  }
+
+  // ── handleChange ────────────────────────────────────────────────────────
 
   const handleChange = useCallback(
     (value: string, cursorPos: number) => {
       const textBeforeCursor = value.slice(0, cursorPos)
 
-      // 1. /use-skill <prefix>
-      const skillMatch = SKILL_PATTERN.exec(value)
-      if (skillMatch) {
+      // 1. /use-skill <prefix> — autocomplete de skill por nome
+      const useSkillMatch = USE_SKILL_PATTERN.exec(value)
+      if (useSkillMatch) {
         loadSkills()
-        const prefix = (skillMatch[1] ?? '').toLowerCase()
+        const prefix = (useSkillMatch[1] ?? '').toLowerCase()
         const filtered = skillsRef.current
           .filter((s) => !prefix || s.name.toLowerCase().startsWith(prefix))
           .slice(0, 8)
@@ -120,6 +184,8 @@ export function useInputAutocomplete(): UseInputAutocompleteReturn {
               label: s.name,
               description: s.description,
               insertValue: `/use-skill ${s.name}`,
+              noTrailingSpace: true,
+              badge: 'ativar',
             }),
           )
         setItems(filtered)
@@ -129,7 +195,45 @@ export function useInputAutocomplete(): UseInputAutocompleteReturn {
         return
       }
 
-      // 2. @prefix em qualquer posição
+      // 2. /skills <filter> — submenu de skills instaladas
+      const skillsBrowseMatch = SKILLS_BROWSE_PATTERN.exec(value)
+      if (skillsBrowseMatch) {
+        loadSkills()
+        const filter = skillsBrowseMatch[1] ?? ''
+        // Salva o filtro atual para re-renderizar quando as skills chegarem via bridge
+        skillsBrowserFilterRef.current = filter
+        const filtered = buildSkillItems(filter)
+        setItems(filtered)
+        setSelectedIndex(0)
+        setIsOpen(true) // abre mesmo se lista vazia (mostra "carregando")
+        setMode('skills-browser')
+        return
+      }
+
+      // 3. /comando — command picker
+      const slashMatch = SLASH_PATTERN.exec(value)
+      if (slashMatch) {
+        const typed = (slashMatch[1] ?? '').toLowerCase()
+        const filtered = SLASH_COMMANDS.filter((cmd) => cmd.name.toLowerCase().startsWith(typed))
+          .slice(0, 12)
+          .map(
+            (cmd): AutocompleteItem => ({
+              label: cmd.name,
+              description: cmd.description,
+              // Comandos com submenu ou args ganham espaço → abre submenu automaticamente
+              insertValue: cmd.hasArgs || cmd.hasSubmenu ? `${cmd.name} ` : cmd.name,
+              noTrailingSpace: !cmd.hasArgs && !cmd.hasSubmenu,
+              badge: cmd.hasSubmenu ? '→' : undefined,
+            }),
+          )
+        setItems(filtered)
+        setSelectedIndex(0)
+        setIsOpen(filtered.length > 0)
+        setMode('command')
+        return
+      }
+
+      // 4. @prefix — autocomplete de arquivo
       const fileMatch = FILE_PATTERN.exec(textBeforeCursor)
       if (fileMatch) {
         const rawPrefix = fileMatch[1] ?? ''
@@ -139,7 +243,6 @@ export function useInputAutocomplete(): UseInputAutocompleteReturn {
 
         if (rawPrefix !== lastFilePrefixRef.current) {
           lastFilePrefixRef.current = rawPrefix
-          // Fecha temporariamente enquanto carrega
           setItems([])
           setIsOpen(false)
           post({ type: 'files:list', prefix: rawPrefix })
@@ -147,13 +250,12 @@ export function useInputAutocomplete(): UseInputAutocompleteReturn {
         return
       }
 
-      // Nenhum padrão → fecha
       if (isOpen) close()
     },
     [isOpen, close, post],
   )
 
-  // ── handleKeyDown ──────────────────────────────────────────────────
+  // ── handleKeyDown ────────────────────────────────────────────────────────
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent): boolean => {
@@ -178,7 +280,7 @@ export function useInputAutocomplete(): UseInputAutocompleteReturn {
         const item = items[selectedIndex]
         if (item) {
           e.preventDefault()
-          return true // caller chama insertSelected
+          return true
         }
       }
       return false
@@ -186,7 +288,19 @@ export function useInputAutocomplete(): UseInputAutocompleteReturn {
     [isOpen, items, selectedIndex, close],
   )
 
-  // ── insertSelected ─────────────────────────────────────────────────
+  // ── shouldSubmitOnInsert ─────────────────────────────────────────────────
+
+  const shouldSubmitOnInsert = useCallback(
+    (newValue: string): boolean => {
+      // No modo skills-browser ou command, se não termina com espaço → submete
+      if (mode === 'skills-browser') return true
+      if (mode === 'command' || mode === 'skill') return !newValue.endsWith(' ')
+      return false
+    },
+    [mode],
+  )
+
+  // ── insertSelected ───────────────────────────────────────────────────────
 
   const insertSelected = useCallback(
     (currentValue: string, cursorPos: number): string | null => {
@@ -195,13 +309,11 @@ export function useInputAutocomplete(): UseInputAutocompleteReturn {
 
       close()
 
-      if (mode === 'skill') {
-        // /use-skill está sempre na linha toda → substitui tudo
+      if (mode === 'command' || mode === 'skills-browser' || mode === 'skill') {
         return item.insertValue
       }
 
       if (mode === 'file') {
-        // Substitui desde o @ até o cursor
         const start = atStartRef.current
         if (start === -1) return null
         const before = currentValue.slice(0, start)
@@ -222,6 +334,7 @@ export function useInputAutocomplete(): UseInputAutocompleteReturn {
     handleChange,
     handleKeyDown,
     insertSelected,
+    shouldSubmitOnInsert,
     close,
   }
 }

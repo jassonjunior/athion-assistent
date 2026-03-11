@@ -6,6 +6,7 @@ import { useEffect, useRef } from 'react'
 import type { ChatMessage } from '../hooks/useChat.js'
 import { CodeBlock } from './CodeBlock.js'
 import { ToolCallCard } from './ToolCallCard.js'
+import { useFeedbackPhrase } from '../hooks/useFeedbackPhrase.js'
 
 interface MessageListProps {
   messages: ChatMessage[]
@@ -14,13 +15,14 @@ interface MessageListProps {
 
 export function MessageList({ messages, isStreaming }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const feedbackPhrase = useFeedbackPhrase(isStreaming)
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
     if (containerRef.current) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight
     }
-  }, [messages])
+  }, [messages, isStreaming])
 
   if (messages.length === 0) {
     return (
@@ -49,6 +51,7 @@ export function MessageList({ messages, isStreaming }: MessageListProps) {
       {isStreaming && (
         <div className="streaming-indicator">
           <span className="cursor">▌</span>
+          {feedbackPhrase && <span className="feedback-phrase">{feedbackPhrase}</span>}
         </div>
       )}
     </div>

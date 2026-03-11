@@ -26,6 +26,7 @@ export type WebviewToExtension =
   | { type: 'skill:clearActive' }
   | { type: 'skill:list' }
   | { type: 'files:list'; prefix: string }
+  | { type: 'agents:list' }
   | { type: 'ready' }
 
 // ─── Extension → Webview ──────────────────────────────────────────
@@ -48,6 +49,7 @@ export type ExtensionToWebview =
   | { type: 'skill:active'; name: string | null }
   | { type: 'skill:list:result'; skills: SkillInfo[] }
   | { type: 'files:list:result'; files: string[]; prefix: string }
+  | { type: 'agents:list:result'; agents: AgentInfo[] }
 
 export interface MentionResult {
   file: string
@@ -81,6 +83,11 @@ export interface SkillInfo {
   name: string
   description: string
   triggers: string[]
+}
+
+export interface AgentInfo {
+  name: string
+  description: string
 }
 
 export type CoreStatus = 'starting' | 'ready' | 'error' | 'stopped'

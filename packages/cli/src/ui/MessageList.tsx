@@ -10,6 +10,7 @@ import { Markdown } from './Markdown.js'
 import { StreamingMessage } from './StreamingMessage.js'
 import { ToolCallDisplay } from './ToolCallDisplay.js'
 import { SubAgentDisplay } from './SubAgentDisplay.js'
+import { useFeedbackPhrase } from './hooks/useFeedbackPhrase.js'
 
 interface MessageListProps {
   messages: ChatMessage[]
@@ -28,6 +29,8 @@ export function MessageList({
   currentAgent,
   theme,
 }: MessageListProps) {
+  const feedbackPhrase = useFeedbackPhrase(isStreaming)
+
   return (
     <Box flexDirection="column" paddingX={1} flexGrow={1}>
       {messages.map((msg) => (
@@ -42,6 +45,11 @@ export function MessageList({
           <StreamingMessage content={streamingContent} theme={theme} />
           {currentTool && <ToolCallDisplay toolCall={currentTool} theme={theme} />}
           {currentAgent && <SubAgentDisplay agent={currentAgent} theme={theme} />}
+          {!streamingContent && !currentTool && !currentAgent && feedbackPhrase && (
+            <Text color={theme.muted} dimColor>
+              {feedbackPhrase}
+            </Text>
+          )}
         </Box>
       )}
     </Box>

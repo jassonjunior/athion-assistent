@@ -6,6 +6,7 @@ import { useEffect, useRef } from 'react'
 import type { ChatMessage } from '../hooks/useChat.js'
 import { CodeBlock } from './CodeBlock.js'
 import { ToolCallCard } from './ToolCallCard.js'
+import { useFeedbackPhrase } from '../hooks/useFeedbackPhrase.js'
 
 interface MessageListProps {
   messages: ChatMessage[]
@@ -14,12 +15,13 @@ interface MessageListProps {
 
 export function MessageList({ messages, isStreaming }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const feedbackPhrase = useFeedbackPhrase(isStreaming)
 
   useEffect(() => {
     if (containerRef.current) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight
     }
-  }, [messages])
+  }, [messages, isStreaming])
 
   if (messages.length === 0) {
     return (
@@ -62,8 +64,11 @@ export function MessageList({ messages, isStreaming }: MessageListProps) {
         </div>
       ))}
       {isStreaming && (
-        <div className="flex items-center gap-1 px-4 text-accent-400">
+        <div className="flex items-center gap-2 px-4 text-accent-400">
           <span className="animate-pulse">▌</span>
+          {feedbackPhrase && (
+            <span className="text-xs text-neutral-500 italic">{feedbackPhrase}</span>
+          )}
         </div>
       )}
     </div>

@@ -1,5 +1,121 @@
 # Changes Log - Athion Assistent
 
+## Feature: Feedback System — Frases de Loading (2026-03-11)
+
+**Status**: Concluído
+
+### O que foi feito
+
+Sistema de frases humorísticas PT-BR que ciclam enquanto o modelo processa.
+
+### Arquivos Criados
+
+**`packages/vscode/src/webview/app/hooks/useFeedbackPhrase.ts`**:
+
+- Hook React com 34 frases PT-BR
+- Intervalo padrão: 5s (WebUI)
+- Anti-repetição via guard loop (até 5 tentativas)
+- Reset automático ao parar streaming
+
+**`packages/cli/src/ui/hooks/useFeedbackPhrase.ts`**:
+
+- Mesmo hook para CLI (Ink)
+- Intervalo padrão: 15s (terminal)
+
+**`packages/desktop/src/hooks/useFeedbackPhrase.ts`**:
+
+- Mesmo hook para desktop (Tauri/React)
+- Intervalo padrão: 5s
+
+### Arquivos Modificados
+
+**`packages/vscode/src/webview/app/components/MessageList.tsx`**:
+
+- Importa `useFeedbackPhrase`
+- Exibe frase ao lado do cursor `▌` durante streaming
+
+**`packages/vscode/src/webview/app/styles/vscode.css`**:
+
+- `.streaming-indicator` agora usa `display: flex` e `gap`
+- `.feedback-phrase`: italic, dimmed, 11px
+
+**`packages/cli/src/ui/MessageList.tsx`**:
+
+- Importa `useFeedbackPhrase`
+- Exibe frase quando não há streamingContent, tool ou agent ativos
+
+**`packages/desktop/src/components/MessageList.tsx`**:
+
+- Importa `useFeedbackPhrase`
+- Exibe frase em italic ao lado do cursor animado
+
+---
+
+## Feature: Slash Commands + @Mentions no Webview VSCode (2026-03-11)
+
+**Status**: Concluído
+
+### Problema
+
+- Extensão VSCode tinha comandos `/codebase`, `/use-skill`, `/clear-skill`, `/find-skills`, `/install-skill` mas faltavam: `/clear`, `/help`, `/agents`, `/skills`, `/model`, `/codebase-index`, `/codebase-search <query>`
+- `@mentions` de arquivos não injetavam conteúdo no prompt (só autocomplete visual)
+- Não havia suporte RPC para listar agentes na extensão
+
+### Arquivos Modificados
+
+**`packages/vscode/src/bridge/messenger-types.ts`**:
+
+- Adicionado `{ type: 'agents:list' }` ao `WebviewToExtension`
+- Adicionado `{ type: 'agents:list:result'; agents: AgentInfo[] }` ao `ExtensionToWebview`
+- Adicionada interface `AgentInfo { name: string; description: string }`
+
+**`packages/vscode/src/webview/chat-view-provider.ts`**:
+
+- Importados `node:fs` e `node:path`
+- Importado tipo `AgentInfo`
+- Handler `chat:send` resolve `@mentions` via `resolveAtMentions()` antes de enviar ao bridge
+- Handler `agents:list` chama RPC `agents.list` e retorna resultado ao webview
+- Função `resolveAtMentions(content, wsRoot)` resolve `@arquivo` → conteúdo inline (max 200 linhas)
+
+**`packages/vscode/src/webview/app/hooks/useChat.ts`**:
+
+- Adicionados `pendingSkillsListRef` e `pendingModelRef` para distinguir quando `skill:list:result` e `config:result` foram disparados por slash commands
+- Listener `skill:list:result` — condicional via flag (não interfere com outros consumidores)
+- Listener `config:result` — condicional via flag
+- Listener `agents:list:result` — exibe lista de agentes no chat
+- Constante `HELP_TEXT` com todos os comandos documentados
+- `/clear` — limpa mensagens sem adicionar ao histórico
+- `/help` — mostra ajuda completa
+- `/agents` → `post({ type: 'agents:list' })`
+- `/skills` → `post({ type: 'skill:list' })` com flag ativa
+- `/model` → `post({ type: 'config:list' })` com flag ativa
+- `/codebase-index` — alias direto para `codebase:index`
+- `/codebase-search <query>` — alias direto para `codebase:search`
+- Exposto `clearMessages` no retorno do hook
+
+### Fluxo @Mentions
+
+````
+Usuário digita: "@src/main.ts explique este arquivo"
+→ sendMessage → post({ type: 'chat:send', content })
+→ chat-view-provider.ts: resolveAtMentions() lê src/main.ts
+→ content transformado: "[Conteúdo de src/main.ts]:\n```\n<conteúdo>\n```\n explique este arquivo"
+→ bridge.request('chat.send', { content: resolvedContent })
+→ LLM recebe o conteúdo do arquivo diretamente no prompt
+````
+
+### Fluxo /agents
+
+```
+Usuário: /agents
+→ post({ type: 'agents:list' })
+→ chat-view-provider.ts: bridge.request('agents.list')
+→ post({ type: 'agents:list:result', agents: [...] })
+→ useChat: listener exibe lista formatada no chat
+```
+
+---
+
 ## Feature: Slash Commands + @Mentions no CLI (2026-03-10)
 
 **Status**: Concluído
@@ -1113,3 +1229,41 @@ Usuário: /clear-skill
 - Botão "Parar" já existia e estava corretamente conectado ao `abort()` em ambos os surfaces
 - VSCode: `chat.abort()` → `post({ type: 'chat:abort' })` → handler no `chat-view-provider.ts`
 - Desktop: `abort()` → `bridge.chatAbort(sessionId)` → sidecar interrompe o stream
+
+---
+
+## Fix: VSCode Extension CoreBridge not connected (2026-03-11)
+
+**Status**: Concluído ✅
+**Branch**: `fase-6/polish`
+
+### Problema
+
+Após instalar a extensão 0.0.2 via `.vsix`, o VSCode mostrava:
+
+```
+Failed to create session: CoreBridge not connected
+Connecting to '.../main.js.map' violates Content Security Policy
+```
+
+**Root cause**: `CoreBridge` resolvia o CLI path como `resolve(extensionPath, '..', 'cli', 'src', 'index.ts')`. Quando instalado em `~/.vscode/extensions/athion.athion-assistent-0.0.2/`, esse path não existe.
+
+### Correção
+
+**`packages/vscode/src/bridge/core-bridge.ts`**:
+
+- Removido `extensionPath` do constructor (não era mais necessário)
+- `cliPath` agora é `string | undefined` — quando undefined, spawn usa `athion serve --mode=stdio` (global binary com `shell: true`)
+- Quando `cliPath` fornecido: `spawn(bunPath, [cliPath, 'serve', '--mode=stdio'])` (dev/monorepo)
+
+**`packages/vscode/src/extension.ts`**:
+
+- Adicionado `detectCliPath(extensionPath)` que tenta:
+  1. `<workspaceRoot>/packages/cli/dist/index.js` (monorepo aberto no VS Code)
+  2. `resolve(extensionPath, '..', 'cli', 'dist', 'index.js')` (dev)
+  3. `resolve(extensionPath, '..', '..', 'packages', 'cli', 'dist', 'index.js')` (fallback)
+- Se nenhum encontrado → passa `undefined` ao CoreBridge → usa global `athion`
+
+**`packages/vscode/src/webview/chat-view-provider.ts`**:
+
+- CSP: adicionado `connect-src ${webview.cspSource}` para evitar erro nos `.map` files

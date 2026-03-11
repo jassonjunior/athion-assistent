@@ -5,10 +5,46 @@
  * Cada linha de stdout é um JSON-RPC response ou notification.
  */
 
-import { spawn, type ChildProcess } from 'node:child_process'
-import { resolve } from 'node:path'
+import { spawn, type ChildProcess, execFileSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { homedir } from 'node:os'
 import type { JsonRpcRequest, JsonRpcNotification, JsonRpcMessage, RpcMethod } from './protocol.js'
 import { isResponse, isNotification } from './protocol.js'
+
+/** Retorna PATH expandido com diretórios comuns do bun, homebrew e usuário */
+function buildEnhancedPath(): string {
+  const home = homedir()
+  const extra = [
+    `${home}/.bun/bin`,
+    `${home}/.local/bin`,
+    `${home}/bin`,
+    '/opt/homebrew/bin',
+    '/opt/homebrew/sbin',
+    '/usr/local/bin',
+    '/usr/bin',
+    '/bin',
+  ]
+  const current = process.env['PATH'] ?? ''
+  const merged = [...extra, ...current.split(':').filter(Boolean)]
+  // Deduplica mantendo ordem
+  return [...new Set(merged)].join(':')
+}
+
+/** Detecta o path absoluto do bun tentando locais comuns */
+function detectBunPath(hint: string): string {
+  if (hint !== 'bun') return hint // já é um path absoluto ou customizado
+  const home = homedir()
+  const candidates = [`${home}/.bun/bin/bun`, '/opt/homebrew/bin/bun', '/usr/local/bin/bun']
+  for (const p of candidates) {
+    if (existsSync(p)) return p
+  }
+  // Tenta which como fallback
+  try {
+    return execFileSync('/usr/bin/which', ['bun'], { encoding: 'utf-8' }).trim()
+  } catch {
+    return hint
+  }
+}
 
 interface PendingRequest {
   resolve: (result: unknown) => void
@@ -25,16 +61,16 @@ export class CoreBridge {
   private buffer = ''
   private _ready = false
   private bunPath: string
-  private cliPath: string
+  private cliPath: string | undefined
   private listeners = new Map<string, EventHandler[]>()
 
   constructor(options: {
     bunPath?: string | undefined
+    /** Absolute path to CLI dist/index.js. If omitted, uses global `athion` binary. */
     cliPath?: string | undefined
-    extensionPath: string
   }) {
     this.bunPath = options.bunPath ?? 'bun'
-    this.cliPath = options.cliPath ?? resolve(options.extensionPath, '..', 'cli', 'src', 'index.ts')
+    this.cliPath = options.cliPath
   }
 
   get ready(): boolean {
@@ -71,10 +107,23 @@ export class CoreBridge {
   async start(): Promise<void> {
     if (this.childProcess) return
 
-    this.childProcess = spawn(this.bunPath, [this.cliPath, 'serve', '--mode=stdio'], {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, NO_COLOR: '1' },
-    })
+    const enhancedEnv = { ...process.env, NO_COLOR: '1', PATH: buildEnhancedPath() }
+
+    // If cliPath is provided, spawn via bun. Otherwise use global `athion` binary.
+    if (this.cliPath) {
+      const bunBin = detectBunPath(this.bunPath)
+      this.childProcess = spawn(bunBin, [this.cliPath, 'serve', '--mode=stdio'], {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: enhancedEnv,
+        shell: false,
+      })
+    } else {
+      this.childProcess = spawn('athion', ['serve', '--mode=stdio'], {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: enhancedEnv,
+        shell: true,
+      })
+    }
 
     this.childProcess.stdout?.setEncoding('utf-8')
     this.childProcess.stderr?.setEncoding('utf-8')

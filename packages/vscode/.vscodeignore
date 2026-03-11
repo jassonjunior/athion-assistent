@@ -1,0 +1,12 @@
+../
+.turbo/
+e2e/
+src/
+scripts/
+node_modules/
+tsconfig.json
+tsconfig.tsbuildinfo
+esbuild.config.mjs
+esbuild.webview.mjs
+changes.cursor.md
+*.vsix

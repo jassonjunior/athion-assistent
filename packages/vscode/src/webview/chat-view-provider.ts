@@ -5,11 +5,14 @@
  * Conecta o Messenger para comunicação bidirecional com a extensão.
  */
 
+import * as fs from 'node:fs'
+import * as path from 'node:path'
 import * as vscode from 'vscode'
 import { CoreBridge } from '../bridge/core-bridge.js'
 import { ExtensionMessenger } from '../bridge/messenger.js'
 import type { ChatEventNotification } from '../bridge/protocol.js'
 import type { WebviewToExtension } from '../bridge/messenger-types.js'
+import type { AgentInfo } from '../bridge/messenger-types.js'
 
 export class ChatViewProvider implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | null = null
@@ -129,8 +132,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         type: 'status:update',
         status: this.bridge.ready ? 'ready' : 'starting',
       })
-      // Create initial session when webview is ready
-      await this.createSession()
+
+      if (this.bridge.ready) {
+        // Bridge already up — create session immediately
+        await this.createSession()
+      } else {
+        // Bridge still starting — wait for it to be ready before creating session
+        const onReady = async () => {
+          this.bridge.off('ready', onReady)
+          await this.createSession()
+        }
+        this.bridge.on('ready', onReady)
+      }
     })
 
     this.messenger.on(
@@ -141,9 +154,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         if (!this.activeSessionId) return
 
+        // Resolver @mentions com conteúdo de arquivos antes de enviar ao bridge
+        const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+        const resolvedContent = resolveAtMentions(msg.content, wsRoot)
+
         await this.bridge.request('chat.send', {
           sessionId: this.activeSessionId,
-          content: msg.content,
+          content: resolvedContent,
         })
 
         this.messenger?.post({ type: 'chat:complete' })
@@ -387,6 +404,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
       },
     )
+
+    this.messenger.on('agents:list', async () => {
+      try {
+        const agents = await this.bridge.request<AgentInfo[]>('agents.list')
+        this.messenger?.post({ type: 'agents:list:result', agents })
+      } catch {
+        this.messenger?.post({ type: 'agents:list:result', agents: [] })
+      }
+    })
   }
 
   private getHtml(webview: vscode.Webview): string {
@@ -404,7 +430,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
+    content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src ${webview.cspSource};">
   <link rel="stylesheet" href="${styleUri}">
   <title>Athion Chat</title>
 </head>
@@ -414,6 +440,25 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 </body>
 </html>`
   }
+}
+
+function resolveAtMentions(content: string, wsRoot: string | undefined): string {
+  if (!wsRoot || !content.includes('@')) return content
+  return content.replace(/@([\w./-]+)/g, (_match, filePath: string) => {
+    const resolved = path.isAbsolute(filePath) ? filePath : path.resolve(wsRoot, filePath)
+    if (!fs.existsSync(resolved)) return `@${filePath} (arquivo não encontrado)`
+    try {
+      const fileContent = fs.readFileSync(resolved, 'utf-8')
+      const lines = fileContent.split('\n')
+      const truncated =
+        lines.length > 200
+          ? lines.slice(0, 200).join('\n') + `\n... (${lines.length - 200} linhas omitidas)`
+          : fileContent
+      return `[Conteúdo de ${filePath}]:\n\`\`\`\n${truncated}\n\`\`\``
+    } catch {
+      return `@${filePath} (erro ao ler)`
+    }
+  })
 }
 
 function getNonce(): string {
