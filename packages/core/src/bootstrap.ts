@@ -23,6 +23,7 @@ import type { ProxyServer } from './server/proxy/proxy'
 import { createProxy, createProxyReuse, isProxyHealthy } from './server/proxy/proxy'
 import { ProxyConfigSchema } from './server/proxy/types'
 import { createLlamaCppManager } from './server/llama-cpp-manager'
+import { createLmStudioManager } from './server/lm-studio-manager'
 import { createMlxOmniManager } from './server/mlx-omni-manager'
 import type { VllmManager } from './server/vllm-manager'
 import { createVllmManager } from './server/vllm-manager'
@@ -165,9 +166,11 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
     ? { vllm: createVllmManager({ port: 0, ttlMinutes: 0 }), proxy: null }
     : providerName === 'mlx-omni'
       ? { vllm: await setupMlxOmni(config), proxy: null }
-      : providerName === 'llama-cpp' || providerName === 'lm-studio'
-        ? { vllm: setupLlamaCpp(config), proxy: null }
-        : await setupVllmAndProxy(config)
+      : providerName === 'lm-studio'
+        ? { vllm: setupLmStudio(config), proxy: null }
+        : providerName === 'llama-cpp'
+          ? { vllm: setupLlamaCpp(config), proxy: null }
+          : await setupVllmAndProxy(config)
 
   // Se orchestratorModel ou agentModel estiverem configurados, usa ModelSwapProvider
   // para fazer unload/load automático entre turnos do orquestrador e subagentes.
@@ -290,6 +293,24 @@ async function setupIndexer(
   return indexer
 }
 
+function setupLmStudio(config: ConfigManager): VllmManager {
+  const log = createLogger('bootstrap')
+  const port = (config.get('lmStudioPort') as number | undefined) ?? 1234
+  const host = (config.get('lmStudioHost') as string | undefined) ?? '127.0.0.1'
+  const apiKey = config.get('lmStudioApiKey') as string | undefined
+
+  // Define URL e API key para o registry
+  process.env['ATHION_LM_STUDIO_URL'] = `http://${host}:${port}/v1`
+  if (apiKey) process.env['ATHION_LM_STUDIO_API_KEY'] = apiKey
+
+  log.info(
+    { provider: 'lm-studio', host, port },
+    'lm-studio manager configured — swap via lms CLI (unload → load)',
+  )
+
+  return createLmStudioManager({ port, host, ...(apiKey ? { apiKey } : {}) })
+}
+
 function setupLlamaCpp(config: ConfigManager): VllmManager {
   const log = createLogger('bootstrap')
   const port = (config.get('llamaCppPort') as number | undefined) ?? 8080
@@ -297,14 +318,11 @@ function setupLlamaCpp(config: ConfigManager): VllmManager {
   const autoStart = (config.get('llamaCppAutoStart') as boolean | undefined) ?? true
   const extraArgs = (config.get('llamaCppArgs') as string[] | undefined) ?? []
 
-  // Define URL do provider para a porta configurada
-  const providerName = config.get('provider') as string
-  const envKey = providerName === 'lm-studio' ? 'ATHION_LM_STUDIO_URL' : 'ATHION_LLAMA_CPP_URL'
-  process.env[envKey] = `http://${host}:${port}/v1`
+  process.env['ATHION_LLAMA_CPP_URL'] = `http://${host}:${port}/v1`
 
   log.info(
-    { provider: providerName, host, port, autoStart },
-    `${providerName} manager configured — swap via keep_alive (no kill+restart)`,
+    { provider: 'llama-cpp', host, port, autoStart },
+    'llama-cpp manager configured — swap via keep_alive (no kill+restart)',
   )
 
   return createLlamaCppManager({ port, host, autoStart, extraArgs })

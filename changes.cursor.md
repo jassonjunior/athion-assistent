@@ -1,5 +1,192 @@
 # Changes Log - Athion Assistent
 
+## Feature: LM Studio Provider com Model Swap Sequential via lms CLI (2026-03-12)
+
+**Status**: Concluído ✅ — swap sem OOM validado
+
+### Problema resolvido
+
+O `mlx-omni-server` causava OOM ao usar dois modelos grandes simultaneamente (35B + 40B > memória disponível).
+O `llama-cpp-manager` via `keep_alive` não funcionava com LM Studio (API não suporta keep_alive).
+
+### Solução implementada
+
+Criado `packages/core/src/server/lm-studio-manager.ts` que usa o CLI `lms` para swap sequencial:
+
+1. `lms unload <modelo-anterior>` — descarrega completamente
+2. `Bun.sleep(1_500)` — aguarda OS liberar memória
+3. `lms load <novo-modelo>` — carrega e aguarda pronto (bloqueante)
+
+### Melhorias no bootstrap.ts
+
+- `setupLmStudio()` separado de `setupLlamaCpp()` — cada provider tem sua própria função
+- Detecta automaticamente o modelo carregado via `GET /api/v0/models` na primeira chamada (`ensureRunning`)
+- Sem `keep_alive`, sem kill+restart — swap controlado pelo LM Studio app
+
+### Validação
+
+```
+[2026-03-12 03:07:08] === detected loaded model: qwen/qwen3.5-35b-a3b ===
+[2026-03-12 03:07:19] === swapping model: qwen/qwen3.5-35b-a3b → qwen3-coder-next-reap-40b-a3b-mlx ===
+[2026-03-12 03:07:19] lms unload exit=0 — "Model unloaded."
+[2026-03-12 03:07:33] lms load exit=0 — "Model loaded successfully in 12.68s. (20.31 GiB)"
+```
+
+- 45+ requests ao modelo agente sem OOM ✅
+- Memória máxima: 21.81 GB (apenas 1 modelo por vez) ✅
+
+### Config atual (`~/.athion/config.json`)
+
+```json
+{
+  "provider": "lm-studio",
+  "model": "qwen/qwen3.5-35b-a3b",
+  "orchestratorModel": "qwen/qwen3.5-35b-a3b",
+  "agentModel": "qwen3-coder-next-reap-40b-a3b-mlx",
+  "lmStudioPort": 1235,
+  "lmStudioApiKey": "sk-lm-..."
+}
+```
+
+### Arquivos alterados
+
+- `packages/core/src/server/lm-studio-manager.ts` — CRIADO
+- `packages/core/src/bootstrap.ts` — separou setupLmStudio() / setupLlamaCpp()
+
+---
+
+## Fix: Respostas não chegavam ao UI — dist/core desatualizado (2026-03-11)
+
+**Status**: Corrigido ✅
+
+### Root Cause
+
+O `packages/core/dist/` estava desatualizado — `bootstrap.js` era a versão OLD sem a
+branch `mlx-omni`, e `dist/server/mlx-omni-manager.js` não existia.
+A extensão usava o dist compilado, então as requisições iam para `setupVllmAndProxy()`
+em vez de `setupMlxOmni()`, causando o provider errado (não chegava resposta no chat).
+
+### Solução
+
+```bash
+bun run --cwd packages/core build   # Gerou dist/server/mlx-omni-manager.js + bootstrap.js correto
+bun run --cwd packages/cli build    # Rebuilda CLI que usa @athion/core
+bun run --cwd packages/vscode build # Rebuilda extensão
+# Empacotar e instalar: athion-assistent-0.1.0.vsix
+```
+
+### Confirmação
+
+- `curl http://localhost:10240/v1/chat/completions` → responde com tokens ✅
+- `dist/bootstrap.js` agora tem `setupMlxOmni()` e importa `mlx-omni-manager` ✅
+- Extensão 0.1.0.vsix instalada com sucesso ✅
+
+---
+
+## Feature: MLX Omni Server — Backend com Hotload Real (2026-03-11)
+
+**Status**: Concluído ✅
+
+### Problema
+
+O vllm-mlx não tem hotload — cada `swapModel` exige kill+restart do processo (5–30s).
+Migração para MLX Omni Server que usa LRU+TTL caching interno: hotload real sem restart.
+
+### Como usar
+
+Instalar o servidor:
+
+```bash
+pip install mlx-omni-server
+```
+
+Configurar o Athion:
+
+```json
+{
+  "provider": "mlx-omni",
+  "orchestratorModel": "Qwen3.5-35B",
+  "agentModel": "Qwen3-Coder-Next-40B",
+  "mlxOmniPort": 10240,
+  "mlxOmniAutoStart": true
+}
+```
+
+### Diferença fundamental vs vllm-mlx
+
+|                  | vllm-mlx                | mlx-omni                          |
+| ---------------- | ----------------------- | --------------------------------- |
+| `swapModel`      | kill processo + restart | pre-warm HTTP (lazy load)         |
+| Overhead de swap | 5–30s                   | 2–10s (1ª vez) / ~0ms (cache hit) |
+| Processo único   | 1 processo por modelo   | 1 processo, N modelos em cache    |
+
+### Arquivos Criados
+
+**`packages/core/src/server/mlx-omni-manager.ts`** (NOVO):
+
+- Implementa interface `VllmManager` (drop-in replacement)
+- `swapModel()`: atualiza `currentModel` + pre-warm via POST ao servidor
+- `ensureRunning()`: inicia `mlx_omni_server --port PORT` se `autoStart`
+- `touch()`: no-op (TTL gerenciado pelo mlx-omni internamente)
+
+### Arquivos Modificados
+
+- **`packages/core/src/provider/registry.ts`**: adicionado provider `mlx-omni` com `ATHION_MLX_OMNI_URL`
+- **`packages/core/src/config/schema.ts`**: campos `mlxOmniPort`, `mlxOmniAutoStart`, `mlxOmniTtlMinutes`
+- **`packages/core/src/bootstrap.ts`**: quando `provider === 'mlx-omni'`, usa `setupMlxOmni()` em vez de `setupVllmAndProxy()`; define `ATHION_MLX_OMNI_URL`
+
+### Testes
+
+- 173 testes passando (sem regressões)
+- Testes de swap existentes cobrem `ModelSwapProvider` que funciona com qualquer `VllmManager`
+
+---
+
+## Feature: Model Swap Automático — Orquestrador/Subagentes (2026-03-11)
+
+**Status**: Concluído ✅
+
+### Problema
+
+Usuário não tem VRAM suficiente para rodar dois modelos vLLM simultaneamente.
+Necessidade de usar `qwen3.5` para o orquestrador e `qwen3-coder-next` para subagentes,
+com unload/load automático entre turnos.
+
+### Configuração
+
+```json
+{
+  "orchestratorModel": "qwen3.5",
+  "agentModel": "qwen3-coder-next"
+}
+```
+
+Se os dois forem iguais (ou não configurados), nenhum swap ocorre.
+
+### Arquivos Criados
+
+**`packages/core/src/provider/model-swap-provider.ts`** (NOVO):
+
+- Wrapper em torno do `ProviderLayer`
+- Intercepta `streamChat()` e chama `vllm.swapModel()` se o modelo difere do atual
+- Emite eventos `model_loading` / `model_ready` antes/depois do swap
+
+### Arquivos Modificados
+
+- **`packages/core/src/config/schema.ts`**: campos `orchestratorModel` e `agentModel` opcionais
+- **`packages/core/src/provider/types.ts`**: eventos `model_loading` / `model_ready` no `StreamEvent`
+- **`packages/core/src/orchestrator/types.ts`**: mesmos eventos no `OrchestratorEvent`
+- **`packages/core/src/orchestrator/orchestrator.ts`**: usa `orchestratorModel ?? model`; propaga novos eventos
+- **`packages/core/src/subagent/manager.ts`**: usa `agentModel ?? model` como defaultModel
+- **`packages/core/src/bootstrap.ts`**: cria vllm ANTES do orchestrator; instancia ModelSwapProvider quando dual-model configurado
+- **`packages/shared/src/protocol.ts`**: `ChatEventNotification` com `model_loading` / `model_ready`
+- **`packages/cli/src/serve/handlers.ts`**: repassa eventos de swap ao cliente
+- **`packages/vscode/src/webview/app/hooks/chat-events.ts`**: exibe "⏳ Carregando modelo: X..." na UI durante swap
+
+### Build
+
+- `packages/shared`, `packages/core`, `packages/cli` — todos compilam sem erros
+
 ## Feature: Feedback System — Frases de Loading (2026-03-11)
 
 **Status**: Concluído
