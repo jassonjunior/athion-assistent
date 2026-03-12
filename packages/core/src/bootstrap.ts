@@ -22,6 +22,7 @@ import { createModelSwapProvider } from './provider/model-swap-provider'
 import type { ProxyServer } from './server/proxy/proxy'
 import { createProxy, createProxyReuse, isProxyHealthy } from './server/proxy/proxy'
 import { ProxyConfigSchema } from './server/proxy/types'
+import { createLlamaCppManager } from './server/llama-cpp-manager'
 import { createMlxOmniManager } from './server/mlx-omni-manager'
 import type { VllmManager } from './server/vllm-manager'
 import { createVllmManager } from './server/vllm-manager'
@@ -164,7 +165,9 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
     ? { vllm: createVllmManager({ port: 0, ttlMinutes: 0 }), proxy: null }
     : providerName === 'mlx-omni'
       ? { vllm: await setupMlxOmni(config), proxy: null }
-      : await setupVllmAndProxy(config)
+      : providerName === 'llama-cpp' || providerName === 'lm-studio'
+        ? { vllm: setupLlamaCpp(config), proxy: null }
+        : await setupVllmAndProxy(config)
 
   // Se orchestratorModel ou agentModel estiverem configurados, usa ModelSwapProvider
   // para fazer unload/load automático entre turnos do orquestrador e subagentes.
@@ -285,6 +288,26 @@ async function setupIndexer(
   })
   tools.register(createSearchCodebaseTool(indexer) as ToolDefinition)
   return indexer
+}
+
+function setupLlamaCpp(config: ConfigManager): VllmManager {
+  const log = createLogger('bootstrap')
+  const port = (config.get('llamaCppPort') as number | undefined) ?? 8080
+  const host = (config.get('llamaCppHost') as string | undefined) ?? '127.0.0.1'
+  const autoStart = (config.get('llamaCppAutoStart') as boolean | undefined) ?? true
+  const extraArgs = (config.get('llamaCppArgs') as string[] | undefined) ?? []
+
+  // Define URL do provider para a porta configurada
+  const providerName = config.get('provider') as string
+  const envKey = providerName === 'lm-studio' ? 'ATHION_LM_STUDIO_URL' : 'ATHION_LLAMA_CPP_URL'
+  process.env[envKey] = `http://${host}:${port}/v1`
+
+  log.info(
+    { provider: providerName, host, port, autoStart },
+    `${providerName} manager configured — swap via keep_alive (no kill+restart)`,
+  )
+
+  return createLlamaCppManager({ port, host, autoStart, extraArgs })
 }
 
 async function setupMlxOmni(config: ConfigManager): Promise<VllmManager> {

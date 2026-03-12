@@ -48,7 +48,7 @@ function logRequest(config: StreamChatConfig, counter: number): void {
     lines.push(`\n─── TOOLS ───`)
     for (const name of toolNames) {
       const tool = config.tools?.[name]
-      lines.push(`${name} — ${tool.description?.slice(0, 80) ?? ''}`)
+      lines.push(`${name} — ${tool?.description?.slice(0, 80) ?? ''}`)
     }
   }
 

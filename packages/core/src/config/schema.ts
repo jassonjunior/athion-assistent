@@ -56,6 +56,19 @@ export const ConfigSchema = z.object({
   // grandes não cabem juntos na memória (ex: 35B + 40B > 37GB wired limit)
   // Quando true, usa sempre orchestratorModel para todas as chamadas
   mlxOmniSingleModel: z.boolean().default(false).optional(),
+
+  // llama-cpp — llama-server em router mode, swap via keep_alive sem kill+restart
+  // Instalação: brew install llama.cpp
+  // Modelos: caminhos GGUF em orchestratorModel / agentModel
+  llamaCppPort: z.number().default(8080).optional(),
+  llamaCppHost: z.string().default('127.0.0.1').optional(),
+  llamaCppAutoStart: z.boolean().default(true).optional(),
+  llamaCppArgs: z.array(z.string()).default([]).optional(),
+
+  // lm-studio — LM Studio com unload API explícita, suporta MLX e GGUF
+  // Requer LM Studio app instalado (lmstudio.ai)
+  lmStudioPort: z.number().default(1234).optional(),
+  lmStudioHost: z.string().default('127.0.0.1').optional(),
 })
 
 /** Tipo de configuracao.

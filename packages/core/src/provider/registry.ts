@@ -22,6 +22,9 @@ interface ProviderEntry {
  *
  * Providers suportados:
  * - **vllm-mlx**: vLLM rodando localmente via MLX (Apple Silicon) — API compatível com OpenAI
+ * - **mlx-omni**: MLX Omni Server com LRU+TTL caching e hotload real
+ * - **llama-cpp**: llama-server (llama.cpp) em router mode — swap via keep_alive, sem OOM
+ * - **lm-studio**: LM Studio com auto-evict e unload API explícita — suporta MLX e GGUF
  * - **ollama**: Ollama rodando localmente — API compatível com OpenAI
  * - **openai**: OpenAI cloud (GPT-4o, GPT-4o-mini)
  * - **anthropic**: Anthropic cloud (Claude Sonnet, Haiku)
@@ -52,6 +55,42 @@ export const PROVIDERS: Record<string, ProviderEntry> = {
         contextLength: 50000,
       },
     ],
+  },
+
+  'mlx-omni': {
+    info: { id: 'mlx-omni', name: 'MLX Omni Server', isLocal: true },
+    createModel: (modelId: string) => {
+      const provider = createOpenAI({
+        baseURL: process.env['ATHION_MLX_OMNI_URL'] ?? 'http://localhost:10240/v1',
+        apiKey: 'not-needed',
+      })
+      return provider.chat(modelId)
+    },
+    models: [],
+  },
+
+  'llama-cpp': {
+    info: { id: 'llama-cpp', name: 'llama.cpp Server', isLocal: true },
+    createModel: (modelId: string) => {
+      const provider = createOpenAI({
+        baseURL: process.env['ATHION_LLAMA_CPP_URL'] ?? 'http://127.0.0.1:8080/v1',
+        apiKey: 'llama-cpp',
+      })
+      return provider.chat(modelId)
+    },
+    models: [], // modelos dinâmicos — especificados via orchestratorModel / agentModel no config
+  },
+
+  'lm-studio': {
+    info: { id: 'lm-studio', name: 'LM Studio', isLocal: true },
+    createModel: (modelId: string) => {
+      const provider = createOpenAI({
+        baseURL: process.env['ATHION_LM_STUDIO_URL'] ?? 'http://127.0.0.1:1234/v1',
+        apiKey: 'lm-studio',
+      })
+      return provider.chat(modelId)
+    },
+    models: [], // modelos dinâmicos — gerenciados pelo LM Studio
   },
 
   ollama: {
