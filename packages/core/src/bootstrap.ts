@@ -18,9 +18,11 @@ import { createPermissionManager } from './permissions'
 import type { PermissionManager } from './permissions/types'
 import type { ProviderLayer } from './provider'
 import { createProviderLayer } from './provider'
+import { createModelSwapProvider } from './provider/model-swap-provider'
 import type { ProxyServer } from './server/proxy/proxy'
 import { createProxy, createProxyReuse, isProxyHealthy } from './server/proxy/proxy'
 import { ProxyConfigSchema } from './server/proxy/types'
+import { createMlxOmniManager } from './server/mlx-omni-manager'
 import type { VllmManager } from './server/vllm-manager'
 import { createVllmManager } from './server/vllm-manager'
 import type { SkillManager } from './skills'
@@ -117,6 +119,13 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
     log.debug({ port }, 'set ATHION_VLLM_MLX_URL from backendPort')
   }
 
+  // Set ATHION_MLX_OMNI_URL from mlxOmniPort if not already set
+  if (!process.env['ATHION_MLX_OMNI_URL']) {
+    const port = (config.get('mlxOmniPort') as number | undefined) ?? 10240
+    process.env['ATHION_MLX_OMNI_URL'] = `http://localhost:${port}/v1`
+    log.debug({ port }, 'set ATHION_MLX_OMNI_URL from mlxOmniPort')
+  }
+
   if (skillsDir) {
     log.debug({ skillsDir }, 'loading skills from skillsDir')
     await skills.loadFromDirectory(skillsDir)
@@ -146,22 +155,61 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
   const indexer = await setupIndexer(workspacePath, indexDbPath, tools)
   if (indexer) log.info({ workspacePath }, 'codebase indexer ready')
 
+  // Cria server manager ANTES dos subagentes e orquestrador para poder usar ModelSwapProvider.
+  // O manager depende do provider configurado:
+  //   - 'mlx-omni'  → MlxOmniManager (hotload real via LRU+TTL, sem restart)
+  //   - qualquer outro → VllmManager (kill+restart por swap)
+  const providerName = config.get('provider') as string
+  const { vllm, proxy } = skipVllm
+    ? { vllm: createVllmManager({ port: 0, ttlMinutes: 0 }), proxy: null }
+    : providerName === 'mlx-omni'
+      ? { vllm: await setupMlxOmni(config), proxy: null }
+      : await setupVllmAndProxy(config)
+
+  // Se orchestratorModel ou agentModel estiverem configurados, usa ModelSwapProvider
+  // para fazer unload/load automático entre turnos do orquestrador e subagentes.
+  // mlxOmniSingleModel=true desabilita o swap quando dois modelos grandes não cabem na memória.
+  const singleModel = Boolean(config.get('mlxOmniSingleModel'))
+  const effectiveProvider =
+    config.get('orchestratorModel') || config.get('agentModel')
+      ? createModelSwapProvider(provider, vllm, singleModel)
+      : provider
+
+  if (effectiveProvider !== provider) {
+    log.info(
+      {
+        orchestratorModel: config.get('orchestratorModel'),
+        agentModel: config.get('agentModel'),
+        singleModel,
+      },
+      singleModel
+        ? 'model swap DISABLED (mlxOmniSingleModel=true) — using single model for all turns'
+        : 'model swap enabled — will unload/load models between orchestrator and subagent turns',
+    )
+  }
+
   const summarizer = createSummarizationService({
-    provider,
+    provider: effectiveProvider,
     providerId: config.get('provider') as string,
     modelId: config.get('model') as string,
   })
-  const subagents = createSubAgentManager({ config, provider, tools, skills, summarizer })
+  const subagents = createSubAgentManager({
+    config,
+    provider: effectiveProvider,
+    tools,
+    skills,
+    summarizer,
+  })
   for (const agent of builtinAgents) subagents.registerAgent(agent)
   tools.register(createTaskTool({ subagents }) as ToolDefinition)
 
-  const plugins = createPluginManager({ bus, config, tools, provider })
+  const plugins = createPluginManager({ bus, config, tools, provider: effectiveProvider })
   await plugins.loadFromDirectory(pluginsDir ?? '~/.athion/plugins')
 
   const orchestrator = createOrchestrator({
     config,
     bus,
-    provider,
+    provider: effectiveProvider,
     tools,
     tokens,
     skills,
@@ -171,16 +219,12 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
     subagents,
   })
 
-  const { vllm, proxy } = skipVllm
-    ? { vllm: createVllmManager({ port: 0, ttlMinutes: 0 }), proxy: null }
-    : await setupVllmAndProxy(config)
-
   log.info({ provider: config.get('provider'), model: config.get('model') }, 'bootstrap complete')
 
   return {
     bus,
     config,
-    provider,
+    provider: effectiveProvider,
     skills,
     tools,
     plugins,
@@ -241,6 +285,34 @@ async function setupIndexer(
   })
   tools.register(createSearchCodebaseTool(indexer) as ToolDefinition)
   return indexer
+}
+
+async function setupMlxOmni(config: ConfigManager): Promise<VllmManager> {
+  const log = createLogger('bootstrap')
+  const port = (config.get('mlxOmniPort') as number | undefined) ?? 10240
+  const autoStart = (config.get('mlxOmniAutoStart') as boolean | undefined) ?? true
+  const ttlMinutes = (config.get('mlxOmniTtlMinutes') as number | undefined) ?? 30
+
+  const mlxOmni = createMlxOmniManager({ port, autoStart, ttlMinutes })
+
+  // Garante a URL do provider mlx-omni para a porta configurada
+  process.env['ATHION_MLX_OMNI_URL'] = `http://localhost:${port}/v1`
+
+  // Sempre verifica se está no ar. Se não estiver e autoStart=true, sobe o processo.
+  // Se autoStart=false, ensureRunning() retorna sem fazer nada (usuário gerencia manualmente).
+  log.info({ port, autoStart }, 'checking mlx-omni-server health')
+  await mlxOmni.ensureRunning()
+
+  if (await mlxOmni.isRunning()) {
+    log.info({ port }, 'mlx-omni-server is ready')
+  } else {
+    log.warn(
+      { port, autoStart },
+      'mlx-omni-server is not running (autoStart=false or failed to start)',
+    )
+  }
+
+  return mlxOmni
 }
 
 async function setupVllmAndProxy(

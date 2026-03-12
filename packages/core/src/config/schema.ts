@@ -41,6 +41,21 @@ export const ConfigSchema = z.object({
   // vllm-mlx
   vllmAutoStart: z.boolean().default(true),
   vllmTtlMinutes: z.number().default(30),
+
+  // mlx-omni — servidor com LRU+TTL caching e hotload real
+  mlxOmniPort: z.number().default(10240).optional(),
+  mlxOmniAutoStart: z.boolean().default(true).optional(),
+  mlxOmniTtlMinutes: z.number().default(30).optional(),
+
+  // Model swap — permite usar modelos diferentes para orquestrador e subagentes
+  // Quando configurados, o vLLM faz unload/load automaticamente entre turnos
+  orchestratorModel: z.string().optional(),
+  agentModel: z.string().optional(),
+
+  // mlx-omni single model mode — desabilita swap automático quando dois modelos
+  // grandes não cabem juntos na memória (ex: 35B + 40B > 37GB wired limit)
+  // Quando true, usa sempre orchestratorModel para todas as chamadas
+  mlxOmniSingleModel: z.boolean().default(false).optional(),
 })
 
 /** Tipo de configuracao.
