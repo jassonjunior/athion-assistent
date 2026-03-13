@@ -113,8 +113,8 @@ function makeRunInSpan(tracer: any, api: OtelApi, anonymize: (v: string) => stri
     attrs: Record<string, string | number | boolean>,
     callback: (span: SpanContext) => Promise<T>,
   ): Promise<T> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return tracer.startActiveSpan(spanName, async (otelSpan: any) => {
-      // eslint-disable-line @typescript-eslint/no-explicit-any
       for (const [key, val] of Object.entries(attrs)) otelSpan.setAttribute(key, val)
       const spanCtx: SpanContext = {
         setAttribute: (key, val) => otelSpan.setAttribute(key, val),
