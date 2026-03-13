@@ -203,31 +203,51 @@ export function useChat(
         return true
       }
       case 'find-skills': {
-        const results = core.skillRegistry.search(arg || undefined)
-        if (results.length === 0) {
+        if (!arg) {
+          // Sem query — lista local
+          const local = core.skillRegistry.search()
+          const list = local
+            .map((r) => {
+              const installed = core.skillRegistry.isInstalled(r.name) ? ' ✓' : ''
+              return `- **${r.name}**${installed} — ${r.description}`
+            })
+            .join('\n')
           setMessages((prev) => [
             ...prev,
             systemMsg(
-              arg
-                ? `Nenhuma skill encontrada para "${arg}".`
-                : 'Nenhuma skill disponível no registry.',
+              `**Skills disponíveis (bundled):**\n\n${list}\n\n` +
+                `Use \`/find-skills <query>\` para buscar no GitHub.`,
             ),
           ])
           return true
         }
-        const list = results
-          .map((r) => {
-            const installed = core.skillRegistry.isInstalled(r.name) ? ' ✓' : ''
-            return `- **${r.name}**${installed} — ${r.description}\n  Tags: ${r.tags.join(', ')}`
+        // Com query — busca GitHub + local
+        setMessages((prev) => [...prev, systemMsg(`Buscando skills para "${arg}"...`)])
+        core.skillRegistry
+          .searchGitHub(arg)
+          .then((results) => {
+            if (results.length === 0) {
+              setMessages((prev) => [...prev, systemMsg(`Nenhuma skill encontrada para "${arg}".`)])
+              return
+            }
+            const list = results
+              .map((r) => {
+                const badge = r.installed ? ' ✓' : ''
+                const src = r.source === 'github' ? ` (${r.repo})` : ' (bundled)'
+                return `- **${r.name}**${badge} — ${r.description}${src}`
+              })
+              .join('\n')
+            setMessages((prev) => [
+              ...prev,
+              systemMsg(
+                `**Skills encontradas para "${arg}":**\n\n${list}\n\n` +
+                  `Para instalar: \`/install-skill <nome>\``,
+              ),
+            ])
           })
-          .join('\n')
-        setMessages((prev) => [
-          ...prev,
-          systemMsg(
-            `**Skills disponíveis${arg ? ` para "${arg}"` : ''}:**\n\n${list}\n\n` +
-              `Para instalar: \`/install-skill <nome>\``,
-          ),
-        ])
+          .catch((err: Error) => {
+            setMessages((prev) => [...prev, systemMsg(`Erro na busca: ${err.message}`)])
+          })
         return true
       }
       case 'install-skill': {

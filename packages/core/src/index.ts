@@ -45,7 +45,13 @@ export type { ProviderLayer, StreamEvent, TokenUsage } from './provider'
 
 // Skills
 export { createSkillManager, createSkillRegistry } from './skills'
-export type { SkillDefinition, SkillManager, SkillRegistry, SkillRegistryEntry } from './skills'
+export type {
+  SkillDefinition,
+  SkillManager,
+  SkillRegistry,
+  SkillRegistryEntry,
+  SkillSearchResult,
+} from './skills'
 
 // Storage
 export { createDatabaseManager } from './storage'

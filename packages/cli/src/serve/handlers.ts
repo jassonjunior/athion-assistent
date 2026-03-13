@@ -325,13 +325,29 @@ function handleCodebaseClear(core: AthionCore): unknown {
 
 async function handlePluginSearch(core: AthionCore, params: unknown): Promise<unknown> {
   const { query } = (params as { query?: string }) ?? {}
-  const results = core.skillRegistry.search(query)
+
+  if (query) {
+    const results = await core.skillRegistry.searchGitHub(query)
+    return {
+      results: results.map((r) => ({
+        pluginName: r.name,
+        packageName: r.repo ? `${r.repo}/${r.name}` : r.name,
+        description: r.description,
+        version: r.source === 'github' ? 'github' : 'bundled',
+        author: r.repo ?? 'athion',
+        tags: [r.source],
+        installed: r.installed,
+      })),
+    }
+  }
+
+  const local = core.skillRegistry.search()
   return {
-    results: results.map((r) => ({
+    results: local.map((r) => ({
       pluginName: r.name,
       packageName: r.name,
       description: r.description,
-      version: '1.0.0',
+      version: 'bundled',
       author: r.author,
       tags: r.tags,
       installed: core.skillRegistry.isInstalled(r.name),
