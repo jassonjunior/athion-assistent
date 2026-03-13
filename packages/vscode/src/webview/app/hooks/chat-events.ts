@@ -1,9 +1,15 @@
 /**
  * Chat event processing — extracted from useChat to stay under max-lines-per-function.
+ *
+ * Usa throttle (50ms) no content streaming para evitar flicker:
+ * acumula chunks no ref e atualiza React state no máximo a cada FLUSH_INTERVAL_MS.
  */
 
 import type { MutableRefObject, Dispatch, SetStateAction } from 'react'
 import type { ChatMessage, ToolCallInfo } from './useChat.js'
+
+/** Intervalo mínimo entre updates de React state durante streaming (ms). */
+const FLUSH_INTERVAL_MS = 50
 
 export interface ChatRefs {
   content: MutableRefObject<string>
@@ -19,10 +25,42 @@ export function createChatEventHandler(
   setMessages: SetMessages,
   setIsStreaming: SetStreaming,
 ) {
+  /** Timer do throttle — enquanto não-null, chunks acumulam sem re-render. */
+  let flushTimer: ReturnType<typeof setTimeout> | null = null
+  /** Flag: se true, há conteúdo novo no ref que ainda não foi para o React state. */
+  let dirty = false
+
+  /** Aplica o conteúdo acumulado no ref ao React state. */
+  function scheduleFlush(): void {
+    if (flushTimer !== null) {
+      dirty = true
+      return
+    }
+    flushContentToState(refs, setMessages, setIsStreaming)
+    dirty = false
+    flushTimer = setTimeout(() => {
+      flushTimer = null
+      if (dirty) {
+        flushContentToState(refs, setMessages, setIsStreaming)
+        dirty = false
+      }
+    }, FLUSH_INTERVAL_MS)
+  }
+
+  /** Limpa timer pendente (chamado no finish/error). */
+  function clearThrottle(): void {
+    if (flushTimer !== null) {
+      clearTimeout(flushTimer)
+      flushTimer = null
+    }
+    dirty = false
+  }
+
   return (event: { type: string; [key: string]: unknown }) => {
     switch (event.type) {
       case 'content':
-        handleContent(event, refs, setMessages, setIsStreaming)
+        refs.content.current += event.content as string
+        scheduleFlush()
         break
       case 'tool_call':
         handleToolCall(event, refs, setMessages)
@@ -31,13 +69,16 @@ export function createChatEventHandler(
         handleToolResult(event, refs, setMessages)
         break
       case 'finish':
+        clearThrottle()
         flushAssistant(refs, setMessages)
         setIsStreaming(false)
         break
       case 'error':
+        clearThrottle()
         handleError(event, refs, setMessages, setIsStreaming)
         break
       case 'model_loading':
+        clearThrottle()
         handleModelLoading(event, refs, setMessages, setIsStreaming)
         break
       case 'model_ready':
@@ -47,17 +88,21 @@ export function createChatEventHandler(
   }
 }
 
-function handleContent(
-  event: { [key: string]: unknown },
+/** Aplica conteúdo acumulado no ref ao React state (throttled). */
+function flushContentToState(
   refs: ChatRefs,
   setMessages: SetMessages,
   setIsStreaming: SetStreaming,
 ): void {
-  refs.content.current += event.content as string
+  const snapshot = refs.content.current
   setMessages((prev) => {
     const last = prev[prev.length - 1]
     if (last?.role === 'assistant') {
-      return [...prev.slice(0, -1), { ...last, content: refs.content.current }]
+      // Muta o objeto existente em vez de criar novo array quando só content muda
+      if (last.content === snapshot) return prev
+      const updated = [...prev]
+      updated[updated.length - 1] = { ...last, content: snapshot }
+      return updated
     }
     setIsStreaming(true)
     return [
@@ -65,7 +110,7 @@ function handleContent(
       {
         id: `msg-${++refs.messageId.current}`,
         role: 'assistant' as const,
-        content: refs.content.current,
+        content: snapshot,
       },
     ]
   })
