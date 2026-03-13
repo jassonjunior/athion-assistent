@@ -1,3 +1,4 @@
+import { createLogger } from '../logger'
 import type { Bus } from '../bus/bus'
 import type { ConfigManager } from '../config/config'
 import type { ProviderLayer } from '../provider/provider'
@@ -74,6 +75,8 @@ interface TurnResult {
   hasError: boolean
 }
 
+const log = createLogger('orchestrator')
+
 export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
   const agents: AgentDefinition[] = deps.subagents.list().map((a) => ({
     name: a.name,
@@ -94,8 +97,11 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     const ctx = await prepareChat(sessionId, message, deps, agents)
 
     let continueLoop = true
+    let loopIteration = 0
     while (continueLoop) {
+      loopIteration++
       continueLoop = false
+      log.info({ loopIteration, forceTextOnly: ctx.forceTextOnly }, 'orchestrator loop iteration')
 
       // Verificar compactacao entre turnos
       if (deps.tokens.needsCompaction()) {
@@ -133,13 +139,28 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
         }
 
         const shouldContinue: boolean = yield* handleToolCalls(ctx, turn.pendingToolCalls)
+        log.info({ shouldContinue, forceTextOnly: ctx.forceTextOnly }, 'handleToolCalls returned')
         if (!shouldContinue) return
         continueLoop = true
       } else if (turn.assistantContent) {
+        log.info(
+          { loopIteration, contentLength: turn.assistantContent.length },
+          'orchestrator final response',
+        )
         deps.session.addMessage(sessionId, 'assistant', turn.assistantContent)
         ctx.llmMessages.push({ role: 'assistant', content: turn.assistantContent })
+      } else {
+        log.warn(
+          {
+            loopIteration,
+            hasContent: !!turn.assistantContent,
+            pendingToolCalls: turn.pendingToolCalls.length,
+          },
+          'orchestrator turn produced no content and no tool calls',
+        )
       }
     }
+    log.info({ loopIteration }, 'orchestrator chat loop ended')
   }
 
   /** Cria uma nova sessao de conversa.
@@ -282,16 +303,22 @@ async function* runStreamTurn(ctx: ChatContext): AsyncGenerator<OrchestratorEven
 
   const stream = provider.streamChat({
     provider: config.get('provider') as string,
-    model: config.get('model') as string,
+    model: (config.get('orchestratorModel') ?? config.get('model')) as string,
     messages: ctx.llmMessages,
     ...(providerTools ? { tools: providerTools } : {}),
     ...(config.get('temperature') !== null
       ? { temperature: config.get('temperature') as number }
       : {}),
-    ...(config.get('maxTokens') !== null ? { maxTokens: config.get('maxTokens') as number } : {}),
+    maxTokens: (config.get('maxTokens') ?? config.get('maxOutputTokens') ?? 8192) as number,
   })
 
   for await (const event of stream) {
+    // Propagar eventos de swap de modelo diretamente para o cliente
+    if (event.type === 'model_loading' || event.type === 'model_ready') {
+      yield event as OrchestratorEvent
+      continue
+    }
+
     const result = processStreamEvent(event, assistantContent)
     assistantContent = result.assistantContent
 

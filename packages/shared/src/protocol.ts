@@ -119,6 +119,8 @@ export type ChatEventNotification =
   | { type: 'subagent_continuation'; agentName: string; continuationIndex: number }
   | { type: 'finish'; promptTokens: number; completionTokens: number }
   | { type: 'error'; message: string }
+  | { type: 'model_loading'; modelName: string }
+  | { type: 'model_ready'; modelName: string }
 
 // ─── Response Types ────────────────────────────────────────────────
 

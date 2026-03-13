@@ -13,6 +13,8 @@ export interface SubAgentDeps {
   skills: SkillManager
   defaultProvider: string
   defaultModel: string
+  /** Max tokens para respostas do LLM (default: 8192) */
+  maxTokens: number
   /** Serviço de summarização para compactar contexto via LLM (opcional, fallback: sliding-window) */
   summarizer?: SummarizationService | undefined
 }
@@ -83,6 +85,7 @@ export async function* runSubAgent(
       modelName,
       messages,
       providerTools,
+      deps.maxTokens,
       signal,
     )
     if (errorEvent) {
@@ -197,6 +200,7 @@ async function* streamTurn(
   modelName: string,
   messages: AgentMessage[],
   providerTools: ProviderTools,
+  maxTokens: number,
   signal: AbortSignal | undefined,
 ): AsyncGenerator<
   SubAgentEvent,
@@ -213,6 +217,7 @@ async function* streamTurn(
     provider: providerName,
     model: modelName,
     messages,
+    maxTokens,
     ...(Object.keys(providerTools).length > 0 ? { tools: providerTools } : {}),
   })
 

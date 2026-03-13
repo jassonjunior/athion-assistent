@@ -9,6 +9,8 @@ export type StreamEvent =
   | { type: 'tool_result'; id: string; result: unknown }
   | { type: 'finish'; usage: TokenUsage }
   | { type: 'error'; error: Error }
+  | { type: 'model_loading'; modelName: string }
+  | { type: 'model_ready'; modelName: string }
 
 /**
  * Contagem de tokens consumidos numa chamada ao LLM.

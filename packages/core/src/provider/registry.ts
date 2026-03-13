@@ -4,6 +4,19 @@ import { createOpenAI } from '@ai-sdk/openai'
 import type { ModelInfo, ProviderInfo } from './types'
 
 /**
+ * Fetch wrapper para Qwen3.5 thinking models no LM Studio.
+ *
+ * Modelos Qwen3.5 enviam `delta.reasoning_content` antes de `delta.content`.
+ * O Vercel AI SDK ignora `reasoning_content`, resultando em respostas vazias.
+ *
+ * Em modo GGUF: tool_calls funcionam normalmente com reasoning
+ * Em modo MLX: tool_calls podem falhar com reasoning ativo
+ *
+ * Este wrapper descarta chunks de `reasoning_content` silenciosamente,
+ * mantendo apenas `content` e `tool_calls` para o AI SDK processar.
+ */
+
+/**
  * Configuração de um provider registrado.
  * Contém a factory do Vercel AI SDK e metadados.
  */
@@ -86,7 +99,7 @@ export const PROVIDERS: Record<string, ProviderEntry> = {
     createModel: (modelId: string) => {
       const provider = createOpenAI({
         baseURL: process.env['ATHION_LM_STUDIO_URL'] ?? 'http://127.0.0.1:1234/v1',
-        apiKey: 'lm-studio',
+        apiKey: process.env['ATHION_LM_STUDIO_API_KEY'] ?? 'lm-studio',
       })
       return provider.chat(modelId)
     },

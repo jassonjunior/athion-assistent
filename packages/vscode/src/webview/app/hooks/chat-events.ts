@@ -37,6 +37,12 @@ export function createChatEventHandler(
       case 'error':
         handleError(event, refs, setMessages, setIsStreaming)
         break
+      case 'model_loading':
+        handleModelLoading(event, refs, setMessages, setIsStreaming)
+        break
+      case 'model_ready':
+        handleModelReady(refs, setMessages)
+        break
     }
   }
 }
@@ -138,4 +144,38 @@ export function flushAssistant(refs: ChatRefs, setMessages: SetMessages): void {
   }
   refs.content.current = ''
   refs.toolCalls.current = []
+}
+
+function handleModelLoading(
+  event: { [key: string]: unknown },
+  refs: ChatRefs,
+  setMessages: SetMessages,
+  setIsStreaming: SetStreaming,
+): void {
+  // Flush any pending assistant content before showing loading indicator
+  flushAssistant(refs, setMessages)
+  setIsStreaming(true)
+  setMessages((prev) => [
+    ...prev,
+    {
+      id: `msg-${++refs.messageId.current}`,
+      role: 'assistant' as const,
+      content: `⏳ Carregando modelo: ${event.modelName as string}...`,
+    },
+  ])
+}
+
+function handleModelReady(refs: ChatRefs, setMessages: SetMessages): void {
+  // Remove the loading indicator message (last assistant message with loading text)
+  setMessages((prev) => {
+    const last = prev[prev.length - 1]
+    if (
+      last?.role === 'assistant' &&
+      (last.content as string).startsWith('⏳ Carregando modelo:')
+    ) {
+      return prev.slice(0, -1)
+    }
+    return prev
+  })
+  refs.content.current = ''
 }

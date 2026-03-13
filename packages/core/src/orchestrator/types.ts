@@ -38,6 +38,8 @@ export type OrchestratorEvent =
   | { type: 'permission_request'; requestId: string; toolName: string; target: string }
   | { type: 'finish'; usage: TokenUsage }
   | { type: 'error'; error: Error }
+  | { type: 'model_loading'; modelName: string }
+  | { type: 'model_ready'; modelName: string }
 
 /**
  * Sessao de conversa entre usuario e Orchestrator.

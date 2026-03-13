@@ -44,7 +44,10 @@ export function createSubAgentManager(deps: SubAgentManagerDeps): SubAgentManage
       tools: deps.tools,
       skills: deps.skills,
       defaultProvider: deps.config.get('provider') as string,
-      defaultModel: deps.config.get('model') as string,
+      defaultModel: (deps.config.get('agentModel') ?? deps.config.get('model')) as string,
+      maxTokens: (deps.config.get('maxTokens') ??
+        deps.config.get('maxOutputTokens') ??
+        8192) as number,
       summarizer: deps.summarizer,
     }
 

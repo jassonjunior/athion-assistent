@@ -1,5 +1,38 @@
 # Changes Log - Athion Assistent
 
+## Fix: maxTokens + Orchestrator Final Synthesis (2026-03-13)
+
+**Status**: Concluído ✅
+
+### Problemas resolvidos
+
+1. **maxTokens não era enviado**: `config.get('maxTokens')` retornava `undefined`, então nenhum `max_tokens` ia pro LM Studio. Qwen3.5 thinking model precisa de max_tokens alto (≥2000) para gerar conteúdo após reasoning (~1500-2400 chars de thinking).
+
+2. **Subagente também sem maxTokens**: `streamTurn()` em `agent.ts` não recebia `maxTokens`, resultando em respostas truncadas.
+
+3. **MLX vs GGUF**: Modelo MLX (`mlx-community/qwen3.5-35b-a3b`) não gera `tool_calls` corretamente. Modelo GGUF (`qwen/qwen3.5-35b-a3b`) funciona. Config ajustada para GGUF.
+
+### Arquivos alterados
+
+- `packages/core/src/orchestrator/orchestrator.ts` — maxTokens usa `maxOutputTokens` como fallback, debug logging
+- `packages/core/src/subagent/agent.ts` — `maxTokens` como parâmetro de `streamTurn()` + `SubAgentDeps`
+- `packages/core/src/subagent/manager.ts` — passa `maxTokens` do config para SubAgentDeps
+- `packages/core/src/provider/model-swap-provider.ts` — LOG_PATH → `/tmp/athion-llm.log`
+
+### Validação do fluxo completo (17 requests)
+
+```
+#1-#2:  qwen/qwen3.5-35b-a3b (GGUF)  → Orquestrador: análise + tool call
+#3-#16: qwen3-coder-next-reap-40b-a3b-mlx → Subagente: 14 requests explorando projeto
+#17:    qwen/qwen3.5-35b-a3b (GGUF)  → Orquestrador: síntese final ✅ (436 tokens)
+```
+
+- Swap ida (orq→agent): ~10s, sem OOM ✅
+- Swap volta (agent→orq): ~11s, sem OOM ✅
+- Orquestrador SEMPRE envia mensagem final ✅
+
+---
+
 ## Feature: LM Studio Provider com Model Swap Sequential via lms CLI (2026-03-12)
 
 **Status**: Concluído ✅ — swap sem OOM validado

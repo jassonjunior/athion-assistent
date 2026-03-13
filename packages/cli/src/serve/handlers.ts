@@ -172,6 +172,12 @@ function notifyChatEvent(notify: NotifyFn, event: { type: string; [key: string]:
     case 'error':
       notify('chat.event', { type: 'error', message: (event.error as { message: string }).message })
       break
+    case 'model_loading':
+      notify('chat.event', { type: 'model_loading', modelName: event.modelName as string })
+      break
+    case 'model_ready':
+      notify('chat.event', { type: 'model_ready', modelName: event.modelName as string })
+      break
   }
 }
 

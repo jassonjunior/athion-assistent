@@ -69,6 +69,7 @@ export const ConfigSchema = z.object({
   // Requer LM Studio app instalado (lmstudio.ai)
   lmStudioPort: z.number().default(1234).optional(),
   lmStudioHost: z.string().default('127.0.0.1').optional(),
+  lmStudioApiKey: z.string().optional(), // token da API do LM Studio (Settings → API → API Key)
 })
 
 /** Tipo de configuracao.

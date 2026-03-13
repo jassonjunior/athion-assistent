@@ -24,7 +24,7 @@ import type { VllmManager } from '../server/vllm-manager'
 
 const log = createLogger('model-swap')
 
-const LOG_PATH = '/tmp/mlx-omni.log'
+const LOG_PATH = '/tmp/athion-llm.log'
 let requestCounter = 0
 
 function ts(): string {
@@ -35,20 +35,46 @@ function filelog(line: string): void {
   appendFile(LOG_PATH, `${line}\n`).catch(() => {})
 }
 
+/** Estima tokens a partir da contagem de caracteres (aprox 4 chars/token). */
+function estimateTokens(config: StreamChatConfig): number {
+  let chars = 0
+  for (const msg of config.messages) {
+    const c = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
+    chars += c.length
+  }
+  if (config.tools) {
+    chars += JSON.stringify(config.tools).length
+  }
+  return Math.round(chars / 4)
+}
+
+/** Extrai nomes dos parâmetros de um JSON Schema (para mostrar tool(param1, param2)). */
+function toolParams(tool: { parameters?: unknown } | undefined): string {
+  if (!tool?.parameters) return ''
+  const params = tool.parameters as { properties?: Record<string, unknown> }
+  const keys = params.properties ? Object.keys(params.properties) : []
+  return keys.length > 0 ? `(${keys.join(', ')})` : ''
+}
+
 function logRequest(config: StreamChatConfig, counter: number): void {
   const toolNames = config.tools ? Object.keys(config.tools) : []
+  const estTokens = estimateTokens(config)
+  const maxTok = config.maxTokens !== null ? String(config.maxTokens) : 'default'
   const lines: string[] = []
 
   lines.push(`\n${'═'.repeat(60)}`)
-  lines.push(`${ts()} → LLM request #${counter}`)
+  lines.push(`${ts()} → POST /v1/chat/completions #${counter}`)
   lines.push(`model: ${config.model}`)
+  lines.push(`stream: true | max_tokens: ${maxTok}`)
   lines.push(`messages: ${config.messages.length} | tools: ${toolNames.length}`)
+  lines.push(`est. prompt tokens: ~${estTokens}`)
 
   if (toolNames.length > 0) {
     lines.push(`\n─── TOOLS ───`)
     for (const name of toolNames) {
       const tool = config.tools?.[name]
-      lines.push(`${name} — ${tool?.description?.slice(0, 80) ?? ''}`)
+      const params = toolParams(tool as { parameters?: unknown } | undefined)
+      lines.push(`${name}${params} — ${tool?.description?.slice(0, 80) ?? ''}`)
     }
   }
 
@@ -56,9 +82,9 @@ function logRequest(config: StreamChatConfig, counter: number): void {
   for (let i = 0; i < config.messages.length; i++) {
     const msg = config.messages[i]
     const contentStr = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
-    const preview = contentStr.slice(0, 300).replace(/\n/g, ' ')
+    const preview = contentStr.slice(0, 500)
     lines.push(`\n[${i}] ${msg.role} (${contentStr.length} chars)`)
-    lines.push(preview + (contentStr.length > 300 ? '...' : ''))
+    lines.push(preview + (contentStr.length > 500 ? '...' : ''))
   }
 
   filelog(lines.join('\n'))
@@ -67,10 +93,10 @@ function logRequest(config: StreamChatConfig, counter: number): void {
 function logEvent(event: StreamEvent, counter: number): void {
   if (event.type === 'tool_call') {
     filelog(`\n─── TOOL CALL #${counter} ───`)
-    filelog(`${event.name}(${JSON.stringify(event.args).slice(0, 200)})`)
+    filelog(`${event.name}(${JSON.stringify(event.args).slice(0, 300)})`)
   } else if (event.type === 'tool_result') {
     filelog(`\n─── TOOL RESULT #${counter} ───`)
-    const result = JSON.stringify(event.result).slice(0, 300)
+    const result = JSON.stringify(event.result).slice(0, 500)
     filelog(result)
   } else if (event.type === 'finish') {
     filelog(`\n─── FINISH #${counter} ───`)
@@ -139,7 +165,7 @@ export function createModelSwapProvider(
       } else if (event.type === 'finish') {
         if (assistantContent) {
           filelog(`\n─── ASSISTANT #${counter} ───`)
-          filelog(assistantContent.slice(0, 500) + (assistantContent.length > 500 ? '...' : ''))
+          filelog(assistantContent.slice(0, 1000) + (assistantContent.length > 1000 ? '...' : ''))
         }
         logEvent(event, counter)
         log.info(
