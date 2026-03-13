@@ -1,3 +1,6 @@
+/** provider/index
+ * Descrição: Barrel file que re-exporta os módulos públicos do Provider Layer.
+ */
 export { createProviderLayer } from './provider'
 export type { ProviderLayer } from './provider'
 export { PROVIDERS } from './registry'

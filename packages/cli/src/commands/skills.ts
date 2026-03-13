@@ -1,14 +1,23 @@
 /**
  * Comando `athion skills` — Listar skills disponíveis.
- * Skills são prompts em markdown que definem o comportamento dos subagentes.
+ * Descrição: Skills são prompts em markdown que definem o comportamento dos subagentes.
  */
 
 import type { Argv } from 'yargs'
 
+/** skillsCommand
+ * Descrição: Configura o comando yargs para listagem de skills.
+ * @param yargs - Instância do yargs para configuração do comando
+ * @returns Instância do yargs configurada
+ */
 export function skillsCommand(yargs: Argv) {
   return yargs
 }
 
+/** skillsHandler
+ * Descrição: Handler que executa a listagem de skills disponíveis no terminal.
+ * @returns Promise que resolve quando a listagem é concluída
+ */
 export async function skillsHandler() {
   const { bootstrap } = await import('@athion/core')
   const { resolve } = await import('node:path')

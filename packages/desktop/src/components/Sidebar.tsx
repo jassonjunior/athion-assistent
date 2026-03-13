@@ -1,19 +1,37 @@
 /**
- * Sidebar — Lista de sessões com create/delete.
+ * Sidebar
+ * Descrição: Painel lateral com lista de sessões de chat, permitindo criar, selecionar e recolher.
  */
 
 import { useCallback, useEffect, useState } from 'react'
 import * as bridge from '../bridge/tauri-bridge.js'
 import type { SessionInfo } from '../bridge/types.js'
 
+/** SidebarProps
+ * Descrição: Propriedades do componente Sidebar
+ */
 interface SidebarProps {
+  /** Identificador da sessão atualmente selecionada */
   currentSessionId: string | null
+  /** Callback disparado ao selecionar uma sessão */
   onSelectSession: (id: string) => void
+  /** Callback disparado ao criar uma nova sessão */
   onNewSession: () => void
+  /** Indica se a sidebar está recolhida */
   isCollapsed: boolean
+  /** Callback para alternar entre expandido e recolhido */
   onToggle: () => void
 }
 
+/** Sidebar
+ * Descrição: Componente de barra lateral que exibe a lista de sessões de chat e permite navegação entre elas
+ * @param currentSessionId - ID da sessão ativa
+ * @param onSelectSession - Callback ao clicar em uma sessão
+ * @param onNewSession - Callback ao criar nova sessão
+ * @param isCollapsed - Estado de visibilidade da sidebar
+ * @param onToggle - Callback para expandir/recolher a sidebar
+ * @returns Elemento JSX da sidebar com lista de sessões
+ */
 export function Sidebar({
   currentSessionId,
   onSelectSession,
@@ -23,6 +41,9 @@ export function Sidebar({
 }: SidebarProps) {
   const [sessions, setSessions] = useState<SessionInfo[]>([])
 
+  /** loadSessions
+   * Descrição: Carrega a lista de sessões do sidecar via bridge
+   */
   const loadSessions = useCallback(async () => {
     try {
       const list = await bridge.sessionList()

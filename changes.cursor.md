@@ -1,5 +1,341 @@
 # Changes Log - Athion Assistent
 
+## Fix: maxTokens + Orchestrator Final Synthesis (2026-03-13)
+
+**Status**: Concluído ✅
+
+### Problemas resolvidos
+
+1. **maxTokens não era enviado**: `config.get('maxTokens')` retornava `undefined`, então nenhum `max_tokens` ia pro LM Studio. Qwen3.5 thinking model precisa de max_tokens alto (≥2000) para gerar conteúdo após reasoning (~1500-2400 chars de thinking).
+
+2. **Subagente também sem maxTokens**: `streamTurn()` em `agent.ts` não recebia `maxTokens`, resultando em respostas truncadas.
+
+3. **MLX vs GGUF**: Modelo MLX (`mlx-community/qwen3.5-35b-a3b`) não gera `tool_calls` corretamente. Modelo GGUF (`qwen/qwen3.5-35b-a3b`) funciona. Config ajustada para GGUF.
+
+### Arquivos alterados
+
+- `packages/core/src/orchestrator/orchestrator.ts` — maxTokens usa `maxOutputTokens` como fallback, debug logging
+- `packages/core/src/subagent/agent.ts` — `maxTokens` como parâmetro de `streamTurn()` + `SubAgentDeps`
+- `packages/core/src/subagent/manager.ts` — passa `maxTokens` do config para SubAgentDeps
+- `packages/core/src/provider/model-swap-provider.ts` — LOG_PATH → `/tmp/athion-llm.log`
+
+### Validação do fluxo completo (17 requests)
+
+```
+#1-#2:  qwen/qwen3.5-35b-a3b (GGUF)  → Orquestrador: análise + tool call
+#3-#16: qwen3-coder-next-reap-40b-a3b-mlx → Subagente: 14 requests explorando projeto
+#17:    qwen/qwen3.5-35b-a3b (GGUF)  → Orquestrador: síntese final ✅ (436 tokens)
+```
+
+- Swap ida (orq→agent): ~10s, sem OOM ✅
+- Swap volta (agent→orq): ~11s, sem OOM ✅
+- Orquestrador SEMPRE envia mensagem final ✅
+
+---
+
+## Feature: LM Studio Provider com Model Swap Sequential via lms CLI (2026-03-12)
+
+**Status**: Concluído ✅ — swap sem OOM validado
+
+### Problema resolvido
+
+O `mlx-omni-server` causava OOM ao usar dois modelos grandes simultaneamente (35B + 40B > memória disponível).
+O `llama-cpp-manager` via `keep_alive` não funcionava com LM Studio (API não suporta keep_alive).
+
+### Solução implementada
+
+Criado `packages/core/src/server/lm-studio-manager.ts` que usa o CLI `lms` para swap sequencial:
+
+1. `lms unload <modelo-anterior>` — descarrega completamente
+2. `Bun.sleep(1_500)` — aguarda OS liberar memória
+3. `lms load <novo-modelo>` — carrega e aguarda pronto (bloqueante)
+
+### Melhorias no bootstrap.ts
+
+- `setupLmStudio()` separado de `setupLlamaCpp()` — cada provider tem sua própria função
+- Detecta automaticamente o modelo carregado via `GET /api/v0/models` na primeira chamada (`ensureRunning`)
+- Sem `keep_alive`, sem kill+restart — swap controlado pelo LM Studio app
+
+### Validação
+
+```
+[2026-03-12 03:07:08] === detected loaded model: qwen/qwen3.5-35b-a3b ===
+[2026-03-12 03:07:19] === swapping model: qwen/qwen3.5-35b-a3b → qwen3-coder-next-reap-40b-a3b-mlx ===
+[2026-03-12 03:07:19] lms unload exit=0 — "Model unloaded."
+[2026-03-12 03:07:33] lms load exit=0 — "Model loaded successfully in 12.68s. (20.31 GiB)"
+```
+
+- 45+ requests ao modelo agente sem OOM ✅
+- Memória máxima: 21.81 GB (apenas 1 modelo por vez) ✅
+
+### Config atual (`~/.athion/config.json`)
+
+```json
+{
+  "provider": "lm-studio",
+  "model": "qwen/qwen3.5-35b-a3b",
+  "orchestratorModel": "qwen/qwen3.5-35b-a3b",
+  "agentModel": "qwen3-coder-next-reap-40b-a3b-mlx",
+  "lmStudioPort": 1235,
+  "lmStudioApiKey": "sk-lm-..."
+}
+```
+
+### Arquivos alterados
+
+- `packages/core/src/server/lm-studio-manager.ts` — CRIADO
+- `packages/core/src/bootstrap.ts` — separou setupLmStudio() / setupLlamaCpp()
+
+---
+
+## Fix: Respostas não chegavam ao UI — dist/core desatualizado (2026-03-11)
+
+**Status**: Corrigido ✅
+
+### Root Cause
+
+O `packages/core/dist/` estava desatualizado — `bootstrap.js` era a versão OLD sem a
+branch `mlx-omni`, e `dist/server/mlx-omni-manager.js` não existia.
+A extensão usava o dist compilado, então as requisições iam para `setupVllmAndProxy()`
+em vez de `setupMlxOmni()`, causando o provider errado (não chegava resposta no chat).
+
+### Solução
+
+```bash
+bun run --cwd packages/core build   # Gerou dist/server/mlx-omni-manager.js + bootstrap.js correto
+bun run --cwd packages/cli build    # Rebuilda CLI que usa @athion/core
+bun run --cwd packages/vscode build # Rebuilda extensão
+# Empacotar e instalar: athion-assistent-0.1.0.vsix
+```
+
+### Confirmação
+
+- `curl http://localhost:10240/v1/chat/completions` → responde com tokens ✅
+- `dist/bootstrap.js` agora tem `setupMlxOmni()` e importa `mlx-omni-manager` ✅
+- Extensão 0.1.0.vsix instalada com sucesso ✅
+
+---
+
+## Feature: MLX Omni Server — Backend com Hotload Real (2026-03-11)
+
+**Status**: Concluído ✅
+
+### Problema
+
+O vllm-mlx não tem hotload — cada `swapModel` exige kill+restart do processo (5–30s).
+Migração para MLX Omni Server que usa LRU+TTL caching interno: hotload real sem restart.
+
+### Como usar
+
+Instalar o servidor:
+
+```bash
+pip install mlx-omni-server
+```
+
+Configurar o Athion:
+
+```json
+{
+  "provider": "mlx-omni",
+  "orchestratorModel": "Qwen3.5-35B",
+  "agentModel": "Qwen3-Coder-Next-40B",
+  "mlxOmniPort": 10240,
+  "mlxOmniAutoStart": true
+}
+```
+
+### Diferença fundamental vs vllm-mlx
+
+|                  | vllm-mlx                | mlx-omni                          |
+| ---------------- | ----------------------- | --------------------------------- |
+| `swapModel`      | kill processo + restart | pre-warm HTTP (lazy load)         |
+| Overhead de swap | 5–30s                   | 2–10s (1ª vez) / ~0ms (cache hit) |
+| Processo único   | 1 processo por modelo   | 1 processo, N modelos em cache    |
+
+### Arquivos Criados
+
+**`packages/core/src/server/mlx-omni-manager.ts`** (NOVO):
+
+- Implementa interface `VllmManager` (drop-in replacement)
+- `swapModel()`: atualiza `currentModel` + pre-warm via POST ao servidor
+- `ensureRunning()`: inicia `mlx_omni_server --port PORT` se `autoStart`
+- `touch()`: no-op (TTL gerenciado pelo mlx-omni internamente)
+
+### Arquivos Modificados
+
+- **`packages/core/src/provider/registry.ts`**: adicionado provider `mlx-omni` com `ATHION_MLX_OMNI_URL`
+- **`packages/core/src/config/schema.ts`**: campos `mlxOmniPort`, `mlxOmniAutoStart`, `mlxOmniTtlMinutes`
+- **`packages/core/src/bootstrap.ts`**: quando `provider === 'mlx-omni'`, usa `setupMlxOmni()` em vez de `setupVllmAndProxy()`; define `ATHION_MLX_OMNI_URL`
+
+### Testes
+
+- 173 testes passando (sem regressões)
+- Testes de swap existentes cobrem `ModelSwapProvider` que funciona com qualquer `VllmManager`
+
+---
+
+## Feature: Model Swap Automático — Orquestrador/Subagentes (2026-03-11)
+
+**Status**: Concluído ✅
+
+### Problema
+
+Usuário não tem VRAM suficiente para rodar dois modelos vLLM simultaneamente.
+Necessidade de usar `qwen3.5` para o orquestrador e `qwen3-coder-next` para subagentes,
+com unload/load automático entre turnos.
+
+### Configuração
+
+```json
+{
+  "orchestratorModel": "qwen3.5",
+  "agentModel": "qwen3-coder-next"
+}
+```
+
+Se os dois forem iguais (ou não configurados), nenhum swap ocorre.
+
+### Arquivos Criados
+
+**`packages/core/src/provider/model-swap-provider.ts`** (NOVO):
+
+- Wrapper em torno do `ProviderLayer`
+- Intercepta `streamChat()` e chama `vllm.swapModel()` se o modelo difere do atual
+- Emite eventos `model_loading` / `model_ready` antes/depois do swap
+
+### Arquivos Modificados
+
+- **`packages/core/src/config/schema.ts`**: campos `orchestratorModel` e `agentModel` opcionais
+- **`packages/core/src/provider/types.ts`**: eventos `model_loading` / `model_ready` no `StreamEvent`
+- **`packages/core/src/orchestrator/types.ts`**: mesmos eventos no `OrchestratorEvent`
+- **`packages/core/src/orchestrator/orchestrator.ts`**: usa `orchestratorModel ?? model`; propaga novos eventos
+- **`packages/core/src/subagent/manager.ts`**: usa `agentModel ?? model` como defaultModel
+- **`packages/core/src/bootstrap.ts`**: cria vllm ANTES do orchestrator; instancia ModelSwapProvider quando dual-model configurado
+- **`packages/shared/src/protocol.ts`**: `ChatEventNotification` com `model_loading` / `model_ready`
+- **`packages/cli/src/serve/handlers.ts`**: repassa eventos de swap ao cliente
+- **`packages/vscode/src/webview/app/hooks/chat-events.ts`**: exibe "⏳ Carregando modelo: X..." na UI durante swap
+
+### Build
+
+- `packages/shared`, `packages/core`, `packages/cli` — todos compilam sem erros
+
+## Feature: Feedback System — Frases de Loading (2026-03-11)
+
+**Status**: Concluído
+
+### O que foi feito
+
+Sistema de frases humorísticas PT-BR que ciclam enquanto o modelo processa.
+
+### Arquivos Criados
+
+**`packages/vscode/src/webview/app/hooks/useFeedbackPhrase.ts`**:
+
+- Hook React com 34 frases PT-BR
+- Intervalo padrão: 5s (WebUI)
+- Anti-repetição via guard loop (até 5 tentativas)
+- Reset automático ao parar streaming
+
+**`packages/cli/src/ui/hooks/useFeedbackPhrase.ts`**:
+
+- Mesmo hook para CLI (Ink)
+- Intervalo padrão: 15s (terminal)
+
+**`packages/desktop/src/hooks/useFeedbackPhrase.ts`**:
+
+- Mesmo hook para desktop (Tauri/React)
+- Intervalo padrão: 5s
+
+### Arquivos Modificados
+
+**`packages/vscode/src/webview/app/components/MessageList.tsx`**:
+
+- Importa `useFeedbackPhrase`
+- Exibe frase ao lado do cursor `▌` durante streaming
+
+**`packages/vscode/src/webview/app/styles/vscode.css`**:
+
+- `.streaming-indicator` agora usa `display: flex` e `gap`
+- `.feedback-phrase`: italic, dimmed, 11px
+
+**`packages/cli/src/ui/MessageList.tsx`**:
+
+- Importa `useFeedbackPhrase`
+- Exibe frase quando não há streamingContent, tool ou agent ativos
+
+**`packages/desktop/src/components/MessageList.tsx`**:
+
+- Importa `useFeedbackPhrase`
+- Exibe frase em italic ao lado do cursor animado
+
+---
+
+## Feature: Slash Commands + @Mentions no Webview VSCode (2026-03-11)
+
+**Status**: Concluído
+
+### Problema
+
+- Extensão VSCode tinha comandos `/codebase`, `/use-skill`, `/clear-skill`, `/find-skills`, `/install-skill` mas faltavam: `/clear`, `/help`, `/agents`, `/skills`, `/model`, `/codebase-index`, `/codebase-search <query>`
+- `@mentions` de arquivos não injetavam conteúdo no prompt (só autocomplete visual)
+- Não havia suporte RPC para listar agentes na extensão
+
+### Arquivos Modificados
+
+**`packages/vscode/src/bridge/messenger-types.ts`**:
+
+- Adicionado `{ type: 'agents:list' }` ao `WebviewToExtension`
+- Adicionado `{ type: 'agents:list:result'; agents: AgentInfo[] }` ao `ExtensionToWebview`
+- Adicionada interface `AgentInfo { name: string; description: string }`
+
+**`packages/vscode/src/webview/chat-view-provider.ts`**:
+
+- Importados `node:fs` e `node:path`
+- Importado tipo `AgentInfo`
+- Handler `chat:send` resolve `@mentions` via `resolveAtMentions()` antes de enviar ao bridge
+- Handler `agents:list` chama RPC `agents.list` e retorna resultado ao webview
+- Função `resolveAtMentions(content, wsRoot)` resolve `@arquivo` → conteúdo inline (max 200 linhas)
+
+**`packages/vscode/src/webview/app/hooks/useChat.ts`**:
+
+- Adicionados `pendingSkillsListRef` e `pendingModelRef` para distinguir quando `skill:list:result` e `config:result` foram disparados por slash commands
+- Listener `skill:list:result` — condicional via flag (não interfere com outros consumidores)
+- Listener `config:result` — condicional via flag
+- Listener `agents:list:result` — exibe lista de agentes no chat
+- Constante `HELP_TEXT` com todos os comandos documentados
+- `/clear` — limpa mensagens sem adicionar ao histórico
+- `/help` — mostra ajuda completa
+- `/agents` → `post({ type: 'agents:list' })`
+- `/skills` → `post({ type: 'skill:list' })` com flag ativa
+- `/model` → `post({ type: 'config:list' })` com flag ativa
+- `/codebase-index` — alias direto para `codebase:index`
+- `/codebase-search <query>` — alias direto para `codebase:search`
+- Exposto `clearMessages` no retorno do hook
+
+### Fluxo @Mentions
+
+````
+Usuário digita: "@src/main.ts explique este arquivo"
+→ sendMessage → post({ type: 'chat:send', content })
+→ chat-view-provider.ts: resolveAtMentions() lê src/main.ts
+→ content transformado: "[Conteúdo de src/main.ts]:\n```\n<conteúdo>\n```\n explique este arquivo"
+→ bridge.request('chat.send', { content: resolvedContent })
+→ LLM recebe o conteúdo do arquivo diretamente no prompt
+````
+
+### Fluxo /agents
+
+```
+Usuário: /agents
+→ post({ type: 'agents:list' })
+→ chat-view-provider.ts: bridge.request('agents.list')
+→ post({ type: 'agents:list:result', agents: [...] })
+→ useChat: listener exibe lista formatada no chat
+```
+
+---
+
 ## Feature: Slash Commands + @Mentions no CLI (2026-03-10)
 
 **Status**: Concluído
@@ -1113,3 +1449,41 @@ Usuário: /clear-skill
 - Botão "Parar" já existia e estava corretamente conectado ao `abort()` em ambos os surfaces
 - VSCode: `chat.abort()` → `post({ type: 'chat:abort' })` → handler no `chat-view-provider.ts`
 - Desktop: `abort()` → `bridge.chatAbort(sessionId)` → sidecar interrompe o stream
+
+---
+
+## Fix: VSCode Extension CoreBridge not connected (2026-03-11)
+
+**Status**: Concluído ✅
+**Branch**: `fase-6/polish`
+
+### Problema
+
+Após instalar a extensão 0.0.2 via `.vsix`, o VSCode mostrava:
+
+```
+Failed to create session: CoreBridge not connected
+Connecting to '.../main.js.map' violates Content Security Policy
+```
+
+**Root cause**: `CoreBridge` resolvia o CLI path como `resolve(extensionPath, '..', 'cli', 'src', 'index.ts')`. Quando instalado em `~/.vscode/extensions/athion.athion-assistent-0.0.2/`, esse path não existe.
+
+### Correção
+
+**`packages/vscode/src/bridge/core-bridge.ts`**:
+
+- Removido `extensionPath` do constructor (não era mais necessário)
+- `cliPath` agora é `string | undefined` — quando undefined, spawn usa `athion serve --mode=stdio` (global binary com `shell: true`)
+- Quando `cliPath` fornecido: `spawn(bunPath, [cliPath, 'serve', '--mode=stdio'])` (dev/monorepo)
+
+**`packages/vscode/src/extension.ts`**:
+
+- Adicionado `detectCliPath(extensionPath)` que tenta:
+  1. `<workspaceRoot>/packages/cli/dist/index.js` (monorepo aberto no VS Code)
+  2. `resolve(extensionPath, '..', 'cli', 'dist', 'index.js')` (dev)
+  3. `resolve(extensionPath, '..', '..', 'packages', 'cli', 'dist', 'index.js')` (fallback)
+- Se nenhum encontrado → passa `undefined` ao CoreBridge → usa global `athion`
+
+**`packages/vscode/src/webview/chat-view-provider.ts`**:
+
+- CSP: adicionado `connect-src ${webview.cspSource}` para evitar erro nos `.map` files

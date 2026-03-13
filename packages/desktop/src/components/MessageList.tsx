@@ -1,25 +1,39 @@
 /**
- * MessageList — Lista de mensagens do chat com auto-scroll.
+ * MessageList
+ * Descrição: Componente que exibe a lista de mensagens do chat com auto-scroll e suporte a code blocks.
  */
 
 import { useEffect, useRef } from 'react'
 import type { ChatMessage } from '../hooks/useChat.js'
 import { CodeBlock } from './CodeBlock.js'
 import { ToolCallCard } from './ToolCallCard.js'
+import { useFeedbackPhrase } from '../hooks/useFeedbackPhrase.js'
 
+/** MessageListProps
+ * Descrição: Propriedades do componente MessageList
+ */
 interface MessageListProps {
+  /** Lista de mensagens a serem exibidas */
   messages: ChatMessage[]
+  /** Indica se o assistente está gerando uma resposta */
   isStreaming: boolean
 }
 
+/** MessageList
+ * Descrição: Componente que renderiza todas as mensagens do chat com auto-scroll, code blocks formatados e cards de tool calls
+ * @param messages - Lista de mensagens do chat
+ * @param isStreaming - Estado de streaming do assistente
+ * @returns Elemento JSX com a lista de mensagens renderizadas
+ */
 export function MessageList({ messages, isStreaming }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const feedbackPhrase = useFeedbackPhrase(isStreaming)
 
   useEffect(() => {
     if (containerRef.current) {
       containerRef.current.scrollTop = containerRef.current.scrollHeight
     }
-  }, [messages])
+  }, [messages, isStreaming])
 
   if (messages.length === 0) {
     return (
@@ -62,15 +76,22 @@ export function MessageList({ messages, isStreaming }: MessageListProps) {
         </div>
       ))}
       {isStreaming && (
-        <div className="flex items-center gap-1 px-4 text-accent-400">
+        <div className="flex items-center gap-2 px-4 text-accent-400">
           <span className="animate-pulse">▌</span>
+          {feedbackPhrase && (
+            <span className="text-xs text-neutral-500 italic">{feedbackPhrase}</span>
+          )}
         </div>
       )}
     </div>
   )
 }
 
-/** Renderiza conteúdo com code blocks formatados */
+/** FormattedContent
+ * Descrição: Componente auxiliar que renderiza conteúdo de texto com code blocks formatados usando o componente CodeBlock
+ * @param content - Conteúdo textual a ser renderizado, podendo conter blocos de código delimitados por ```
+ * @returns Elemento JSX com o conteúdo formatado
+ */
 function FormattedContent({ content }: { content: string }) {
   if (!content) return null
 

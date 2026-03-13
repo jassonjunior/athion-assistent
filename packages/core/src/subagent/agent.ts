@@ -4,36 +4,84 @@ import type { SummarizationService } from '../tokens/summarize'
 import type { ToolRegistry } from '../tools/types'
 import type { SubAgentConfig, SubAgentEvent, SubAgentTask } from './types'
 
-/**
- * Dependencias para criar uma instancia de SubAgent.
+/** SubAgentDeps
+ * Descrição: Dependências para criar e executar uma instância de SubAgent.
  */
 export interface SubAgentDeps {
+  /** provider
+   * Descrição: Camada de abstração dos provedores LLM
+   */
   provider: ProviderLayer
+  /** tools
+   * Descrição: Registro de ferramentas disponíveis
+   */
   tools: ToolRegistry
+  /** skills
+   * Descrição: Gerenciador de skills (instruções especializadas)
+   */
   skills: SkillManager
+  /** defaultProvider
+   * Descrição: ID do provider padrão a usar quando não especificado na config do agente
+   */
   defaultProvider: string
+  /** defaultModel
+   * Descrição: ID do modelo padrão a usar quando não especificado na config do agente
+   */
   defaultModel: string
-  /** Serviço de summarização para compactar contexto via LLM (opcional, fallback: sliding-window) */
+  /** maxTokens
+   * Descrição: Máximo de tokens para respostas do LLM (default: 8192)
+   */
+  maxTokens: number
+  /** summarizer
+   * Descrição: Serviço de sumarização para compactar contexto via LLM (opcional, fallback: sliding-window)
+   */
   summarizer?: SummarizationService | undefined
 }
 
-/** Limite de contexto do subagente em tokens estimados. */
+/** CONTEXT_LIMIT
+ * Descrição: Limite de contexto do subagente em tokens estimados
+ */
 const CONTEXT_LIMIT = 50_000
-/** Threshold para tentar sliding-window (80% do contexto). */
+
+/** SLIDING_WINDOW_THRESHOLD
+ * Descrição: Threshold para tentar sliding-window (80% do contexto)
+ */
 const SLIDING_WINDOW_THRESHOLD = 0.8
-/** Threshold para forçar continuação — se após sliding-window ainda acima disso, sai. */
+
+/** CONTINUATION_THRESHOLD
+ * Descrição: Threshold para forçar continuação — se após sliding-window ainda acima disso, sai com 'partial'
+ */
 const CONTINUATION_THRESHOLD = 0.7
-/** Máximo de chars para resultados acumulados no prompt de continuação. */
+
+/** MAX_ACCUMULATED_CHARS
+ * Descrição: Máximo de caracteres para resultados acumulados no prompt de continuação
+ */
 const MAX_ACCUMULATED_CHARS = 15_000
 
+/** AgentMessage
+ * Descrição: Tipo de mensagem interna do subagente
+ */
 type AgentMessage = { role: 'user' | 'assistant' | 'system' | 'tool'; content: string | unknown[] }
+
+/** ToolCall
+ * Descrição: Representação de uma chamada de tool pendente
+ */
 type ToolCall = { id: string; name: string; args: unknown }
+
+/** ProviderTools
+ * Descrição: Mapa de tools no formato esperado pelo provider
+ */
 type ProviderTools = Record<string, { description: string; parameters: unknown }>
 
-/**
- * Executa um subagente com seu proprio ciclo de chat isolado.
+/** runSubAgent
+ * Descrição: Executa um subagente com seu próprio ciclo de chat isolado.
  * Suporta continuation protocol: se o contexto se esgota, sai com status 'partial'
  * e o task-tool re-spawna com os resultados acumulados.
+ * @param config - Configuração do subagente
+ * @param task - Task a ser executada
+ * @param deps - Dependências injetadas
+ * @param signal - Signal para cancelamento (opcional)
+ * @returns AsyncGenerator que emite SubAgentEvent durante a execução
  */
 export async function* runSubAgent(
   config: SubAgentConfig,
@@ -59,6 +107,8 @@ export async function* runSubAgent(
   const modelName = config.model?.model ?? deps.defaultModel
   const resultParts: string[] = []
   let agentDone = false
+  // Conta turns consecutivos sem tool calls — permite 1 nudge antes de concluir
+  let noToolCallStreak = 0
 
   for (let turn = 0; turn < maxTurns; turn++) {
     if (signal?.aborted) {
@@ -81,6 +131,7 @@ export async function* runSubAgent(
       modelName,
       messages,
       providerTools,
+      deps.maxTokens,
       signal,
     )
     if (errorEvent) {
@@ -99,11 +150,26 @@ export async function* runSubAgent(
     }
 
     if (toolCalls.length === 0) {
-      if (assistantContent) messages.push({ role: 'assistant', content: assistantContent })
+      messages.push({ role: 'assistant', content: assistantContent })
+      noToolCallStreak++
+
+      // Permite 1 nudge quando o modelo descreve intenção sem chamar ferramentas.
+      // Na segunda vez consecutiva sem tool calls, aceita o resultado como final.
+      if (noToolCallStreak === 1 && Object.keys(providerTools).length > 0 && turn < maxTurns - 1) {
+        const intent = assistantContent.trim().slice(0, 300)
+        const toolNames = Object.keys(providerTools).join(', ')
+        messages.push({
+          role: 'user',
+          content: `You said: "${intent}"\n\nYou did not call any tool. If you want to proceed with a specific action, call the exact tool now (available: ${toolNames}). If your analysis is already complete, provide your final summary directly.`,
+        })
+        continue
+      }
+
       agentDone = true
       break
     }
 
+    noToolCallStreak = 0
     pushAssistantWithToolCalls(messages, assistantContent, toolCalls)
     yield* processToolCalls(toolCalls, allowedTools, messages, resultParts, deps, config)
   }
@@ -114,6 +180,9 @@ export async function* runSubAgent(
     task.accumulatedResults.push(...resultParts)
     task.remainingWork = buildRemainingWorkSummary(task, resultParts)
     task.updatedAt = new Date()
+    // Libera memória: messages e resultParts não serão mais usados
+    messages.length = 0
+    resultParts.length = 0
     yield { type: 'continuation_needed', task }
     return
   }
@@ -121,9 +190,17 @@ export async function* runSubAgent(
   task.result = resultParts.join('\n')
   task.status = 'completed'
   task.updatedAt = new Date()
+  // Libera memória: o subagent terminou, descarta contexto acumulado
+  messages.length = 0
+  resultParts.length = 0
   yield { type: 'complete', task }
 }
 
+/** buildProviderTools
+ * Descrição: Converte lista de tools permitidas para o formato esperado pelo provider
+ * @param allowedTools - Lista de definições de tools permitidas para o agente
+ * @returns Mapa de tools no formato do provider
+ */
 function buildProviderTools(allowedTools: ReturnType<ToolRegistry['list']>): ProviderTools {
   const providerTools: ProviderTools = {}
   for (const t of allowedTools) {
@@ -132,6 +209,15 @@ function buildProviderTools(allowedTools: ReturnType<ToolRegistry['list']>): Pro
   return providerTools
 }
 
+/** compactContextIfNeeded
+ * Descrição: Verifica se o contexto excedeu o limite e aplica compactação (sumarização ou sliding-window).
+ * Se mesmo após compactação o contexto ainda for grande demais, sinaliza necessidade de continuação.
+ * @param messages - Lista de mensagens do agente
+ * @param resultParts - Resultados parciais acumulados
+ * @param task - Task sendo executada
+ * @param deps - Dependências com serviço de sumarização
+ * @returns 'ok' se pode continuar, 'continuation' se precisa nova execução
+ */
 async function compactContextIfNeeded(
   messages: AgentMessage[],
   resultParts: string[],
@@ -174,12 +260,24 @@ async function compactContextIfNeeded(
   return 'ok'
 }
 
+/** streamTurn
+ * Descrição: Executa um turno de streaming com o provider LLM, coletando conteúdo e tool calls
+ * @param provider - Camada de abstração do provider
+ * @param providerName - ID do provider a usar
+ * @param modelName - ID do modelo a usar
+ * @param messages - Mensagens do contexto do agente
+ * @param providerTools - Tools no formato do provider
+ * @param maxTokens - Limite de tokens na resposta
+ * @param signal - Signal para cancelamento (opcional)
+ * @returns AsyncGenerator que emite SubAgentEvent e retorna conteúdo, tool calls e possível erro
+ */
 async function* streamTurn(
   provider: ProviderLayer,
   providerName: string,
   modelName: string,
   messages: AgentMessage[],
   providerTools: ProviderTools,
+  maxTokens: number,
   signal: AbortSignal | undefined,
 ): AsyncGenerator<
   SubAgentEvent,
@@ -196,6 +294,7 @@ async function* streamTurn(
     provider: providerName,
     model: modelName,
     messages,
+    maxTokens,
     ...(Object.keys(providerTools).length > 0 ? { tools: providerTools } : {}),
   })
 
@@ -229,6 +328,12 @@ async function* streamTurn(
   return { assistantContent, toolCalls, errorEvent: null }
 }
 
+/** pushAssistantWithToolCalls
+ * Descrição: Adiciona mensagem do assistente com tool calls no formato AI SDK (parts array)
+ * @param messages - Lista de mensagens do agente
+ * @param assistantContent - Conteúdo textual gerado
+ * @param toolCalls - Tool calls realizadas pelo assistente
+ */
 function pushAssistantWithToolCalls(
   messages: AgentMessage[],
   assistantContent: string,
@@ -242,6 +347,16 @@ function pushAssistantWithToolCalls(
   messages.push({ role: 'assistant', content: parts })
 }
 
+/** processToolCalls
+ * Descrição: Executa as tool calls pendentes, verifica whitelist e acumula resultados
+ * @param toolCalls - Tool calls a serem processadas
+ * @param allowedTools - Lista de tools permitidas para o agente
+ * @param messages - Lista de mensagens do agente para adicionar resultados
+ * @param resultParts - Array para acumular resultados parciais
+ * @param deps - Dependências com ToolRegistry
+ * @param config - Configuração do subagente (para mensagens de erro)
+ * @returns AsyncGenerator que emite SubAgentEvent para cada tool processada
+ */
 async function* processToolCalls(
   toolCalls: ToolCall[],
   allowedTools: ReturnType<ToolRegistry['list']>,
@@ -286,9 +401,13 @@ async function* processToolCalls(
   }
 }
 
-/**
- * Monta o system prompt do subagente.
+/** buildAgentPrompt
+ * Descrição: Monta o system prompt do subagente.
  * Se é uma continuação (continuationIndex > 0), inclui resultados anteriores e remaining work.
+ * @param config - Configuração do subagente
+ * @param skillInstructions - Instruções da skill associada (opcional)
+ * @param task - Task sendo executada
+ * @returns System prompt completo para o subagente
  */
 function buildAgentPrompt(
   config: SubAgentConfig,
@@ -302,6 +421,15 @@ function buildAgentPrompt(
   }
 
   sections.push(`You are the "${config.name}" agent. ${config.description}`)
+
+  if (config.tools.includes('search_codebase')) {
+    sections.push(`# Search Protocol (MANDATORY)
+You have access to two search tools. Always use them in this order:
+1. **search_codebase** — semantic search over the indexed codebase. Use this FIRST for any code-related question.
+2. **search_files** — grep-based text search. Use this ONLY if search_codebase returns 0 results, or if you need to find an exact string/regex match that semantic search missed.
+
+Never skip search_codebase. Never use search_files as the first tool when searching for code.`)
+  }
 
   if (task.continuationIndex > 0 && task.accumulatedResults.length > 0) {
     const compressed = compressAccumulatedResults(task.accumulatedResults, MAX_ACCUMULATED_CHARS)
@@ -332,8 +460,11 @@ When working on tasks that involve many files or large amounts of data:
   return sections.join('\n\n')
 }
 
-/**
- * Sintetiza o que resta fazer baseado nos steps da task e resultados coletados.
+/** buildRemainingWorkSummary
+ * Descrição: Sintetiza o que resta fazer baseado nos steps da task e resultados coletados
+ * @param task - Task sendo executada
+ * @param resultParts - Resultados parciais coletados até agora
+ * @returns Texto descritivo do trabalho restante
  */
 function buildRemainingWorkSummary(task: SubAgentTask, resultParts: string[]): string {
   const pendingSteps = task.steps.filter((s) => !s.completed)
@@ -346,9 +477,12 @@ function buildRemainingWorkSummary(task: SubAgentTask, resultParts: string[]): s
   return `Continue the original task: ${task.description}\nAlready collected ${resultParts.length} result parts. Continue gathering remaining data.`
 }
 
-/**
- * Comprime resultados acumulados para caber no limite de chars.
+/** compressAccumulatedResults
+ * Descrição: Comprime resultados acumulados para caber no limite de caracteres.
  * Mantém proporcionalmente, priorizando primeiros e últimos.
+ * @param results - Array de resultados acumulados
+ * @param maxChars - Número máximo de caracteres total
+ * @returns Texto comprimido dos resultados
  */
 function compressAccumulatedResults(results: string[], maxChars: number): string {
   const joined = results.join('\n---\n')
@@ -362,17 +496,10 @@ function compressAccumulatedResults(results: string[], maxChars: number): string
   return compressed.join('\n---\n')
 }
 
-/** Apply sliding-window mechanism: discard old messages, keep 50% more recent.
- * @param messages - The messages to apply sliding-window to.
- * @returns void
- * @example
- * const messages = [
- *   { role: 'system', content: 'You are a helpful assistant.' },
- *   { role: 'user', content: 'Hello, how are you?' },
- *   { role: 'assistant', content: 'I am fine, thank you!' },
- * ]
- * applySlidingWindow(messages)
- * console.log(messages) // [ { role: 'system', content: 'You are a helpful assistant.' }, { role: 'assistant', content: 'I am fine, thank you!' } ]
+/** applySlidingWindow
+ * Descrição: Aplica mecanismo de sliding-window: descarta mensagens antigas, mantém 50% mais recentes.
+ * Preserva sempre as mensagens de sistema.
+ * @param messages - Lista de mensagens a aplicar sliding-window
  */
 function applySlidingWindow(messages: Array<{ role: string; content: string | unknown[] }>): void {
   const systemMsgs = messages.filter((m) => m.role === 'system')
@@ -382,17 +509,10 @@ function applySlidingWindow(messages: Array<{ role: string; content: string | un
   messages.push(...systemMsgs, ...keep)
 }
 
-/** Estimate tokens of a list of messages (~4 chars per token).
- * @param messages - The messages to estimate tokens for.
- * @returns The estimated number of tokens.
- * @example
- * const messages = [
- *   { role: 'system', content: 'You are a helpful assistant.' },
- *   { role: 'user', content: 'Hello, how are you?' },
- *   { role: 'assistant', content: 'I am fine, thank you!' },
- *
- * const tokens = estimateTokens(messages)
- * console.log(tokens) // 3
+/** estimateTokens
+ * Descrição: Estima a quantidade de tokens de uma lista de mensagens (~4 caracteres por token)
+ * @param messages - Lista de mensagens para estimar tokens
+ * @returns Número estimado de tokens
  */
 function estimateTokens(messages: Array<{ role: string; content: string | unknown[] }>): number {
   let chars = 0
@@ -406,30 +526,21 @@ function estimateTokens(messages: Array<{ role: string; content: string | unknow
   return Math.ceil(chars / 4)
 }
 
-/** Trunca resultado de tool se exceder o limite de caracteres.
- * @param text - The text to truncate.
- * @param maxChars - The maximum number of characters to allow.
- * @returns The truncated text.
- * @example
- * const text = 'This is a long text that needs to be truncated.'
- * const truncated = truncateResult(text, 10)
- * console.log(truncated) // 'This is a long...'
+/** truncateResult
+ * Descrição: Trunca texto de resultado de tool se exceder o limite de caracteres
+ * @param text - Texto a ser truncado
+ * @param maxChars - Número máximo de caracteres permitidos
+ * @returns Texto truncado com indicação de quantos caracteres foram removidos
  */
 function truncateResult(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text
   return text.slice(0, maxChars) + `\n...[truncated: ${text.length - maxChars} chars removed]`
 }
 
-/** Format the task prompt.
- * @param task - The task to format.
- * @returns The formatted task prompt.
- * @example
- * const task = {
- *   name: 'Task 1',
- *   description: 'This is a task description.'
- * }
- * const prompt = formatTaskPrompt(task)
- * console.log(prompt) // 'Execute the following task:\n\n**Task 1**\nThis is a task description.'
+/** formatTaskPrompt
+ * Descrição: Formata o prompt da task para envio ao subagente, incluindo steps se existirem
+ * @param task - Task a ser formatada
+ * @returns Prompt formatado com nome, descrição e steps da task
  */
 function formatTaskPrompt(task: SubAgentTask): string {
   let prompt = `Execute the following task:\n\n**${task.name}**\n${task.description}`

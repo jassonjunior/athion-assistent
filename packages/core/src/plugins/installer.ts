@@ -1,62 +1,88 @@
 import { existsSync, readdirSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
-/**
- * Resultado de uma busca de plugins no npm.
+/** PluginSearchResult
+ * Descrição: Resultado de uma busca de plugins no npm
  */
 export interface PluginSearchResult {
-  /** Nome do pacote no npm (ex: 'athion-plugin-git-tools') */
+  /** packageName
+   * Descrição: Nome do pacote no npm (ex: 'athion-plugin-git-tools')
+   */
   packageName: string
-  /** Nome do plugin (sem prefixo, ex: 'git-tools') */
+  /** pluginName
+   * Descrição: Nome do plugin sem prefixo (ex: 'git-tools')
+   */
   pluginName: string
-  /** Descrição do pacote */
+  /** description
+   * Descrição: Descrição do pacote npm
+   */
   description: string
-  /** Versão mais recente */
+  /** version
+   * Descrição: Versão mais recente disponível
+   */
   version: string
-  /** Autor */
+  /** author
+   * Descrição: Autor do pacote
+   */
   author?: string | undefined
 }
 
-/**
- * Resultado de uma instalação.
+/** InstallResult
+ * Descrição: Resultado de uma operação de instalação ou desinstalação de plugin
  */
 export interface InstallResult {
+  /** success
+   * Descrição: Se a operação foi bem-sucedida
+   */
   success: boolean
+  /** pluginName
+   * Descrição: Nome do plugin processado
+   */
   pluginName: string
+  /** packageName
+   * Descrição: Nome do pacote npm correspondente
+   */
   packageName: string
+  /** installedPath
+   * Descrição: Caminho onde o plugin foi instalado (apenas quando sucesso)
+   */
   installedPath?: string
+  /** error
+   * Descrição: Mensagem de erro (apenas quando falha)
+   */
   error?: string
 }
 
-/**
- * Opções do installer.
+/** InstallerOptions
+ * Descrição: Opções de configuração do installer de plugins
  */
 export interface InstallerOptions {
-  /** Diretório de plugins (default: ~/.athion/plugins) */
+  /** pluginsDir
+   * Descrição: Diretório de plugins (default: ~/.athion/plugins)
+   */
   pluginsDir?: string
-  /** Timeout para comandos npm/bun em ms (default: 60000) */
+  /** timeout
+   * Descrição: Timeout para comandos npm/bun em milissegundos (default: 60000)
+   */
   timeout?: number
 }
 
-/**
- * Cria um PluginInstaller que busca e instala plugins do npm.
- *
+/** createPluginInstaller
+ * Descrição: Cria um PluginInstaller que busca e instala plugins do npm.
  * Convenção: plugins são pacotes npm com prefixo `athion-plugin-`.
- * Ex: `athion-plugin-git-tools`, `athion-plugin-docker`, etc.
- *
  * O installer usa `bun` como package manager (fallback para npm).
- *
- * @param options - Configuração do installer
+ * @param options - Configuração do installer (diretório, timeout)
+ * @returns Objeto com métodos search, install, uninstall e listInstalled
  */
 export function createPluginInstaller(options: InstallerOptions = {}) {
   const { pluginsDir = '~/.athion/plugins', timeout = 60_000 } = options
 
   const resolvedDir = resolve(pluginsDir.replace('~', process.env.HOME ?? '.'))
 
-  /**
-   * Busca plugins disponíveis no npm pelo prefixo `athion-plugin-`.
+  /** search
+   * Descrição: Busca plugins disponíveis no npm pelo prefixo `athion-plugin-`
    * @param query - Termo de busca adicional (ex: 'git', 'docker')
-   * @returns Lista de plugins encontrados
+   * @returns Lista de plugins encontrados no npm
    */
   async function search(query?: string): Promise<PluginSearchResult[]> {
     const searchTerm = query ? `athion-plugin-${query}` : 'athion-plugin-'
@@ -90,10 +116,10 @@ export function createPluginInstaller(options: InstallerOptions = {}) {
     }
   }
 
-  /**
-   * Instala um plugin do npm no diretório de plugins.
+  /** install
+   * Descrição: Instala um plugin do npm no diretório de plugins usando bun
    * @param nameOrPackage - Nome do plugin ('git-tools') ou pacote npm ('athion-plugin-git-tools')
-   * @returns Resultado da instalação
+   * @returns Resultado da instalação com status e caminho
    */
   async function install(nameOrPackage: string): Promise<InstallResult> {
     const packageName = nameOrPackage.startsWith('athion-plugin-')
@@ -150,9 +176,10 @@ export function createPluginInstaller(options: InstallerOptions = {}) {
     }
   }
 
-  /**
-   * Desinstala um plugin.
-   * @param nameOrPackage - Nome do plugin ou pacote npm
+  /** uninstall
+   * Descrição: Desinstala um plugin removendo o pacote npm e o diretório local
+   * @param nameOrPackage - Nome do plugin ou pacote npm a desinstalar
+   * @returns Resultado da desinstalação com status
    */
   async function uninstall(nameOrPackage: string): Promise<InstallResult> {
     const packageName = nameOrPackage.startsWith('athion-plugin-')
@@ -186,8 +213,9 @@ export function createPluginInstaller(options: InstallerOptions = {}) {
     }
   }
 
-  /**
-   * Lista plugins instalados no diretório.
+  /** listInstalled
+   * Descrição: Lista os plugins instalados no diretório de plugins
+   * @returns Array com os nomes dos diretórios de plugins encontrados
    */
   function listInstalled(): string[] {
     if (!existsSync(resolvedDir)) return []

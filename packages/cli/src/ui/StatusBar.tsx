@@ -1,19 +1,34 @@
 /**
  * StatusBar — Barra de status no topo do chat.
- * Mostra: modelo ativo, tokens usados, session ID.
+ * Descrição: Exibe informações contextuais como modelo ativo, tokens usados,
+ * skill ativa e ID da sessão.
  */
 
 import { Box, Text } from 'ink'
 import type { Theme, TokenInfo } from '../types.js'
 
+/** StatusBarProps
+ * Descrição: Props do componente StatusBar.
+ */
 interface StatusBarProps {
+  /** Nome do modelo LLM ativo */
   model: string
+  /** ID da sessão de conversa atual */
   sessionId: string
+  /** Informações de uso de tokens da última resposta */
   tokens: TokenInfo | null
+  /** Nome da skill ativa, se houver */
   activeSkill: string | undefined
+  /** Tema visual com as cores a serem aplicadas */
   theme: Theme
 }
 
+/** StatusBar
+ * Descrição: Componente que renderiza a barra de status no topo do chat com modelo,
+ * skill ativa, contagem de tokens e ID da sessão.
+ * @param props - Props contendo modelo, sessão, tokens, skill ativa e tema
+ * @returns Elemento React com a barra de status
+ */
 export function StatusBar({ model, sessionId, tokens, activeSkill, theme }: StatusBarProps) {
   const shortId = sessionId.slice(0, 8)
   const tokenText = tokens ? `${tokens.totalTokens.toLocaleString()} tok` : ''

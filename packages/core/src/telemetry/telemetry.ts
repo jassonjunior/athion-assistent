@@ -1,7 +1,9 @@
 import type { SpanContext, TelemetryConfig, TelemetryService } from './types'
 
-/**
- * Cria um SpanContext no-op (quando telemetria está desabilitada).
+/** noopSpanContext
+ * Descrição: Cria um SpanContext no-op para quando a telemetria está desabilitada.
+ * Todas as operações são passthrough sem nenhum efeito.
+ * @returns SpanContext com métodos no-op
  */
 function noopSpanContext(): SpanContext {
   return {
@@ -10,10 +12,10 @@ function noopSpanContext(): SpanContext {
   }
 }
 
-/**
- * Cria uma instância no-op do TelemetryService.
- * Usado quando telemetria está desabilitada (opt-out).
- * Todas as operações são passthrough sem overhead.
+/** createNoopTelemetry
+ * Descrição: Cria uma instância no-op do TelemetryService para quando telemetria está desabilitada.
+ * Todas as operações são passthrough sem nenhum overhead de instrumentação.
+ * @returns Instância do TelemetryService com métodos no-op
  */
 function createNoopTelemetry(): TelemetryService {
   async function traceChat<T>(
@@ -55,6 +57,9 @@ function createNoopTelemetry(): TelemetryService {
   return { traceChat, traceLlmCall, traceTool, traceSubAgent, recordTokenUsage, shutdown }
 }
 
+/** OtelApi
+ * Descrição: Tipo auxiliar para as APIs do OpenTelemetry usadas internamente.
+ */
 type OtelApi = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   trace: any
@@ -62,6 +67,12 @@ type OtelApi = {
   SpanStatusCode: any
 }
 
+/** initOtelSdk
+ * Descrição: Inicializa o SDK OpenTelemetry com exporter OTLP HTTP.
+ * Importa dinamicamente os pacotes para evitar overhead quando desabilitado.
+ * @param config - Configuração da telemetria com endpoint e nome do serviço
+ * @returns Objeto com o SDK, tracer e APIs do OpenTelemetry
+ */
 async function initOtelSdk(config: TelemetryConfig): Promise<{
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sdk: any
@@ -87,6 +98,14 @@ async function initOtelSdk(config: TelemetryConfig): Promise<{
   return { sdk, tracer: trace.getTracer(config.serviceName), api: { trace, SpanStatusCode } }
 }
 
+/** makeRunInSpan
+ * Descrição: Cria as funções de tracing tipadas (traceChat, traceLlmCall, traceTool, traceSubAgent).
+ * Cada função inicia um span OpenTelemetry com atributos específicos da operação.
+ * @param tracer - Instância do tracer OpenTelemetry
+ * @param api - APIs do OpenTelemetry (trace, SpanStatusCode)
+ * @param anonymize - Função para anonimizar valores sensíveis
+ * @returns Objeto com as funções de tracing
+ */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function makeRunInSpan(tracer: any, api: OtelApi, anonymize: (v: string) => string) {
   async function runInSpan<T>(
@@ -94,8 +113,8 @@ function makeRunInSpan(tracer: any, api: OtelApi, anonymize: (v: string) => stri
     attrs: Record<string, string | number | boolean>,
     callback: (span: SpanContext) => Promise<T>,
   ): Promise<T> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return tracer.startActiveSpan(spanName, async (otelSpan: any) => {
-      // eslint-disable-line @typescript-eslint/no-explicit-any
       for (const [key, val] of Object.entries(attrs)) otelSpan.setAttribute(key, val)
       const spanCtx: SpanContext = {
         setAttribute: (key, val) => otelSpan.setAttribute(key, val),
@@ -154,9 +173,11 @@ function makeRunInSpan(tracer: any, api: OtelApi, anonymize: (v: string) => stri
   }
 }
 
-/**
- * Cria uma instância real do TelemetryService com OpenTelemetry.
- * Importa dinamicamente para não adicionar overhead quando desabilitado.
+/** createOtelTelemetry
+ * Descrição: Cria uma instância real do TelemetryService com instrumentação OpenTelemetry.
+ * Importa os pacotes OTEL dinamicamente para evitar overhead quando desabilitado.
+ * @param config - Configuração da telemetria (endpoint, serviceName, anonymize)
+ * @returns Instância do TelemetryService com instrumentação real
  */
 async function createOtelTelemetry(config: TelemetryConfig): Promise<TelemetryService> {
   const { sdk, tracer, api } = await initOtelSdk(config)
@@ -175,20 +196,11 @@ async function createOtelTelemetry(config: TelemetryConfig): Promise<TelemetrySe
   return { ...tracers, recordTokenUsage, shutdown: () => sdk.shutdown() }
 }
 
-/**
- * Cria uma instância do TelemetryService.
- *
- * Se telemetria está desabilitada (config.enabled=false), retorna uma implementação
- * no-op com zero overhead. A implementação real só é carregada quando opt-in.
- *
- * @param config - Configuração da telemetria
- * @returns Promise com instância do TelemetryService
- * @example
- * const telemetry = await createTelemetry({ enabled: false, serviceName: 'athion', anonymize: true })
- * // → no-op, sem overhead
- *
- * const telemetry = await createTelemetry({ enabled: true, endpoint: 'http://localhost:4318', ... })
- * // → instrumentação real com OTLP
+/** createTelemetry
+ * Descrição: Cria uma instância do TelemetryService.
+ * Retorna implementação no-op se desabilitado, ou instrumentação real com OTLP se habilitado.
+ * @param config - Configuração da telemetria (enabled, endpoint, serviceName, anonymize)
+ * @returns Instância do TelemetryService
  */
 export async function createTelemetry(config: TelemetryConfig): Promise<TelemetryService> {
   if (!config.enabled) {

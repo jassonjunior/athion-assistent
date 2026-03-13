@@ -1,16 +1,27 @@
 /**
  * WelcomeScreen — Tela de boas-vindas exibida quando não há mensagens.
- * Mostra logo, modelo ativo, atalhos e dicas de uso.
+ * Descrição: Mostra logo do Athion, modelo ativo, atalhos de teclado e dicas de uso.
  */
 
 import { Box, Text } from 'ink'
 import type { Theme } from '../types.js'
 
+/** WelcomeScreenProps
+ * Descrição: Props do componente WelcomeScreen.
+ */
 interface WelcomeScreenProps {
+  /** Nome do modelo LLM ativo */
   model: string
+  /** Tema visual com as cores a serem aplicadas */
   theme: Theme
 }
 
+/** WelcomeScreen
+ * Descrição: Componente que renderiza a tela inicial do chat com logo, informações do modelo
+ * e instruções de uso para o usuário.
+ * @param props - Props contendo o nome do modelo e o tema visual
+ * @returns Elemento React com a tela de boas-vindas
+ */
 export function WelcomeScreen({ model, theme }: WelcomeScreenProps) {
   return (
     <Box flexDirection="column" alignItems="center" justifyContent="center" flexGrow={1}>

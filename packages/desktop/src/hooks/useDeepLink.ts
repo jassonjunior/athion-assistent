@@ -1,26 +1,37 @@
 /**
- * useDeepLink — Registra listeners para deep links `athion://`.
- *
+ * useDeepLink
+ * Descrição: Hook que registra listeners para deep links do protocolo `athion://`.
  * Deve ser montado na raiz do App (uma única vez).
- * Callbacks disparados quando a URL correspondente é aberta.
+ * Callbacks são disparados quando a URL correspondente é aberta.
  *
  * Eventos suportados:
- *  - deep-link:session  → athion://chat?session=<id>
- *  - deep-link:message  → athion://chat?message=<texto>
- *  - deep-link:new      → athion://new
- *  - deep-link:config   → athion://config?key=<k>&value=<v>
+ *  - deep-link:session  -> athion://chat?session=<id>
+ *  - deep-link:message  -> athion://chat?message=<texto>
+ *  - deep-link:new      -> athion://new
+ *  - deep-link:config   -> athion://config?key=<k>&value=<v>
  */
 
 import { useEffect } from 'react'
 import * as bridge from '../bridge/tauri-bridge.js'
 
+/** UseDeepLinkCallbacks
+ * Descrição: Callbacks opcionais para cada tipo de deep link suportado
+ */
 interface UseDeepLinkCallbacks {
+  /** Callback disparado ao receber deep link de sessão (athion://chat?session=<id>) */
   onSession?: (sessionId: string) => void
+  /** Callback disparado ao receber deep link de mensagem (athion://chat?message=<texto>) */
   onMessage?: (message: string) => void
+  /** Callback disparado ao receber deep link de novo chat (athion://new) */
   onNew?: () => void
+  /** Callback disparado ao receber deep link de configuração (athion://config?key=<k>&value=<v>) */
   onConfig?: (key: string, value: string) => void
 }
 
+/** useDeepLink
+ * Descrição: Registra e gerencia listeners de deep link via bridge Tauri, removendo-os na desmontagem
+ * @param callbacks - Objeto com callbacks opcionais para cada tipo de deep link
+ */
 export function useDeepLink(callbacks: UseDeepLinkCallbacks): void {
   const { onSession, onMessage, onNew, onConfig } = callbacks
 

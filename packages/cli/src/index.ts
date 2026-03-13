@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 /**
- * Athion CLI — Entry point.
+ * Athion CLI — Ponto de entrada principal.
+ * Descrição: Configura e executa o CLI do Athion usando yargs para roteamento de comandos.
  *
  * Comandos:
  *   athion              → chat interativo (default)
@@ -22,7 +23,10 @@ import { skillsCommand, skillsHandler } from './commands/skills.js'
 import { sessionsCommand } from './commands/sessions.js'
 import { serveCommand, serveHandler } from './commands/serve.js'
 import { codebaseCommand } from './commands/codebase.js'
-import { VERSION } from '@athion/shared'
+import { VERSION, initI18n } from '@athion/shared'
+
+// Inicializa i18n com locale do sistema (LANG / LC_ALL / LC_MESSAGES)
+initI18n()
 
 await yargs(hideBin(process.argv))
   .scriptName('athion')

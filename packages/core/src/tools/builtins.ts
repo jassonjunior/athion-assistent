@@ -4,9 +4,10 @@ import { z } from 'zod/v4'
 import type { CodebaseIndexer } from '../indexing'
 import { defineTool } from './registry'
 
-/**
- * Tool para ler o conteúdo de um arquivo.
+/** readFileTool
+ * Descrição: Tool para ler o conteúdo de um arquivo.
  * O LLM usa esta tool para inspecionar código antes de sugerir mudanças.
+ * Suporta leitura parcial via offset/limit.
  */
 export const readFileTool = defineTool({
   name: 'read_file',
@@ -45,8 +46,8 @@ export const readFileTool = defineTool({
   },
 })
 
-/**
- * Tool para escrever conteúdo em um arquivo.
+/** writeFileTool
+ * Descrição: Tool para escrever conteúdo em um arquivo.
  * Cria o arquivo se não existir, sobrescreve se existir.
  */
 export const writeFileTool = defineTool({
@@ -70,8 +71,8 @@ export const writeFileTool = defineTool({
   },
 })
 
-/**
- * Tool para listar arquivos e diretórios.
+/** listFilesTool
+ * Descrição: Tool para listar arquivos e diretórios.
  * Útil para o LLM entender a estrutura do projeto.
  */
 export const listFilesTool = defineTool({
@@ -98,8 +99,8 @@ export const listFilesTool = defineTool({
   },
 })
 
-/**
- * Tool para executar comandos no shell.
+/** runCommandTool
+ * Descrição: Tool para executar comandos no shell.
  * Usada para rodar testes, build, git, etc.
  * Usa Bun.spawn para execução segura com timeout.
  */
@@ -141,9 +142,9 @@ export const runCommandTool = defineTool({
   },
 })
 
-/**
- * Tool para buscar texto em arquivos recursivamente.
- * Usa grep nativo para performance.
+/** searchFilesTool
+ * Descrição: Tool para buscar texto em arquivos recursivamente.
+ * Usa grep nativo para performance. Suporta paginação via offset/limit.
  */
 export const searchFilesTool = defineTool({
   name: 'search_files',
@@ -201,10 +202,12 @@ export const searchFilesTool = defineTool({
   },
 })
 
-/**
- * Cria a tool search_codebase vinculada a um CodebaseIndexer.
+/** createSearchCodebaseTool
+ * Descrição: Cria a tool search_codebase vinculada a um CodebaseIndexer.
  * Usa busca semântica (vector + FTS) como estratégia primária.
  * Deve ser registrada após o indexer estar disponível no bootstrap.
+ * @param indexer - Instância do CodebaseIndexer para executar buscas semânticas
+ * @returns ToolDefinition configurada para busca semântica no codebase
  */
 export function createSearchCodebaseTool(indexer: CodebaseIndexer) {
   return defineTool({
@@ -249,8 +252,8 @@ export function createSearchCodebaseTool(indexer: CodebaseIndexer) {
   })
 }
 
-/**
- * Todas as tools built-in do Athion.
+/** BUILTIN_TOOLS
+ * Descrição: Todas as tools built-in do Athion.
  * Registre todas de uma vez no ToolRegistry com registerBuiltins().
  * search_codebase NÃO está aqui — é criada dinamicamente com createSearchCodebaseTool().
  */

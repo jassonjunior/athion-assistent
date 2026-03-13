@@ -2,48 +2,61 @@ import type { PermissionManager } from '../permissions/types'
 import type { ToolRegistry, ToolResult } from '../tools/types'
 import { getToolLevel } from '../tools/types'
 
-/**
- * Contexto passado ao ToolDispatcher para cada execucao.
- * @param sessionId - ID da sessao atual
- * @param signal - Signal para cancelamento
+/** DispatchContext
+ * Descrição: Contexto passado ao ToolDispatcher para cada execução de tool.
  */
 export interface DispatchContext {
-  /** ID da sessao atual */
+  /** sessionId
+   * Descrição: ID da sessão atual
+   */
   sessionId: string
-  /** Signal para cancelamento */
+  /** signal
+   * Descrição: Signal para cancelamento da operação (opcional)
+   */
   signal?: AbortSignal
-  /**
-   * Callback para resolucao interativa de permissao.
+  /** onPermissionRequest
+   * Descrição: Callback para resolução interativa de permissão.
    * Chamado quando decision='ask'. Retorna 'allow' ou 'deny'.
+   * @param toolName - Nome da tool que solicita permissão
+   * @param target - Alvo da operação (path, comando, etc.)
+   * @returns Promise com 'allow' ou 'deny'
    */
   onPermissionRequest?: (toolName: string, target: string) => Promise<'allow' | 'deny'>
 }
 
-/**
- * Interface do ToolDispatcher.
- * Despacha tool calls verificando permissoes antes de executar.
- * @param dispatch - Despacha uma tool call com verificacao de permissao
- * @param toolName - Nome da tool a despachar
- * @param args - Argumentos da tool
- * @param ctx - Contexto de despacho
- * @returns Resultado da tool call
+/** ToolDispatcher
+ * Descrição: Interface do ToolDispatcher.
+ * Despacha tool calls verificando permissões antes de executar.
  */
 export interface ToolDispatcher {
-  /** Despacha uma tool call com verificacao de permissao */
+  /** dispatch
+   * Descrição: Despacha uma tool call com verificação de permissão
+   * @param toolName - Nome da tool a despachar
+   * @param args - Argumentos da tool
+   * @param ctx - Contexto de despacho com sessão e permissões
+   * @returns Promise com o resultado da execução da tool
+   */
   dispatch(toolName: string, args: unknown, ctx: DispatchContext): Promise<ToolResult>
 }
 
-/**
- * Cria uma instancia do ToolDispatcher.
- * Intercepta tool calls do LLM, verifica permissoes e delega para o ToolRegistry.
- * @param tools - Registry de tools disponiveis
- * @param permissions - Manager de permissoes
- * @returns Instancia do ToolDispatcher
+/** createToolDispatcher
+ * Descrição: Cria uma instância do ToolDispatcher.
+ * Intercepta tool calls do LLM, verifica permissões e delega para o ToolRegistry.
+ * @param tools - Registry de tools disponíveis
+ * @param permissions - Manager de permissões
+ * @returns Instância do ToolDispatcher
  */
 export function createToolDispatcher(
   tools: ToolRegistry,
   permissions: PermissionManager,
 ): ToolDispatcher {
+  /** dispatch
+   * Descrição: Verifica permissões e executa a tool solicitada
+   * @param toolName - Nome da tool a executar
+   * @param args - Argumentos da tool
+   * @param ctx - Contexto com sessão e handlers de permissão
+   * @returns Promise com o resultado da tool
+   */
   async function dispatch(
     toolName: string,
     args: unknown,
@@ -55,9 +68,9 @@ export function createToolDispatcher(
       return { success: false, error: `Tool "${toolName}" not found` }
     }
 
-    // 2. Verificar permissao
+    // 2. Verificar permissão
     // Tools com level='agent' passam por permission check (core tools).
-    // Tools com level='orchestrator' (plugins, task) sao trusted.
+    // Tools com level='orchestrator' (plugins, task) são trusted.
     const needsPermission = getToolLevel(tool) === 'agent'
 
     if (needsPermission) {
@@ -77,7 +90,7 @@ export function createToolDispatcher(
               error: `Permission denied for tool "${toolName}" on "${target}"`,
             }
           }
-          // allow: continua para execucao
+          // allow: continua para execução
         } else {
           return {
             success: false,
@@ -92,21 +105,19 @@ export function createToolDispatcher(
       return { success: false, error: 'Operation aborted' }
     }
 
-    /** Executa a tool.
-     * Se tools for task, ele vai executar a task para o subagente correspondente.
-     */
+    // 4. Executar a tool
     return tools.execute(toolName, args)
   }
 
   return { dispatch }
 }
 
-/**
- * Extrai o target (path/comando) dos args para verificacao de permissao.
+/** extractTarget
+ * Descrição: Extrai o target (path/comando) dos argumentos para verificação de permissão.
  * Busca campos comuns como path, file, command.
- * @param toolName - Nome da tool
+ * @param _toolName - Nome da tool (não utilizado atualmente)
  * @param args - Argumentos da tool
- * @returns Target (path/comando)
+ * @returns String com o target extraído ou '*' se nenhum campo relevante encontrado
  */
 function extractTarget(_toolName: string, args: unknown): string {
   if (args && typeof args === 'object') {

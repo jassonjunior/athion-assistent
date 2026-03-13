@@ -1,9 +1,7 @@
 /**
- * InputArea — Campo de entrada com autocomplete para @mentions, /use-skill e arquivos.
- *
- * Prioridade de autocomplete:
- *  1. useInputAutocomplete (/use-skill + @arquivo via files:list)
- *  2. useAtMention (@arquivo via codebase indexer — só se indexado)
+ * InputArea
+ * Descrição: Campo de entrada do chat com command picker, submenus e autocomplete.
+ * Fluxo: `/` abre command picker, `/skills` abre submenu, `@` abre autocomplete de arquivos.
  */
 
 import { useCallback, useRef, useState } from 'react'
@@ -11,22 +9,38 @@ import { useAtMention } from '../hooks/useAtMention.js'
 import { useInputAutocomplete } from '../hooks/useInputAutocomplete.js'
 import { MentionDropdown } from './MentionDropdown.js'
 import { AutocompleteDropdown } from './AutocompleteDropdown.js'
+import { t } from '@athion/shared'
 
+/**
+ * InputAreaProps
+ * Descrição: Props do componente InputArea.
+ */
 interface InputAreaProps {
+  /** Callback chamado ao submeter uma mensagem */
   onSubmit: (content: string) => void
+  /** Callback chamado ao abortar o streaming */
   onAbort: () => void
+  /** Indica se está em modo de streaming (desabilita envio) */
   isStreaming: boolean
+  /** Indica se o input está desabilitado (core não está pronto) */
   isDisabled: boolean
 }
 
+/**
+ * InputArea
+ * Descrição: Componente de área de entrada que integra textarea, command picker,
+ * autocomplete de arquivos e dropdown de menções.
+ * @param onSubmit - Callback de submissão de mensagem
+ * @param onAbort - Callback de abort do streaming
+ * @param isStreaming - Flag de streaming ativo
+ * @param isDisabled - Flag de input desabilitado
+ * @returns Elemento JSX da área de entrada
+ */
 export function InputArea({ onSubmit, onAbort, isStreaming, isDisabled }: InputAreaProps) {
   const [value, setValue] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  // Autocomplete 1: /use-skill + @arquivo (sem codebase indexer)
   const autocomplete = useInputAutocomplete()
-
-  // Autocomplete 2: @arquivo semântico (codebase indexer)
   const atMention = useAtMention()
 
   const submit = useCallback(
@@ -41,24 +55,39 @@ export function InputArea({ onSubmit, onAbort, isStreaming, isDisabled }: InputA
     [isStreaming, isDisabled, onSubmit, autocomplete, atMention],
   )
 
+  /** Lida com seleção de item do autocomplete/menu (teclado ou mouse) */
+  const handleAutocompleteSelect = useCallback(
+    (cursorPos: number) => {
+      const newValue = autocomplete.insertSelected(value, cursorPos)
+      if (newValue === null) return
+
+      if (autocomplete.shouldSubmitOnInsert(newValue)) {
+        submit(newValue)
+      } else {
+        // Comando com args (ex: /use-skill , /codebase-search ) → coloca no input
+        setValue(newValue)
+        // Dispara handleChange para que o submenu seja atualizado imediatamente
+        autocomplete.handleChange(newValue, newValue.length)
+        requestAnimationFrame(() => {
+          const textarea = textareaRef.current
+          if (textarea) textarea.setSelectionRange(newValue.length, newValue.length)
+          textarea?.focus()
+        })
+      }
+    },
+    [autocomplete, value, submit],
+  )
+
   const handleKeyDownCombined = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
       const textarea = textareaRef.current
       const cursorPos = textarea?.selectionStart ?? value.length
 
-      // 1. Autocomplete (/use-skill + @arquivo simples) tem prioridade
+      // 1. Menu/autocomplete tem prioridade sobre Enter
       const acConsumed = autocomplete.handleKeyDown(e)
       if (acConsumed) {
         if (e.key === 'Tab' || e.key === 'Enter') {
-          const newValue = autocomplete.insertSelected(value, cursorPos)
-          if (newValue !== null) {
-            setValue(newValue)
-            requestAnimationFrame(() => {
-              if (textarea) {
-                textarea.setSelectionRange(newValue.length, newValue.length)
-              }
-            })
-          }
+          handleAutocompleteSelect(cursorPos)
         }
         return
       }
@@ -93,7 +122,7 @@ export function InputArea({ onSubmit, onAbort, isStreaming, isDisabled }: InputA
         submit(value)
       }
     },
-    [autocomplete, atMention, value, submit],
+    [autocomplete, atMention, value, submit, handleAutocompleteSelect],
   )
 
   const handleInput = useCallback(
@@ -101,7 +130,6 @@ export function InputArea({ onSubmit, onAbort, isStreaming, isDisabled }: InputA
       const newValue = e.target.value
       const cursorPos = e.target.selectionStart ?? newValue.length
       setValue(newValue)
-      // Notifica ambos os hooks
       autocomplete.handleChange(newValue, cursorPos)
       atMention.handleChange(newValue, cursorPos)
       // Auto-resize
@@ -112,7 +140,6 @@ export function InputArea({ onSubmit, onAbort, isStreaming, isDisabled }: InputA
     [autocomplete, atMention],
   )
 
-  // Decide qual dropdown mostrar (autocomplete tem prioridade)
   const showAutocomplete = autocomplete.isOpen
   const showAtMention = !showAutocomplete && atMention.isOpen
 
@@ -129,14 +156,9 @@ export function InputArea({ onSubmit, onAbort, isStreaming, isDisabled }: InputA
               items={autocomplete.items}
               selectedIndex={autocomplete.selectedIndex}
               mode={autocomplete.mode}
-              onSelect={(_item) => {
-                const textarea = textareaRef.current
-                const cursorPos = textarea?.selectionStart ?? value.length
-                const newValue = autocomplete.insertSelected(value, cursorPos)
-                if (newValue !== null) {
-                  setValue(newValue)
-                }
-                textarea?.focus()
+              onSelect={() => {
+                const cursorPos = textareaRef.current?.selectionStart ?? value.length
+                handleAutocompleteSelect(cursorPos)
               }}
             />
           )}
@@ -161,7 +183,7 @@ export function InputArea({ onSubmit, onAbort, isStreaming, isDisabled }: InputA
             onChange={handleInput}
             onKeyDown={handleKeyDownCombined}
             placeholder={
-              isDisabled ? 'Conectando...' : 'Digite sua mensagem... (@ arquivo, /use-skill nome)'
+              isDisabled ? t('vscode.ui.placeholder_disabled') : t('vscode.ui.placeholder')
             }
             disabled={isDisabled}
             rows={1}

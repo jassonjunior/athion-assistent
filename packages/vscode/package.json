@@ -2,7 +2,7 @@
   "name": "athion-assistent",
   "displayName": "Athion Assistent",
   "description": "AI coding assistant with orchestrator + subagents",
-  "version": "0.0.2",
+  "version": "0.2.0",
   "publisher": "athion",
   "license": "MIT",
   "icon": "image.png",
@@ -161,6 +161,27 @@
           "type": "boolean",
           "default": true,
           "description": "Enable inline code suggestions"
+        },
+        "athion.language": {
+          "type": "string",
+          "default": "",
+          "enum": [
+            "",
+            "pt-BR",
+            "en-US",
+            "es",
+            "fr",
+            "zh-CN"
+          ],
+          "enumDescriptions": [
+            "Auto-detect from VS Code language",
+            "Português (Brasil)",
+            "English (US)",
+            "Español",
+            "Français",
+            "中文 (简体)"
+          ],
+          "description": "Language for the Athion interface. Leave empty to use VS Code's language."
         }
       }
     }

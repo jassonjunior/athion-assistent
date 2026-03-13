@@ -1,30 +1,45 @@
 import type { TokenUsage } from '../provider/types'
 import type { ToolDefinition, ToolResult } from '../tools/types'
 
-/**
- * Anexo de uma mensagem (arquivo ou imagem).
+/** Attachment
+ * Descrição: Anexo de uma mensagem (arquivo ou imagem).
  */
 export interface Attachment {
+  /** type
+   * Descrição: Tipo do anexo — 'file' para arquivos, 'image' para imagens
+   */
   type: 'file' | 'image'
+  /** path
+   * Descrição: Caminho do anexo no sistema de arquivos
+   */
   path: string
 }
 
-/**
- * Mensagem enviada pelo usuario ao Orchestrator.
+/** UserMessage
+ * Descrição: Mensagem enviada pelo usuário ao Orchestrator.
  */
 export interface UserMessage {
+  /** content
+   * Descrição: Conteúdo textual da mensagem do usuário
+   */
   content: string
+  /** attachments
+   * Descrição: Lista de anexos (arquivos ou imagens) associados à mensagem
+   */
   attachments?: Attachment[]
-  /**
-   * Callback chamado quando uma tool requer aprovacao do usuario (decision='ask').
-   * O retorno define se a execucao prossegue ('allow') ou e bloqueada ('deny').
-   * Se nao fornecido, tools com 'ask' retornam erro de permissao negada.
+  /** onPermissionRequest
+   * Descrição: Callback chamado quando uma tool requer aprovação do usuário (decision='ask').
+   * O retorno define se a execução prossegue ('allow') ou é bloqueada ('deny').
+   * Se não fornecido, tools com 'ask' retornam erro de permissão negada.
+   * @param toolName - Nome da tool que solicita permissão
+   * @param target - Alvo da operação (path, comando, etc.)
+   * @returns Promise com 'allow' ou 'deny'
    */
   onPermissionRequest?: (toolName: string, target: string) => Promise<'allow' | 'deny'>
 }
 
-/**
- * Evento emitido pelo Orchestrator durante o streaming.
+/** OrchestratorEvent
+ * Descrição: Evento emitido pelo Orchestrator durante o streaming.
  * Discriminated union pelo campo `type` — permite switch/case type-safe.
  */
 export type OrchestratorEvent =
@@ -38,52 +53,106 @@ export type OrchestratorEvent =
   | { type: 'permission_request'; requestId: string; toolName: string; target: string }
   | { type: 'finish'; usage: TokenUsage }
   | { type: 'error'; error: Error }
+  | { type: 'model_loading'; modelName: string }
+  | { type: 'model_ready'; modelName: string }
 
-/**
- * Sessao de conversa entre usuario e Orchestrator.
+/** Session
+ * Descrição: Sessão de conversa entre usuário e Orchestrator.
  */
 export interface Session {
+  /** id
+   * Descrição: Identificador único da sessão
+   */
   id: string
+  /** projectId
+   * Descrição: ID do projeto ao qual a sessão pertence
+   */
   projectId: string
+  /** title
+   * Descrição: Título descritivo da sessão
+   */
   title: string
+  /** createdAt
+   * Descrição: Data e hora de criação da sessão
+   */
   createdAt: Date
+  /** updatedAt
+   * Descrição: Data e hora da última atualização da sessão
+   */
   updatedAt: Date
 }
 
-/**
- * Definicao de um subagente disponivel.
- * Expandido na implementacao do SubAgent Manager.
+/** AgentDefinition
+ * Descrição: Definição de um subagente disponível.
+ * Expandido na implementação do SubAgent Manager.
  */
 export interface AgentDefinition {
-  /** Identificador unico do agente (ex: 'code-reviewer') */
+  /** name
+   * Descrição: Identificador único do agente (ex: 'code-reviewer')
+   */
   name: string
-  /** Descricao do que o agente faz */
+  /** description
+   * Descrição: Texto descritivo do que o agente faz
+   */
   description: string
-  /** Nome da skill que fornece o system prompt */
+  /** skill
+   * Descrição: Nome da skill que fornece o system prompt do agente
+   */
   skill: string
-  /** Whitelist de tools que o agente pode usar */
+  /** tools
+   * Descrição: Whitelist de tools que o agente pode usar
+   */
   tools: string[]
-  /** Limite de turnos para evitar loops infinitos (default: 50) */
+  /** maxTurns
+   * Descrição: Limite de turnos para evitar loops infinitos (default: 50)
+   */
   maxTurns?: number
 }
 
-/**
- * Interface principal do Orchestrator.
- * Coordena chat streaming, sessions e delegacao para tools/subagentes.
+/** Orchestrator
+ * Descrição: Interface principal do Orchestrator.
+ * Coordena chat streaming, sessions e delegação para tools/subagentes.
  */
 export interface Orchestrator {
-  /** Inicia chat streaming com uma sessao existente */
+  /** chat
+   * Descrição: Inicia chat streaming com uma sessão existente
+   * @param sessionId - ID da sessão
+   * @param message - Mensagem do usuário
+   * @returns AsyncGenerator que emite OrchestratorEvent
+   */
   chat(sessionId: string, message: UserMessage): AsyncGenerator<OrchestratorEvent>
-  /** Cria nova sessao de conversa */
+  /** createSession
+   * Descrição: Cria nova sessão de conversa
+   * @param projectId - ID do projeto
+   * @param title - Título opcional da sessão
+   * @returns Promise com a sessão criada
+   */
   createSession(projectId: string, title?: string): Promise<Session>
-  /** Carrega sessao existente pelo ID */
+  /** loadSession
+   * Descrição: Carrega sessão existente pelo ID
+   * @param sessionId - ID da sessão a carregar
+   * @returns Promise com a sessão carregada
+   */
   loadSession(sessionId: string): Promise<Session>
-  /** Lista todas as sessoes (opcionalmente filtradas por projectId) */
+  /** listSessions
+   * Descrição: Lista todas as sessões, opcionalmente filtradas por projectId
+   * @param projectId - ID do projeto para filtrar (opcional)
+   * @returns Array de sessões
+   */
   listSessions(projectId?: string): Session[]
-  /** Deleta uma sessao pelo ID */
+  /** deleteSession
+   * Descrição: Deleta uma sessão pelo ID
+   * @param sessionId - ID da sessão a deletar
+   */
   deleteSession(sessionId: string): void
-  /** Lista tools disponiveis para o LLM */
+  /** getAvailableTools
+   * Descrição: Lista tools disponíveis para o LLM
+   * @returns Array de definições de tools
+   */
   getAvailableTools(): ToolDefinition[]
-  /** Lista subagentes disponiveis */
+  /** getAvailableAgents
+   * Descrição: Lista subagentes disponíveis
+   * @returns Array de definições de agentes
+   */
   getAvailableAgents(): AgentDefinition[]
 }

@@ -1,21 +1,22 @@
-/**
- * Plugin de exemplo: Hello World
- *
- * Demonstra as 3 capacidades principais de um plugin Athion:
+/** helloWorldPlugin
+ * Descrição: Plugin de exemplo Hello World. Demonstra as 3 capacidades
+ * principais de um plugin Athion:
  * 1. Registrar tools — o LLM pode chamar `greet` durante o chat
  * 2. Escutar eventos do bus — reage quando config muda
  * 3. Acessar config — lê configurações do sistema
- *
- * Para usar:
- *   copie esta pasta para ~/.athion/plugins/hello-world/
- *   ou carregue programaticamente: plugins.load(helloWorldPlugin)
  */
 
 import { z } from 'zod/v4'
 import type { PluginDefinition } from '../../types'
 
+/** configUnsub
+ * Descrição: Referência para a função de unsubscribe do listener de config
+ */
 let configUnsub: (() => void) | null = null
 
+/** helloWorldPlugin
+ * Descrição: Definição do plugin Hello World com tool de saudação e listener de eventos
+ */
 const helloWorldPlugin: PluginDefinition = {
   name: 'hello-world',
   version: '1.0.0',

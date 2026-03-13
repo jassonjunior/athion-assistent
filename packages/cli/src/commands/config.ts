@@ -1,5 +1,6 @@
 /**
  * Comando `athion config` — Gerenciar configuração.
+ * Descrição: Permite listar, consultar e definir valores de configuração do Athion.
  *
  * Subcomandos:
  *   list          — Mostra toda a configuração
@@ -9,6 +10,11 @@
 
 import type { ArgumentsCamelCase, Argv } from 'yargs'
 
+/** configCommand
+ * Descrição: Configura os subcomandos de gerenciamento de configuração no yargs.
+ * @param yargs - Instância do yargs para configuração dos subcomandos
+ * @returns Instância do yargs com subcomandos list, get e set registrados
+ */
 export function configCommand(yargs: Argv) {
   return yargs
     .command('list', 'Mostrar toda a configuração', {}, configListHandler)
@@ -31,6 +37,10 @@ export function configCommand(yargs: Argv) {
     .demandCommand(1, 'Especifique um subcomando: list, get, set')
 }
 
+/** configListHandler
+ * Descrição: Exibe todas as configurações do Athion formatadas no terminal.
+ * @returns Promise que resolve quando a listagem é concluída
+ */
 async function configListHandler() {
   const { bootstrap } = await import('@athion/core')
   const core = await bootstrap()
@@ -44,6 +54,11 @@ async function configListHandler() {
   }
 }
 
+/** configGetHandler
+ * Descrição: Exibe o valor de uma chave de configuração específica.
+ * @param args - Argumentos do comando contendo a chave a ser consultada
+ * @returns Promise que resolve quando o valor é exibido
+ */
 async function configGetHandler(args: ArgumentsCamelCase<{ key: string }>) {
   const { bootstrap } = await import('@athion/core')
   const core = await bootstrap()
@@ -51,6 +66,11 @@ async function configGetHandler(args: ArgumentsCamelCase<{ key: string }>) {
   process.stdout.write(`${String(value)}\n`)
 }
 
+/** configSetHandler
+ * Descrição: Define o valor de uma chave de configuração, com parsing automático de tipos.
+ * @param args - Argumentos do comando contendo a chave e o valor a ser definido
+ * @returns Promise que resolve quando o valor é definido
+ */
 async function configSetHandler(args: ArgumentsCamelCase<{ key: string; value: string }>) {
   const { bootstrap } = await import('@athion/core')
   const core = await bootstrap()

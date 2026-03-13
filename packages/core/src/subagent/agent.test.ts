@@ -187,6 +187,130 @@ describe('runSubAgent — error handling', () => {
     expect(callArgs?.model).toBe('test-model')
   })
 
+  it('injeta Search Protocol quando search_codebase está nos tools', async () => {
+    const deps = makeDeps([
+      { type: 'content', content: 'Done' },
+      { type: 'finish', usage: { promptTokens: 5, completionTokens: 3, totalTokens: 8 } },
+    ])
+
+    const config = makeConfig({ tools: ['search_codebase', 'search_files', 'read_file'] })
+    for await (const ev of runSubAgent(config, makeTask(), deps)) {
+      void ev
+    }
+
+    const callArgs = (deps.provider.streamChat as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]
+    const systemMsg = (callArgs?.messages as Array<{ role: string; content: string }>).find(
+      (m) => m.role === 'system',
+    )
+    expect(systemMsg?.content).toContain('Search Protocol')
+    expect(systemMsg?.content).toContain('search_codebase')
+    expect(systemMsg?.content).toContain('FIRST')
+  })
+
+  it('não injeta Search Protocol quando search_codebase não está nos tools', async () => {
+    const deps = makeDeps([
+      { type: 'content', content: 'Done' },
+      { type: 'finish', usage: { promptTokens: 5, completionTokens: 3, totalTokens: 8 } },
+    ])
+
+    const config = makeConfig({ tools: ['read_file', 'write_file'] })
+    for await (const ev of runSubAgent(config, makeTask(), deps)) {
+      void ev
+    }
+
+    const callArgs = (deps.provider.streamChat as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]
+    const systemMsg = (callArgs?.messages as Array<{ role: string; content: string }>).find(
+      (m) => m.role === 'system',
+    )
+    expect(systemMsg?.content).not.toContain('Search Protocol')
+  })
+
+  it('envia nudge quando modelo gera texto sem tool calls pela primeira vez', async () => {
+    let callCount = 0
+    const provider = {
+      listProviders: vi.fn(() => []),
+      listModels: vi.fn(() => []),
+      streamChat: vi.fn(() => {
+        callCount++
+        return (async function* () {
+          yield { type: 'content', content: `Resposta ${callCount}` }
+        })()
+      }),
+      generateText: vi.fn().mockResolvedValue({ text: 'summary', usage: { totalTokens: 5 } }),
+    }
+
+    const deps: SubAgentDeps = {
+      provider: provider as unknown as SubAgentDeps['provider'],
+      tools: {
+        register: vi.fn(),
+        get: vi.fn(),
+        list: vi.fn(() => [{ name: 'read_file', description: 'Read a file', parameters: {} }]),
+        has: vi.fn(() => false),
+      } as unknown as SubAgentDeps['tools'],
+      skills: {
+        get: vi.fn(() => null),
+        list: vi.fn(() => []),
+        reload: vi.fn(),
+      } as unknown as SubAgentDeps['skills'],
+      defaultProvider: 'test-provider',
+      defaultModel: 'test-model',
+    }
+
+    const config = makeConfig({ tools: ['read_file'], maxTurns: 5 })
+    const events: unknown[] = []
+    for await (const event of runSubAgent(config, makeTask(), deps)) {
+      events.push(event)
+    }
+
+    // Deve ter chamado streamChat 2x: 1 original + 1 após nudge
+    expect(callCount).toBe(2)
+
+    // Nudge deve referenciar o que o modelo disse + listar tools disponíveis
+    const messages = (provider.streamChat as ReturnType<typeof vi.fn>).mock.calls[1]?.[0]?.messages
+    const nudgeMsg = (messages as Array<{ role: string; content: string }>)?.find(
+      (m) => m.role === 'user' && m.content.includes('You said:'),
+    )
+    expect(nudgeMsg).toBeDefined()
+    expect(nudgeMsg?.content).toContain('read_file') // lista tools disponíveis
+    expect(nudgeMsg?.content).toContain('Resposta 1') // referencia o que o modelo disse
+
+    // Tarefa deve terminar como completa (segundo texto aceito como resposta final)
+    const completeEvent = events.find((e) => (e as { type: string }).type === 'complete')
+    expect(completeEvent).toBeDefined()
+  })
+
+  it('não envia nudge quando não há tools disponíveis (texto é resposta final imediata)', async () => {
+    let callCount = 0
+    const provider = {
+      listProviders: vi.fn(() => []),
+      listModels: vi.fn(() => []),
+      streamChat: vi.fn(() => {
+        callCount++
+        return (async function* () {
+          yield { type: 'content', content: 'Esta é minha resposta final.' }
+        })()
+      }),
+      generateText: vi.fn().mockResolvedValue({ text: 'summary', usage: { totalTokens: 5 } }),
+    }
+
+    const deps = makeDeps([{ type: 'content', content: 'Esta é minha resposta final.' }])
+    // makeDeps retorna tools.list = [], então providerTools é vazio → sem nudge
+
+    const config = makeConfig({ tools: [], maxTurns: 5 })
+    const events: unknown[] = []
+    for await (const event of runSubAgent(config, makeTask(), {
+      ...deps,
+      provider: provider as unknown as SubAgentDeps['provider'],
+    })) {
+      events.push(event)
+    }
+
+    // Sem tools, não há nudge — apenas 1 chamada
+    expect(callCount).toBe(1)
+    const completeEvent = events.find((e) => (e as { type: string }).type === 'complete')
+    expect(completeEvent).toBeDefined()
+  })
+
   it('respeita maxTurns para prevenir loops infinitos', async () => {
     // Provider sempre retorna tool_call sem finish — força uso de maxTurns
     let callCount = 0

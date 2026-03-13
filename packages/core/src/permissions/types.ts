@@ -1,24 +1,18 @@
-/**
- * Decisão de permissão para uma ação.
- * - 'allow': Executa sem perguntar ao usuário
- * - 'ask': Pergunta ao usuário antes de executar
- * - 'deny': Bloqueia a execução
+/** PermissionDecision
+ * Descrição: Decisão de permissão para uma ação.
+ * 'allow' executa sem perguntar, 'ask' pergunta ao usuário, 'deny' bloqueia.
  */
 export type PermissionDecision = 'allow' | 'ask' | 'deny'
 
-/**
- * Escopo de validade da permissão.
- * - 'once': Vale apenas para esta execução (não é salva)
- * - 'session': Vale até fechar o Athion (em memória)
- * - 'remember': Persistida no banco SQLite
+/** PermissionScope
+ * Descrição: Escopo de validade da permissão.
+ * 'once' vale apenas para esta execução, 'session' até fechar o Athion,
+ * 'remember' é persistida no banco SQLite.
  */
 export type PermissionScope = 'once' | 'session' | 'remember'
 
-/**
- * Regra de permissão — associa uma ação + alvo a uma decisão.
- * @example
- * { action: 'write', target: '/src/**', decision: 'allow', scope: 'session' }
- * { action: 'bash', target: '*', decision: 'ask', scope: 'remember' }
+/** PermissionRule
+ * Descrição: Regra de permissão que associa uma ação + alvo a uma decisão e escopo.
  */
 export interface PermissionRule {
   /** Ação controlada (ex: 'read', 'write', 'bash', 'search') */
@@ -31,8 +25,8 @@ export interface PermissionRule {
   scope: PermissionScope
 }
 
-/**
- * Resultado da checagem de permissão.
+/** PermissionCheck
+ * Descrição: Resultado da checagem de permissão.
  * Inclui a decisão e a regra que a originou (se houver).
  */
 export interface PermissionCheck {
@@ -42,37 +36,33 @@ export interface PermissionCheck {
   rule?: PermissionRule
 }
 
-/**
- * Interface do Permission Manager.
- * Centraliza checagem e gerenciamento de permissões.
+/** PermissionManager
+ * Descrição: Interface do gerenciador de permissões.
+ * Centraliza checagem e gerenciamento de permissões do Athion.
  */
 export interface PermissionManager {
-  /**
-   * Verifica a permissão para uma ação em um alvo.
-   * Busca regras na ordem: session rules → persistent rules → default (ask).
-   * Usa glob matching para comparar targets.
+  /** check
+   * Descrição: Verifica a permissão para uma ação em um alvo.
    * @param action - Ação a verificar (ex: 'read', 'write', 'bash')
    * @param target - Alvo da ação (ex: '/src/index.ts', 'npm install')
    * @returns Resultado com a decisão e a regra que a originou
    */
   check(action: string, target: string): PermissionCheck
 
-  /**
-   * Adiciona uma regra de permissão.
+  /** grant
+   * Descrição: Adiciona uma regra de permissão.
    * Se scope='remember', persiste no banco SQLite.
-   * Se scope='session', mantém apenas em memória.
    * @param rule - Regra de permissão a adicionar
    */
   grant(rule: PermissionRule): void
 
-  /**
-   * Remove todas as regras de sessão (não remove as persistidas).
-   * Chamado quando o Athion é reiniciado.
+  /** clearSession
+   * Descrição: Remove todas as regras de sessão (não remove as persistidas).
    */
   clearSession(): void
 
-  /**
-   * Lista todas as regras ativas (sessão + persistidas).
+  /** listRules
+   * Descrição: Lista todas as regras ativas (sessão + persistidas).
    * @returns Array com todas as regras
    */
   listRules(): PermissionRule[]

@@ -1,13 +1,14 @@
-/**
- * FileWalker — percorre recursivamente um diretório respeitando .gitignore.
- *
+/** FileWalker
+ * Descrição: Percorre recursivamente um diretório respeitando .gitignore.
  * Implementação própria de gitignore parsing sem dependências externas.
  * Suporta padrões glob básicos: *, **, ?, prefixo !, comentários #.
  */
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { join, relative, sep } from 'node:path'
 
-/** Extensões de código suportadas para indexação. */
+/** CODE_EXTENSIONS
+ * Descrição: Extensões de arquivo de código suportadas para indexação
+ */
 export const CODE_EXTENSIONS = new Set([
   'ts',
   'tsx',
@@ -42,7 +43,9 @@ export const CODE_EXTENSIONS = new Set([
   'sql',
 ])
 
-/** Diretórios sempre ignorados. */
+/** DEFAULT_IGNORED_DIRS
+ * Descrição: Diretórios sempre ignorados durante a varredura (node_modules, .git, dist, etc.)
+ */
 const DEFAULT_IGNORED_DIRS = new Set([
   'node_modules',
   '.git',
@@ -67,14 +70,29 @@ const DEFAULT_IGNORED_DIRS = new Set([
   '.wdio-vscode-service',
 ])
 
-/** Padrão compilado de .gitignore. */
+/** GitignorePattern
+ * Descrição: Padrão compilado de .gitignore com flags de negação e diretório
+ */
 interface GitignorePattern {
+  /** pattern
+   * Descrição: O padrão glob extraído da linha do .gitignore
+   */
   pattern: string
+  /** negate
+   * Descrição: Se o padrão é de negação (prefixo !)
+   */
   negate: boolean
+  /** isDir
+   * Descrição: Se o padrão aplica apenas a diretórios (sufixo /)
+   */
   isDir: boolean
 }
 
-/** Parseia um arquivo .gitignore em padrões. */
+/** parseGitignore
+ * Descrição: Parseia o conteúdo de um arquivo .gitignore em padrões estruturados
+ * @param content - Conteúdo textual do arquivo .gitignore
+ * @returns Array de padrões compilados
+ */
 function parseGitignore(content: string): GitignorePattern[] {
   return content
     .split('\n')
@@ -89,7 +107,12 @@ function parseGitignore(content: string): GitignorePattern[] {
     })
 }
 
-/** Testa se um caminho relativo (com / como separador) é ignorado. */
+/** matchesGitignorePattern
+ * Descrição: Testa se um caminho relativo é ignorado por um padrão do .gitignore
+ * @param relativePath - Caminho relativo ao workspace (com separador do OS)
+ * @param pattern - Padrão glob do .gitignore
+ * @returns true se o caminho casa com o padrão
+ */
 function matchesGitignorePattern(relativePath: string, pattern: string): boolean {
   // Normaliza separadores
   const path = relativePath.split(sep).join('/')
@@ -107,7 +130,12 @@ function matchesGitignorePattern(relativePath: string, pattern: string): boolean
   return globMatch(path, `**/${pattern}`)
 }
 
-/** Glob matching simples: *, **, ?. */
+/** globMatch
+ * Descrição: Matching de glob simples convertendo para regex. Suporta *, ** e ?
+ * @param str - String a testar
+ * @param pattern - Padrão glob
+ * @returns true se a string casa com o padrão
+ */
 function globMatch(str: string, pattern: string): boolean {
   // Converte glob para regex
   let regexStr = '^'
@@ -142,7 +170,13 @@ function globMatch(str: string, pattern: string): boolean {
   }
 }
 
-/** Checa se um caminho relativo deve ser ignorado com base nos padrões. */
+/** isIgnoredByPatterns
+ * Descrição: Verifica se um caminho relativo deve ser ignorado com base nos padrões do .gitignore.
+ * Aplica os padrões em ordem, respeitando negações.
+ * @param relativePath - Caminho relativo ao workspace
+ * @param patterns - Array de padrões compilados do .gitignore
+ * @returns true se o caminho deve ser ignorado
+ */
 function isIgnoredByPatterns(relativePath: string, patterns: GitignorePattern[]): boolean {
   let ignored = false
   for (const { pattern, negate } of patterns) {
@@ -153,18 +187,30 @@ function isIgnoredByPatterns(relativePath: string, patterns: GitignorePattern[])
   return ignored
 }
 
+/** WalkerOptions
+ * Descrição: Opções de configuração para o file walker
+ */
 export interface WalkerOptions {
-  /** Extensões adicionais a incluir */
+  /** extraExtensions
+   * Descrição: Extensões adicionais a incluir além das padrão
+   */
   extraExtensions?: string[]
-  /** Diretórios adicionais a ignorar */
+  /** ignoredDirs
+   * Descrição: Diretórios adicionais a ignorar além dos padrão
+   */
   ignoredDirs?: string[]
-  /** Tamanho máximo de arquivo em bytes (default: 500KB) */
+  /** maxFileSizeBytes
+   * Descrição: Tamanho máximo de arquivo em bytes (default: 500KB)
+   */
   maxFileSizeBytes?: number
 }
 
-/**
- * Percorre recursivamente um diretório e retorna os caminhos de arquivos de código.
- * Respeita .gitignore (procura na raiz do workspace).
+/** walkDirectory
+ * Descrição: Percorre recursivamente um diretório e retorna os caminhos de arquivos de código.
+ * Respeita .gitignore da raiz do workspace e filtra por extensão e tamanho.
+ * @param rootPath - Caminho absoluto da raiz do workspace
+ * @param options - Opções de configuração (extensões extras, diretórios ignorados, tamanho máximo)
+ * @returns Array de caminhos absolutos de arquivos de código encontrados
  */
 export async function walkDirectory(
   rootPath: string,
@@ -186,6 +232,10 @@ export async function walkDirectory(
 
   const results: string[] = []
 
+  /** recurse
+   * Descrição: Função recursiva interna que percorre subdiretórios
+   * @param dir - Diretório atual sendo percorrido
+   */
   async function recurse(dir: string): Promise<void> {
     let entries
     try {
@@ -231,7 +281,11 @@ export async function walkDirectory(
   return results
 }
 
-/** Detecta linguagem a partir da extensão do arquivo. */
+/** detectLanguage
+ * Descrição: Detecta a linguagem de programação a partir da extensão do arquivo
+ * @param filePath - Caminho do arquivo
+ * @returns Nome normalizado da linguagem (ex: 'typescript', 'python', 'go')
+ */
 export function detectLanguage(filePath: string): string {
   const ext = filePath.split('.').pop()?.toLowerCase() ?? ''
   const langMap: Record<string, string> = {

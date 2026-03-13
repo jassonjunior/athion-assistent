@@ -120,12 +120,22 @@ body {
 }
 
 .streaming-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 4px 8px;
 }
 
 .cursor {
   animation: blink 1s infinite;
   color: var(--vscode-editorCursor-foreground);
+}
+
+.feedback-phrase {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
+  opacity: 0.8;
 }
 
 @keyframes blink {
@@ -337,4 +347,69 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Label + badge na mesma linha */
+.autocomplete-item__label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+  color: var(--vscode-editorSuggestWidget-highlightForeground, var(--vscode-foreground));
+}
+
+.autocomplete-item__badge {
+  margin-left: auto;
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--vscode-badge-background, rgba(128,128,128,0.2));
+  color: var(--vscode-badge-foreground, var(--vscode-foreground));
+  opacity: 0.8;
+}
+
+/* Submenu de skills — visual mais rico */
+.autocomplete-dropdown--submenu {
+  max-height: 320px;
+}
+
+.autocomplete-dropdown--submenu .autocomplete-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.autocomplete-header__back {
+  opacity: 0.6;
+  font-size: 12px;
+}
+
+.autocomplete-header__hint {
+  margin-left: auto;
+  font-size: 10px;
+  opacity: 0.5;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.autocomplete-item--skill {
+  padding: 6px 8px;
+  gap: 2px;
+}
+
+.autocomplete-item--skill .autocomplete-item__label {
+  font-size: 13px;
+}
+
+.autocomplete-item--skill .autocomplete-item__description {
+  font-size: 11px;
+  white-space: normal;
+  line-height: 1.3;
+}
+
+.autocomplete-empty {
+  padding: 10px 8px;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  font-style: italic;
 }

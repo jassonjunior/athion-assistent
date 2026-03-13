@@ -6,17 +6,12 @@ import type {
   PermissionRule,
 } from './types'
 
-/**
- * Verifica se um target bate com um glob pattern.
+/** matchGlob
+ * Descrição: Verifica se um target bate com um glob pattern.
  * Suporta '*' (qualquer coisa num nível) e '**' (qualquer coisa em qualquer nível).
  * @param pattern - Glob pattern (ex: '/src/**', '*.ts', '*')
  * @param target - String a testar (ex: '/src/utils/helper.ts')
  * @returns true se o target bate com o pattern
- * @example
- * matchGlob('*', 'qualquer-coisa')      // true
- * matchGlob('/src/**', '/src/a/b/c.ts')  // true
- * matchGlob('/src/*', '/src/index.ts')   // true
- * matchGlob('/src/*', '/src/a/b.ts')     // false (não cruza diretórios)
  */
 function matchGlob(pattern: string, target: string): boolean {
   if (pattern === '*') return true
@@ -31,8 +26,8 @@ function matchGlob(pattern: string, target: string): boolean {
   return regex.test(target)
 }
 
-/**
- * Busca a primeira regra que bate com a ação e o target.
+/** findMatchingRule
+ * Descrição: Busca a primeira regra que bate com a ação e o target.
  * @param rules - Lista de regras a verificar
  * @param action - Ação a buscar
  * @param target - Alvo a testar contra os glob patterns
@@ -48,24 +43,19 @@ function findMatchingRule(
   )
 }
 
-/**
- * Cria uma instância do Permission Manager.
+/** createPermissionManager
+ * Descrição: Cria uma instância do Permission Manager.
  * Combina regras em memória (session) com regras persistidas no banco SQLite.
- * A ordem de prioridade é: session rules → persistent rules → default 'ask'.
+ * Prioridade: session rules > persistent rules > default 'ask'.
  * @param db - Instância do DatabaseManager para persistir regras 'remember'
  * @returns Instância do PermissionManager pronta para uso
- * @example
- * const pm = createPermissionManager(db)
- * pm.grant({ action: 'read', target: '/src/**', decision: 'allow', scope: 'session' })
- * const { decision } = pm.check('read', '/src/index.ts') // 'allow'
  */
 export function createPermissionManager(db: DatabaseManager): PermissionManager {
   const sessionRules: PermissionRule[] = []
 
-  /**
-   * Verifica a permissão para uma ação em um alvo.
-   * Busca regras na ordem: session rules → persistent rules → default (ask).
-   * Usa glob matching para comparar targets.
+  /** check
+   * Descrição: Verifica a permissão para uma ação em um alvo.
+   * Busca regras na ordem: session rules > persistent rules > default (ask).
    * @param action - Ação a verificar (ex: 'read', 'write', 'bash')
    * @param target - Alvo da ação (ex: '/src/index.ts', 'npm install')
    * @returns Resultado com a decisão e a regra que a originou
@@ -77,12 +67,7 @@ export function createPermissionManager(db: DatabaseManager): PermissionManager 
       return { decision: sessionMatch.decision, rule: sessionMatch }
     }
 
-    /**
-     * Busca em regras persistidas
-     * @param action - Ação a verificar (ex: 'read', 'write', 'bash')
-     * @param target - Alvo da ação (ex: '/src/index.ts', 'npm install')
-     * @returns Resultado com a decisão e a regra que a originou
-     */
+    // Busca em regras persistidas no banco SQLite
     const persistent = db.getPermission(action, target)
     if (persistent) {
       return {
@@ -96,17 +81,14 @@ export function createPermissionManager(db: DatabaseManager): PermissionManager 
       }
     }
 
-    /**
-     * Default: perguntar ao usuário
-     * @returns Resultado com a decisão 'ask'
-     */
+    // Default: perguntar ao usuário
     return { decision: 'ask' }
   }
 
-  /**
-   * Adiciona uma regra de permissão.
+  /** grant
+   * Descrição: Adiciona uma regra de permissão.
    * Se scope='remember', persiste no banco SQLite.
-   * Se scope='session', mantém apenas em memória.
+   * Se scope='session' ou 'once', mantém apenas em memória.
    * @param rule - Regra de permissão a adicionar
    */
   function grant(rule: PermissionRule): void {
@@ -124,16 +106,15 @@ export function createPermissionManager(db: DatabaseManager): PermissionManager 
     }
   }
 
-  /**
-   * Remove todas as regras de sessão (não remove as persistidas).
-   * Chamado quando o Athion é reiniciado.
+  /** clearSession
+   * Descrição: Remove todas as regras de sessão (não remove as persistidas).
    */
   function clearSession(): void {
     sessionRules.length = 0
   }
 
-  /**
-   * Lista todas as regras ativas (sessão + persistidas).
+  /** listRules
+   * Descrição: Lista todas as regras ativas (sessão + persistidas).
    * @returns Array com todas as regras
    */
   function listRules(): PermissionRule[] {

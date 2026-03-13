@@ -1,35 +1,53 @@
-/**
- * DbStore — SQLite direto (sem drizzle) para o índice de codebase.
- *
- * Usa bun:sqlite para:
- *  1. Tabela `chunks` — metadados dos chunks
- *  2. Tabela `vectors` — vetores float32 serializados (BLOB)
- *  3. FTS5 virtual table `chunks_fts` — busca full-text
- *
- * Operações:
- *  - upsertChunk: insere ou atualiza um chunk
- *  - upsertVector: insere ou atualiza vetor de embedding
- *  - searchFts: busca FTS5 com ranking BM25
- *  - searchVectors: retorna todos os vetores para cosine similarity em JS
- *  - deleteByFile: remove todos os chunks de um arquivo
- *  - getStats: retorna contagens
+/** DbStore
+ * Descrição: Armazenamento SQLite direto (sem ORM) para o índice de codebase.
+ * Usa bun:sqlite para gerenciar:
+ *  1. Tabela `chunks` — metadados dos chunks de código
+ *  2. Tabela `vectors` — vetores float32 serializados como BLOB
+ *  3. FTS5 virtual table `chunks_fts` — busca full-text com trigram
+ *  4. Tabela `index_meta` — metadados do índice (timestamps, etc.)
  */
 
 import { Database } from 'bun:sqlite'
 import type { CodeChunk } from './types'
 
+/** StoredChunk
+ * Descrição: Chunk armazenado no banco com timestamp de indexação
+ */
 export interface StoredChunk extends CodeChunk {
+  /** indexedAt
+   * Descrição: Timestamp Unix de quando o chunk foi indexado
+   */
   indexedAt: number
 }
 
+/** StoredVector
+ * Descrição: Vetor de embedding armazenado no banco
+ */
 export interface StoredVector {
+  /** chunkId
+   * Descrição: ID do chunk ao qual este vetor pertence
+   */
   chunkId: string
+  /** vector
+   * Descrição: Vetor de embedding como array de números
+   */
   vector: number[]
 }
 
+/** DbStore
+ * Descrição: Classe que gerencia o armazenamento SQLite do índice de codebase.
+ * Fornece operações de CRUD para chunks, vetores e busca full-text.
+ */
 export class DbStore {
+  /** db
+   * Descrição: Instância do banco de dados SQLite
+   */
   private db: Database
 
+  /** constructor
+   * Descrição: Inicializa o banco SQLite com WAL mode e cria as tabelas necessárias
+   * @param dbPath - Caminho do arquivo SQLite
+   */
   constructor(dbPath: string) {
     this.db = new Database(dbPath, { create: true })
     this.db.run('PRAGMA journal_mode = WAL')
@@ -38,6 +56,9 @@ export class DbStore {
     this.initSchema()
   }
 
+  /** initSchema
+   * Descrição: Cria as tabelas e índices do schema se não existirem
+   */
   private initSchema(): void {
     // Tabela principal de chunks
     this.db.run(`
@@ -88,7 +109,10 @@ export class DbStore {
     `)
   }
 
-  /** Insere ou atualiza um chunk. */
+  /** upsertChunk
+   * Descrição: Insere ou atualiza um chunk no banco e no índice FTS
+   * @param chunk - Chunk de código a persistir
+   */
   upsertChunk(chunk: CodeChunk): void {
     const now = Date.now()
     this.db.run(
@@ -117,7 +141,11 @@ export class DbStore {
     )
   }
 
-  /** Insere ou atualiza vetor de embedding (serializado como BLOB). */
+  /** upsertVector
+   * Descrição: Insere ou atualiza o vetor de embedding de um chunk
+   * @param chunkId - ID do chunk ao qual o vetor pertence
+   * @param vectorData - Buffer contendo o vetor serializado em float32 little-endian
+   */
   upsertVector(chunkId: string, vectorData: Buffer): void {
     this.db.run(`INSERT OR REPLACE INTO vectors (chunk_id, vector) VALUES (?, ?)`, [
       chunkId,
@@ -125,7 +153,10 @@ export class DbStore {
     ])
   }
 
-  /** Remove todos os chunks de um arquivo (cascades para vectors e fts). */
+  /** deleteByFile
+   * Descrição: Remove todos os chunks de um arquivo (cascades para vectors e limpa FTS)
+   * @param filePath - Caminho absoluto do arquivo cujos chunks serão removidos
+   */
   deleteByFile(filePath: string): void {
     // Remove FTS entries manualmente (trigger não é suportado no FTS5)
     const chunks = this.db
@@ -139,7 +170,12 @@ export class DbStore {
     this.db.run(`DELETE FROM chunks WHERE file_path = ?`, [filePath])
   }
 
-  /** Busca FTS5 com ranking BM25. Retorna IDs ordenados por relevância. */
+  /** searchFts
+   * Descrição: Busca FTS5 com ranking BM25. Retorna IDs ordenados por relevância.
+   * @param query - Termo de busca FTS5
+   * @param limit - Número máximo de resultados (default: 20)
+   * @returns Array de resultados com id, filePath e score normalizado 0-1
+   */
   searchFts(query: string, limit = 20): Array<{ id: string; filePath: string; score: number }> {
     // FTS5 retorna rank negativo (menor = mais relevante)
     const rows = this.db
@@ -159,7 +195,11 @@ export class DbStore {
     }))
   }
 
-  /** Retorna chunk completo por ID. */
+  /** getChunkById
+   * Descrição: Retorna um chunk completo por seu ID
+   * @param id - ID do chunk
+   * @returns O chunk encontrado ou null se não existir
+   */
   getChunkById(id: string): CodeChunk | null {
     const row = this.db
       .query<
@@ -192,7 +232,10 @@ export class DbStore {
     return chunk
   }
 
-  /** Retorna todos os vetores (para cosine similarity em JS). */
+  /** getAllVectors
+   * Descrição: Retorna todos os vetores armazenados (para cosine similarity em JS)
+   * @returns Array de objetos com chunkId e buffer do vetor
+   */
   getAllVectors(): Array<{ chunkId: string; vector: Buffer }> {
     return this.db
       .query<{ chunk_id: string; vector: Buffer }, []>(`SELECT chunk_id, vector FROM vectors`)
@@ -200,7 +243,10 @@ export class DbStore {
       .map((r) => ({ chunkId: r.chunk_id, vector: r.vector }))
   }
 
-  /** Retorna estatísticas. */
+  /** getStats
+   * Descrição: Retorna estatísticas do banco (total de chunks, vetores e data de indexação)
+   * @returns Objeto com contagens e timestamp de indexação
+   */
   getStats(): { totalChunks: number; totalVectors: number; indexedAt: Date | null } {
     const chunksRow = this.db
       .query<{ count: number }, []>(`SELECT COUNT(*) as count FROM chunks`)
@@ -219,14 +265,19 @@ export class DbStore {
     }
   }
 
-  /** Atualiza metadata de timestamp. */
+  /** setIndexedAt
+   * Descrição: Atualiza o timestamp de indexação nos metadados
+   * @param ts - Data da indexação
+   */
   setIndexedAt(ts: Date): void {
     this.db.run(`INSERT OR REPLACE INTO index_meta (key, value) VALUES ('indexed_at', ?)`, [
       ts.getTime().toString(),
     ])
   }
 
-  /** Remove todos os dados (reset completo). */
+  /** clear
+   * Descrição: Remove todos os dados do índice (reset completo)
+   */
   clear(): void {
     this.db.run(`DELETE FROM chunks_fts`)
     this.db.run(`DELETE FROM vectors`)
@@ -234,7 +285,10 @@ export class DbStore {
     this.db.run(`DELETE FROM index_meta`)
   }
 
-  /** Retorna todos os file_paths únicos no índice. */
+  /** getIndexedFiles
+   * Descrição: Retorna todos os caminhos de arquivo únicos presentes no índice
+   * @returns Array de caminhos absolutos de arquivos indexados
+   */
   getIndexedFiles(): string[] {
     return this.db
       .query<{ file_path: string }, []>(`SELECT DISTINCT file_path FROM chunks`)
@@ -242,6 +296,9 @@ export class DbStore {
       .map((r) => r.file_path)
   }
 
+  /** close
+   * Descrição: Fecha a conexão com o banco de dados SQLite
+   */
   close(): void {
     this.db.close()
   }
