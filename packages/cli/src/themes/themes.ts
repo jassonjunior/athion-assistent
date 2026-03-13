@@ -1,10 +1,14 @@
 /**
  * Definições dos 5 temas do CLI.
+ * Descrição: Define os esquemas de cores disponíveis para a interface do terminal.
  * Cores são strings hex ou nomes de cor ANSI reconhecidas pelo chalk/Ink.
  */
 
 import type { Theme } from '../types.js'
 
+/** defaultTheme
+ * Descrição: Tema padrão com paleta inspirada no Tokyo Night.
+ */
 export const defaultTheme: Theme = {
   name: 'default',
   primary: '#7aa2f7',
@@ -16,6 +20,9 @@ export const defaultTheme: Theme = {
   muted: '#565f89',
 }
 
+/** darkTheme
+ * Descrição: Tema escuro com paleta inspirada no Catppuccin Mocha.
+ */
 export const darkTheme: Theme = {
   name: 'dark',
   primary: '#89b4fa',
@@ -27,6 +34,9 @@ export const darkTheme: Theme = {
   muted: '#6c7086',
 }
 
+/** lightTheme
+ * Descrição: Tema claro com paleta inspirada no Catppuccin Latte.
+ */
 export const lightTheme: Theme = {
   name: 'light',
   primary: '#1e66f5',
@@ -38,6 +48,9 @@ export const lightTheme: Theme = {
   muted: '#9ca0b0',
 }
 
+/** minimalTheme
+ * Descrição: Tema minimalista usando apenas cores ANSI básicas.
+ */
 export const minimalTheme: Theme = {
   name: 'minimal',
   primary: 'white',
@@ -49,6 +62,9 @@ export const minimalTheme: Theme = {
   muted: 'gray',
 }
 
+/** draculaTheme
+ * Descrição: Tema com paleta inspirada no Dracula.
+ */
 export const draculaTheme: Theme = {
   name: 'dracula',
   primary: '#8be9fd',

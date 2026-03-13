@@ -1,5 +1,6 @@
 /**
- * App — Layout principal do desktop: sidebar + chat + status bar.
+ * App
+ * Descrição: Componente raiz do aplicativo desktop. Define o layout principal com sidebar, chat e barra de status.
  */
 
 import { useCallback, useState } from 'react'
@@ -12,16 +13,28 @@ import { InputArea } from './components/InputArea.js'
 import { Sidebar } from './components/Sidebar.js'
 import { StatusBar } from './components/StatusBar.js'
 
+/** App
+ * Descrição: Componente principal que orquestra o layout da aplicação desktop (header, sidebar, chat e status bar)
+ * @returns Elemento JSX do layout completo da aplicação
+ */
 export function App() {
   const { messages, isStreaming, sessionId, status, sendMessage, abort, newSession } = useChat()
   const { theme, toggle: toggleTheme } = useTheme()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [pendingMessage, setPendingMessage] = useState<string | null>(null)
 
+  /** handleSelectSession
+   * Descrição: Callback para seleção de sessão na sidebar (implementação pendente)
+   * @param _id - ID da sessão selecionada
+   */
   const handleSelectSession = useCallback((_id: string) => {
     // TODO: implement session switching
   }, [])
 
+  /** handleDeepLinkMessage
+   * Descrição: Callback para recebimento de mensagem via deep link, armazenando como pendente para envio
+   * @param message - Texto da mensagem recebida via deep link
+   */
   const handleDeepLinkMessage = useCallback((message: string) => {
     setPendingMessage(message)
   }, [])

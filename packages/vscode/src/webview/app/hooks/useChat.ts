@@ -1,8 +1,8 @@
 /**
- * useChat — Gerencia estado do chat no webview.
- *
- * Recebe eventos via Messenger (em vez de AsyncGenerator como no CLI).
- * Acumula conteúdo streaming, rastreia tool calls e subagents.
+ * useChat
+ * Descrição: Hook principal que gerencia o estado completo do chat no webview.
+ * Recebe eventos via Messenger, acumula conteúdo streaming, rastreia tool calls,
+ * processa slash commands e gerencia sessões.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -10,34 +10,69 @@ import { useMessenger } from './useMessenger.js'
 import { createChatEventHandler, flushAssistant, type ChatRefs } from './chat-events.js'
 import { initI18n } from '@athion/shared'
 
+/**
+ * ChatMessage
+ * Descrição: Representa uma mensagem no chat (usuário ou assistente).
+ */
 export interface ChatMessage {
+  /** Identificador único da mensagem */
   id: string
+  /** Papel do remetente (user ou assistant) */
   role: 'user' | 'assistant'
+  /** Conteúdo textual da mensagem */
   content: string
+  /** Lista de tool calls associadas à mensagem, se houver */
   toolCalls?: ToolCallInfo[] | undefined
 }
 
+/**
+ * ToolCallInfo
+ * Descrição: Informações de uma chamada de ferramenta (tool call) durante o processamento.
+ */
 export interface ToolCallInfo {
+  /** Identificador único da tool call */
   id: string
+  /** Nome da ferramenta chamada */
   name: string
+  /** Argumentos passados para a ferramenta */
   args: unknown
+  /** Status atual da execução (running, success, error) */
   status: 'running' | 'success' | 'error'
+  /** Preview do resultado da ferramenta, se disponível */
   result?: string | undefined
 }
 
+/**
+ * SessionInfo
+ * Descrição: Informações básicas de uma sessão de chat.
+ */
 export interface SessionInfo {
+  /** Identificador único da sessão */
   id: string
+  /** Título da sessão */
   title: string
 }
 
+/**
+ * SkillInfo
+ * Descrição: Informações de uma skill instalada (usado internamente pelo hook).
+ */
 interface SkillInfo {
+  /** Nome identificador da skill */
   name: string
+  /** Descrição do que a skill faz */
   description: string
+  /** Lista de triggers que ativam a skill */
   triggers: string[]
 }
 
+/**
+ * CoreStatus
+ * Descrição: Estados possíveis do core (starting, ready, error, stopped).
+ */
 type CoreStatus = 'starting' | 'ready' | 'error' | 'stopped'
 
+/** HELP_TEXT - Texto de ajuda com todos os comandos disponíveis, exibido pelo /help */
 const HELP_TEXT = `**Comandos disponíveis:**
 
 **Chat:**
@@ -63,6 +98,11 @@ const HELP_TEXT = `**Comandos disponíveis:**
 **@Mentions:**
 - \`@arquivo.ts\` — Injeta o conteúdo do arquivo no prompt (max 200 linhas)`
 
+/**
+ * useChat
+ * Descrição: Hook principal do chat que gerencia mensagens, streaming, sessões, slash commands e skills.
+ * @returns Objeto com estado do chat (messages, isStreaming, session, status, activeSkill) e ações (sendMessage, clearMessages, abort, newSession)
+ */
 export function useChat() {
   const { post, on } = useMessenger()
   const [messages, setMessages] = useState<ChatMessage[]>([])

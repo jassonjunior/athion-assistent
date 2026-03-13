@@ -1,3 +1,6 @@
+/** subagent/index
+ * Descrição: Barrel file que re-exporta os módulos públicos do SubAgent.
+ */
 export { runSubAgent } from './agent'
 export type { SubAgentDeps } from './agent'
 export { builtinAgents } from './builtins'

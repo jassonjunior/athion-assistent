@@ -1,38 +1,64 @@
 /**
- * useInputAutocomplete — Autocomplete sem LLM para o Desktop (Tauri).
- *
+ * useInputAutocomplete
+ * Descrição: Hook de autocomplete sem LLM para o Desktop (Tauri).
  * Detecta dois padrões:
- *  1. `/use-skill <prefix>` → lista skills via skillList()
- *  2. `@<prefix>` → lista arquivos via filesList()
- *
- * Usa Tauri bridge para ambas as fontes.
+ *  1. `/use-skill <prefix>` -> lista skills via skillList()
+ *  2. `@<prefix>` -> lista arquivos via filesList()
+ * Usa Tauri bridge para ambas as fontes de dados.
  */
 
 import { useCallback, useRef, useState } from 'react'
 import * as bridge from '../bridge/tauri-bridge.js'
 import type { SkillInfo } from '../bridge/tauri-bridge.js'
 
+/** AutocompleteItem
+ * Descrição: Representa um item individual no dropdown de autocomplete
+ */
 export interface AutocompleteItem {
+  /** Texto exibido no dropdown */
   label: string
+  /** Descrição opcional exibida abaixo do label */
   description?: string
-  /** Texto completo a inserir quando selecionado */
+  /** Texto completo a inserir quando o item é selecionado */
   insertValue: string
 }
 
+/** UseInputAutocompleteReturn
+ * Descrição: Interface de retorno do hook useInputAutocomplete com estado e ações
+ */
 export interface UseInputAutocompleteReturn {
+  /** Indica se o dropdown de autocomplete está visível */
   isOpen: boolean
+  /** Lista de itens disponíveis no dropdown */
   items: AutocompleteItem[]
+  /** Índice do item atualmente selecionado */
   selectedIndex: number
+  /** Modo atual do autocomplete (skill, file ou nenhum) */
   mode: 'skill' | 'file' | null
+  /** Callback para processar mudanças no texto de entrada */
   handleChange: (value: string, cursorPos: number) => void
+  /** Callback para processar teclas pressionadas (retorna true se consumiu o evento) */
   handleKeyDown: (e: React.KeyboardEvent) => boolean
+  /** Insere o item selecionado no texto atual e retorna o novo valor */
   insertSelected: (currentValue: string, cursorPos: number) => string | null
+  /** Fecha o dropdown de autocomplete */
   close: () => void
 }
 
+/** SKILL_PATTERN
+ * Descrição: Expressão regular para detectar o padrão /use-skill seguido de um prefixo
+ */
 const SKILL_PATTERN = /^\/use-skill\s+(\S*)$/
+
+/** FILE_PATTERN
+ * Descrição: Expressão regular para detectar o padrão @prefixo para autocomplete de arquivos
+ */
 const FILE_PATTERN = /@(\S*)$/
 
+/** useInputAutocomplete
+ * Descrição: Hook que gerencia o estado e lógica de autocomplete para skills e arquivos no campo de entrada
+ * @returns Objeto com estado do autocomplete (isOpen, items, selectedIndex, mode) e ações (handleChange, handleKeyDown, insertSelected, close)
+ */
 export function useInputAutocomplete(): UseInputAutocompleteReturn {
   const [isOpen, setIsOpen] = useState(false)
   const [items, setItems] = useState<AutocompleteItem[]>([])
@@ -48,6 +74,9 @@ export function useInputAutocomplete(): UseInputAutocompleteReturn {
   const fileTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastFilePrefixRef = useRef<string | null>(null)
 
+  /** close
+   * Descrição: Fecha o dropdown de autocomplete e reseta o estado interno
+   */
   const close = useCallback(() => {
     setIsOpen(false)
     setItems([])
@@ -57,6 +86,9 @@ export function useInputAutocomplete(): UseInputAutocompleteReturn {
     lastFilePrefixRef.current = null
   }, [])
 
+  /** loadSkills
+   * Descrição: Carrega a lista de skills do sidecar via bridge (lazy loading, executado apenas uma vez)
+   */
   async function loadSkills() {
     if (skillsLoadedRef.current) return
     try {
@@ -68,6 +100,11 @@ export function useInputAutocomplete(): UseInputAutocompleteReturn {
     }
   }
 
+  /** handleChange
+   * Descrição: Analisa o texto digitado e posição do cursor para detectar padrões de autocomplete e atualizar a lista de sugestões
+   * @param value - Valor atual do campo de texto
+   * @param cursorPos - Posição atual do cursor
+   */
   const handleChange = useCallback(
     (value: string, cursorPos: number) => {
       const textBeforeCursor = value.slice(0, cursorPos)
@@ -138,6 +175,11 @@ export function useInputAutocomplete(): UseInputAutocompleteReturn {
     [isOpen, close],
   )
 
+  /** handleKeyDown
+   * Descrição: Processa navegação por teclado no dropdown (ArrowUp/Down, Escape, Tab, Enter)
+   * @param e - Evento de teclado
+   * @returns true se o evento foi consumido pelo autocomplete, false caso contrário
+   */
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent): boolean => {
       if (!isOpen || items.length === 0) return false
@@ -169,6 +211,12 @@ export function useInputAutocomplete(): UseInputAutocompleteReturn {
     [isOpen, items, selectedIndex, close],
   )
 
+  /** insertSelected
+   * Descrição: Insere o item atualmente selecionado no texto, substituindo o padrão de trigger
+   * @param currentValue - Valor atual do campo de texto
+   * @param cursorPos - Posição atual do cursor
+   * @returns Novo valor do campo com o item inserido, ou null se não houver item selecionado
+   */
   const insertSelected = useCallback(
     (currentValue: string, cursorPos: number): string | null => {
       const item = items[selectedIndex]

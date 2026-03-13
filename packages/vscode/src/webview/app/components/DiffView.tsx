@@ -1,12 +1,24 @@
 /**
- * DiffView — Visualização de diff inline no chat.
- * Mostra linhas adicionadas (verde) e removidas (vermelho).
+ * DiffView
+ * Descrição: Componente de visualização de diff inline no chat.
+ * Mostra linhas adicionadas (verde), removidas (vermelho) e headers de hunk.
  */
 
+/**
+ * DiffViewProps
+ * Descrição: Props do componente DiffView.
+ */
 interface DiffViewProps {
+  /** String do diff em formato unificado */
   diff: string
 }
 
+/**
+ * DiffView
+ * Descrição: Renderiza um diff textual com coloração por tipo de linha (adicionada, removida, hunk).
+ * @param diff - String de diff em formato unificado
+ * @returns Elemento JSX da visualização de diff
+ */
 export function DiffView({ diff }: DiffViewProps) {
   const lines = diff.split('\n')
 

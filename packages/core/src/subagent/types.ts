@@ -1,73 +1,120 @@
-/**
- * Status de uma task atribuida a um subagente.
+/** TaskStatus
+ * Descrição: Status de uma task atribuída a um subagente.
+ * - 'pending': aguardando execução
+ * - 'in_progress': em execução
+ * - 'completed': finalizada com sucesso
+ * - 'failed': falhou durante execução
+ * - 'partial': parcialmente completa, necessita continuação
  */
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'failed' | 'partial'
 
-/**
- * Task atribuida a um subagente pelo orquestrador.
+/** SubAgentTask
+ * Descrição: Task atribuída a um subagente pelo orquestrador.
  * O subagente recebe a task e vai atualizando conforme progride.
  */
 export interface SubAgentTask {
-  /** Identificador unico da task */
+  /** id
+   * Descrição: Identificador único da task
+   */
   id: string
-  /** Nome curto da task (ex: 'review-auth-module') */
+  /** name
+   * Descrição: Nome curto da task (ex: 'review-auth-module')
+   */
   name: string
-  /** Descricao detalhada do que o subagente precisa fazer */
+  /** description
+   * Descrição: Descrição detalhada do que o subagente precisa fazer
+   */
   description: string
-  /** Status atual da task */
+  /** status
+   * Descrição: Status atual da task
+   */
   status: TaskStatus
-  /** Resultado parcial ou final da task */
+  /** result
+   * Descrição: Resultado parcial ou final da task
+   */
   result?: string
-  /** Sub-tarefas que o agente pode criar para organizar o trabalho */
+  /** steps
+   * Descrição: Sub-tarefas que o agente pode criar para organizar o trabalho
+   */
   steps: TaskStep[]
-  /** Resultados acumulados de todas as continuações */
+  /** accumulatedResults
+   * Descrição: Resultados acumulados de todas as continuações anteriores
+   */
   accumulatedResults: string[]
-  /** Índice da continuação atual (0 = primeira execução) */
+  /** continuationIndex
+   * Descrição: Índice da continuação atual (0 = primeira execução)
+   */
   continuationIndex: number
-  /** Máximo de continuações permitidas */
+  /** maxContinuations
+   * Descrição: Máximo de continuações permitidas para esta task
+   */
   maxContinuations: number
-  /** Descrição do que resta fazer (preenchido ao sair com status 'partial') */
+  /** remainingWork
+   * Descrição: Descrição do que resta fazer (preenchido ao sair com status 'partial')
+   */
   remainingWork?: string
-  /** Timestamp de criacao */
+  /** createdAt
+   * Descrição: Timestamp de criação da task
+   */
   createdAt: Date
-  /** Timestamp da ultima atualizacao */
+  /** updatedAt
+   * Descrição: Timestamp da última atualização da task
+   */
   updatedAt: Date
 }
 
-/**
- * Sub-tarefa dentro de uma task.
+/** TaskStep
+ * Descrição: Sub-tarefa dentro de uma task.
  * O subagente cria steps para organizar seu trabalho.
  */
 export interface TaskStep {
-  /** Descricao do step */
+  /** description
+   * Descrição: Texto descritivo do step
+   */
   description: string
-  /** Se o step foi concluido */
+  /** completed
+   * Descrição: Indica se o step foi concluído
+   */
   completed: boolean
 }
 
-/**
- * Configuracao completa de um subagente.
+/** SubAgentConfig
+ * Descrição: Configuração completa de um subagente.
  * Define skill, tools permitidas, modelo e limites.
  */
 export interface SubAgentConfig {
-  /** Identificador unico do agente (ex: 'code-reviewer') */
+  /** name
+   * Descrição: Identificador único do agente (ex: 'code-reviewer')
+   */
   name: string
-  /** Descricao do que o agente faz */
+  /** description
+   * Descrição: Texto descritivo do que o agente faz
+   */
   description: string
-  /** Nome da skill que fornece o system prompt */
+  /** skill
+   * Descrição: Nome da skill que fornece o system prompt do agente
+   */
   skill: string
-  /** Whitelist de tools que o agente pode usar */
+  /** tools
+   * Descrição: Whitelist de tools que o agente pode usar
+   */
   tools: string[]
-  /** Provider e modelo especificos (opcional, usa o default se omitido) */
+  /** model
+   * Descrição: Provider e modelo específicos (opcional, usa o default se omitido)
+   */
   model?: { provider: string; model: string }
-  /** Limite de turnos para evitar loops infinitos (default: 50) */
+  /** maxTurns
+   * Descrição: Limite de turnos para evitar loops infinitos (default: 50)
+   */
   maxTurns?: number
-  /** Nivel do agente — determina prioridade e origem */
+  /** level
+   * Descrição: Nível do agente — determina prioridade e origem
+   */
   level: 'builtin' | 'user' | 'project' | 'session'
 }
 
-/**
- * Evento emitido durante a execucao de um subagente.
+/** SubAgentEvent
+ * Descrição: Evento emitido durante a execução de um subagente.
  * Discriminated union pelo campo `type`.
  */
 export type SubAgentEvent =
@@ -80,32 +127,63 @@ export type SubAgentEvent =
   | { type: 'continuation_needed'; task: SubAgentTask }
   | { type: 'error'; error: Error; task: SubAgentTask }
 
-/**
- * Informacoes resumidas de um subagente registrado.
+/** SubAgentInfo
+ * Descrição: Informações resumidas de um subagente registrado.
  */
 export interface SubAgentInfo {
+  /** name
+   * Descrição: Identificador único do agente
+   */
   name: string
+  /** description
+   * Descrição: Texto descritivo do que o agente faz
+   */
   description: string
+  /** skill
+   * Descrição: Nome da skill associada ao agente
+   */
   skill: string
+  /** tools
+   * Descrição: Lista de tools que o agente pode usar
+   */
   tools: string[]
+  /** level
+   * Descrição: Nível do agente (builtin, user, project, session)
+   */
   level: SubAgentConfig['level']
 }
 
-/**
- * Interface do SubAgent Manager.
- * Centraliza registro, busca e execucao de subagentes.
+/** SubAgentManager
+ * Descrição: Interface do SubAgent Manager.
+ * Centraliza registro, busca e execução de subagentes.
  */
 export interface SubAgentManager {
-  /** Executa um subagente com uma task especifica */
+  /** spawn
+   * Descrição: Executa um subagente com uma task específica
+   * @param config - Configuração do subagente
+   * @param task - Task a ser executada
+   * @param signal - Signal para cancelamento (opcional)
+   * @returns AsyncGenerator que emite SubAgentEvent
+   */
   spawn(
     config: SubAgentConfig,
     task: SubAgentTask,
     signal?: AbortSignal,
   ): AsyncGenerator<SubAgentEvent>
-  /** Lista todos os subagentes registrados */
+  /** list
+   * Descrição: Lista todos os subagentes registrados
+   * @returns Array de SubAgentInfo
+   */
   list(): SubAgentInfo[]
-  /** Busca um subagente pelo nome */
+  /** getAgent
+   * Descrição: Busca um subagente pelo nome
+   * @param name - Nome do subagente
+   * @returns SubAgentConfig ou undefined se não encontrado
+   */
   getAgent(name: string): SubAgentConfig | undefined
-  /** Registra um novo subagente */
+  /** registerAgent
+   * Descrição: Registra um novo subagente no manager
+   * @param config - Configuração completa do subagente
+   */
   registerAgent(config: SubAgentConfig): void
 }

@@ -1,3 +1,6 @@
+/** orchestrator/index
+ * Descrição: Barrel file que re-exporta os módulos públicos do Orchestrator.
+ */
 export { createOrchestrator } from './orchestrator'
 export type { OrchestratorDeps } from './orchestrator'
 export { createPromptBuilder } from './prompt-builder'

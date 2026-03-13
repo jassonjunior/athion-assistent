@@ -2,31 +2,9 @@ import { readFile } from 'node:fs/promises'
 import { basename, dirname } from 'node:path'
 import type { SkillDefinition } from './types'
 
-/**
- * Parseia um arquivo .md de skill.
- * Suporta dois formatos:
- *
- * Formato Athion (## Triggers / ## Instructions):
- * ```markdown
- * # Nome da Skill
- * Descrição.
- * ## Triggers
- * - palavra1
- * ## Instructions
- * Conteúdo...
- * ```
- *
- * Formato Claude Code (YAML frontmatter):
- * ```markdown
- * ---
- * name: skill-name
- * description: Descrição da skill.
- * metadata:
- *   triggers: trigger1, trigger2
- * ---
- * # Conteúdo markdown...
- * ```
- *
+/** parseSkillFile
+ * Descrição: Parseia um arquivo .md de skill. Suporta dois formatos:
+ * formato Athion (## Triggers / ## Instructions) e formato Claude Code (YAML frontmatter).
  * @param filePath - Caminho absoluto do arquivo .md
  * @returns SkillDefinition parseada do arquivo
  */
@@ -41,9 +19,12 @@ export async function parseSkillFile(filePath: string): Promise<SkillDefinition>
   return parseAthionFormat(content, filePath)
 }
 
-/**
- * Parseia formato Claude Code com YAML frontmatter.
+/** parseYamlFrontmatter
+ * Descrição: Parseia formato Claude Code com YAML frontmatter.
  * Extrai name, description e triggers do frontmatter.
+ * @param content - Conteúdo completo do arquivo .md
+ * @param filePath - Caminho absoluto do arquivo (usado como fallback para nome)
+ * @returns SkillDefinition parseada do frontmatter
  */
 function parseYamlFrontmatter(content: string, filePath: string): SkillDefinition {
   const endMarker = content.indexOf('\n---', 4)
@@ -96,8 +77,13 @@ function parseYamlFrontmatter(content: string, filePath: string): SkillDefinitio
   }
 }
 
-/**
- * Parseia formato Athion com seções ## Triggers / ## Instructions.
+/** parseAthionFormat
+ * Descrição: Parseia formato Athion com seções ## Triggers / ## Instructions.
+ * Extrai nome do heading, descrição da primeira linha após o título, triggers
+ * da seção ## Triggers e instruções da seção ## Instructions.
+ * @param content - Conteúdo completo do arquivo .md
+ * @param filePath - Caminho absoluto do arquivo (usado como fallback para nome)
+ * @returns SkillDefinition parseada do formato Athion
  */
 function parseAthionFormat(content: string, filePath: string): SkillDefinition {
   const lines = content.split('\n')
@@ -136,11 +122,11 @@ function parseAthionFormat(content: string, filePath: string): SkillDefinition {
   }
 }
 
-/**
- * Extrai itens de lista (- item) de uma seção ## do markdown.
+/** extractListSection
+ * Descrição: Extrai itens de lista (- item) de uma seção ## do markdown
  * @param lines - Linhas do arquivo
  * @param sectionName - Nome da seção (sem ##)
- * @returns Array com os itens da lista
+ * @returns Array com os itens da lista encontrados na seção
  */
 function extractListSection(lines: string[], sectionName: string): string[] {
   const items: string[] = []
@@ -162,8 +148,8 @@ function extractListSection(lines: string[], sectionName: string): string[] {
   return items
 }
 
-/**
- * Extrai todo o conteúdo de texto de uma seção ## do markdown.
+/** extractContentSection
+ * Descrição: Extrai todo o conteúdo de texto de uma seção ## do markdown
  * @param lines - Linhas do arquivo
  * @param sectionName - Nome da seção (sem ##)
  * @returns Conteúdo da seção como string

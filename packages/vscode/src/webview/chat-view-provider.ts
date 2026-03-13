@@ -1,8 +1,8 @@
 /**
- * ChatViewProvider — WebviewViewProvider para o painel de chat lateral.
- *
- * Registra na sidebar do VS Code e injeta o bundle React no webview.
- * Conecta o Messenger para comunicação bidirecional com a extensão.
+ * ChatViewProvider
+ * Descrição: WebviewViewProvider para o painel de chat lateral do VS Code.
+ * Registra na sidebar, injeta o bundle React no webview e conecta o Messenger
+ * para comunicação bidirecional entre extensão e webview.
  */
 
 import * as fs from 'node:fs'
@@ -14,16 +14,39 @@ import type { ChatEventNotification } from '../bridge/protocol.js'
 import type { WebviewToExtension } from '../bridge/messenger-types.js'
 import type { AgentInfo } from '../bridge/messenger-types.js'
 
+/**
+ * ChatViewProvider
+ * Descrição: Provedor do painel de chat lateral que gerencia sessões, mensagens e comunicação
+ * bidirecional entre o webview React e o CoreBridge.
+ */
 export class ChatViewProvider implements vscode.WebviewViewProvider {
+  /** Referência à view do webview, null quando não está visível */
   private view: vscode.WebviewView | null = null
+  /** Messenger tipado para comunicação com o webview */
   private messenger: ExtensionMessenger | null = null
+  /** ID da sessão de chat ativa */
   private activeSessionId: string | null = null
 
+  /**
+   * constructor
+   * Descrição: Inicializa o ChatViewProvider com o contexto da extensão e a bridge do core.
+   * @param context - Contexto da extensão VS Code
+   * @param bridge - Instância do CoreBridge para comunicação com o core
+   */
   constructor(
     private context: vscode.ExtensionContext,
     private bridge: CoreBridge,
   ) {}
 
+  /**
+   * resolveWebviewView
+   * Descrição: Resolve a view do webview, configurando HTML, messenger e handlers de mensagens.
+   * Chamado pelo VS Code quando o painel lateral é mostrado.
+   * @param webviewView - View do webview a ser configurada
+   * @param _context - Contexto de resolução do webview
+   * @param _token - Token de cancelamento
+   * @returns void
+   */
   resolveWebviewView(
     webviewView: vscode.WebviewView,
     _context: vscode.WebviewViewResolveContext,
@@ -76,7 +99,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     })
   }
 
-  /** Send a message to the chat programmatically (from commands) */
+  /**
+   * sendMessage
+   * Descrição: Envia uma mensagem ao chat programaticamente (usado por comandos da extensão).
+   * Cria sessão automaticamente se não houver uma ativa.
+   * @param content - Conteúdo textual da mensagem a enviar
+   * @returns Promise que resolve quando a mensagem é enviada
+   */
   async sendMessage(content: string): Promise<void> {
     if (!this.activeSessionId) {
       await this.createSession()
@@ -94,7 +123,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     })
   }
 
-  /** Create a new session and notify webview */
+  /**
+   * createSession
+   * Descrição: Cria uma nova sessão de chat no core e notifica o webview.
+   * @param title - Título opcional da sessão (padrão: 'VS Code Chat')
+   * @returns Promise que resolve quando a sessão é criada
+   */
   async createSession(title?: string): Promise<void> {
     try {
       const session = await this.bridge.request<{
@@ -114,20 +148,33 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  /** Abort current chat */
+  /**
+   * abortChat
+   * Descrição: Aborta o chat em andamento na sessão ativa.
+   * @returns Promise que resolve quando o abort é processado
+   */
   async abortChat(): Promise<void> {
     if (!this.activeSessionId) return
     await this.bridge.request('chat.abort', { sessionId: this.activeSessionId })
     this.messenger?.post({ type: 'chat:complete' })
   }
 
-  /** Focus the chat panel */
+  /**
+   * focus
+   * Descrição: Foca o painel de chat na sidebar do VS Code.
+   * @returns void
+   */
   focus(): void {
     this.view?.show?.(true)
   }
 
   // ─── Private ──────────────────────────────────────────────────────
 
+  /**
+   * setupMessageHandlers
+   * Descrição: Configura todos os handlers de mensagens vindas do webview (chat, sessões, codebase, skills, etc.).
+   * @returns void
+   */
   private setupMessageHandlers(): void {
     if (!this.messenger) return
 
@@ -424,6 +471,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     })
   }
 
+  /**
+   * getHtml
+   * Descrição: Gera o HTML do webview com CSP, referências a scripts e estilos do bundle React.
+   * @param webview - Instância do webview para gerar URIs seguras
+   * @returns String HTML completa para o webview
+   */
   private getHtml(webview: vscode.Webview): string {
     const scriptUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'webview', 'main.js'),
@@ -451,6 +504,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   }
 }
 
+/**
+ * resolveAtMentions
+ * Descrição: Resolve @mentions no conteúdo da mensagem, substituindo referências a arquivos
+ * pelo conteúdo real dos arquivos (truncado em 200 linhas).
+ * @param content - Conteúdo da mensagem com possíveis @mentions
+ * @param wsRoot - Caminho raiz do workspace (undefined se não houver workspace)
+ * @returns Conteúdo com @mentions resolvidos para o conteúdo dos arquivos
+ */
 function resolveAtMentions(content: string, wsRoot: string | undefined): string {
   if (!wsRoot || !content.includes('@')) return content
   return content.replace(/@([\w./-]+)/g, (_match, filePath: string) => {
@@ -470,6 +531,11 @@ function resolveAtMentions(content: string, wsRoot: string | undefined): string 
   })
 }
 
+/**
+ * getNonce
+ * Descrição: Gera um nonce aleatório de 32 caracteres para uso no CSP do webview.
+ * @returns String aleatória de 32 caracteres alfanuméricos
+ */
 function getNonce(): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
   let result = ''

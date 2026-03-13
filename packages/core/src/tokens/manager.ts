@@ -2,27 +2,30 @@ import { isPinnedMessage } from './summarize'
 import type { SummarizationService } from './summarize'
 import type { CompactionStrategy, LoopDetection, TokenBudget, TokenManager } from './types'
 
-/**
- * Configuracao do Token Manager.
+/** TokenManagerConfig
+ * Descrição: Configuração para criação de uma instância do Token Manager.
+ * Define limites de contexto, estratégia de compactação e parâmetros de detecção de loops.
  */
 interface TokenManagerConfig {
-  /** Limite de contexto do modelo em tokens (ex: 50000 para qwen3) */
+  /** contextLimit - Limite de contexto do modelo em tokens (ex: 50000 para qwen3) */
   contextLimit: number
-  /** Estrategia de compactacao (default: 'sliding-window') */
+  /** strategy - Estratégia de compactação do histórico (default: 'sliding-window') */
   strategy?: CompactionStrategy
-  /** Percentual da janela que dispara compactacao (default: 0.8 = 80%) */
+  /** compactionThreshold - Percentual da janela que dispara compactação (default: 0.8 = 80%) */
   compactionThreshold?: number
-  /** Numero de mensagens recentes a manter no sliding-window (default: 20) */
+  /** windowSize - Número de mensagens recentes a manter no sliding-window (default: 20) */
   windowSize?: number
-  /** Minimo de repeticoes para detectar loop (default: 3) */
+  /** loopThreshold - Mínimo de repetições para detectar loop (default: 3) */
   loopThreshold?: number
-  /** Servico de summarizacao (obrigatorio se strategy = 'summarize') */
+  /** summarizer - Serviço de sumarização (obrigatório se strategy = 'summarize') */
   summarizer?: SummarizationService
 }
 
-/**
- * Cria uma instancia do Token Manager.
- * Controla budget de tokens, compactacao de historico e deteccao de loops.
+/** createTokenManager
+ * Descrição: Cria uma instância do Token Manager para controle de budget de tokens,
+ * compactação de histórico de mensagens e detecção de loops repetitivos do LLM.
+ * @param config - Configuração do Token Manager (limites, estratégia, thresholds)
+ * @returns Instância do TokenManager pronta para uso
  */
 export function createTokenManager(config: TokenManagerConfig): TokenManager {
   const strategy = config.strategy ?? 'sliding-window'
@@ -33,6 +36,10 @@ export function createTokenManager(config: TokenManagerConfig): TokenManager {
   let totalInputTokens = 0
   let totalOutputTokens = 0
 
+  /** getBudget
+   * Descrição: Retorna o estado atual do orçamento de tokens da sessão.
+   * @returns Objeto com limites, consumo e tokens restantes
+   */
   function getBudget(): TokenBudget {
     const used = totalInputTokens + totalOutputTokens
     return {
@@ -43,16 +50,30 @@ export function createTokenManager(config: TokenManagerConfig): TokenManager {
     }
   }
 
+  /** trackUsage
+   * Descrição: Registra tokens consumidos em uma chamada ao LLM.
+   * @param inputTokens - Quantidade de tokens de input (prompt) consumidos
+   * @param outputTokens - Quantidade de tokens de output (resposta) consumidos
+   */
   function trackUsage(inputTokens: number, outputTokens: number): void {
     totalInputTokens += inputTokens
     totalOutputTokens += outputTokens
   }
 
+  /** needsCompaction
+   * Descrição: Verifica se o uso de tokens ultrapassou o threshold de compactação.
+   * @returns true se compactação é necessária
+   */
   function needsCompaction(): boolean {
     const used = totalInputTokens + totalOutputTokens
     return used >= config.contextLimit * compactionThreshold
   }
 
+  /** compact
+   * Descrição: Compacta o histórico de mensagens segundo a estratégia configurada.
+   * @param messages - Array de mensagens a compactar
+   * @returns Array compactado de mensagens
+   */
   async function compact(
     messages: Array<{ role: string; content: string }>,
   ): Promise<Array<{ role: string; content: string }>> {
@@ -62,10 +83,18 @@ export function createTokenManager(config: TokenManagerConfig): TokenManager {
     return compactSummarize(messages, config.summarizer, windowSize)
   }
 
+  /** detectLoop
+   * Descrição: Verifica se o LLM está preso em um loop de ações repetitivas.
+   * @param actions - Array com os nomes das últimas ações executadas
+   * @returns Resultado da detecção com flag, repetições e padrão encontrado
+   */
   function detectLoop(actions: string[]): LoopDetection {
     return detectLoopPattern(actions, loopThreshold)
   }
 
+  /** reset
+   * Descrição: Reseta os contadores de tokens para zero (nova sessão).
+   */
   function reset(): void {
     totalInputTokens = 0
     totalOutputTokens = 0
@@ -74,8 +103,19 @@ export function createTokenManager(config: TokenManagerConfig): TokenManager {
   return { getBudget, trackUsage, needsCompaction, compact, detectLoop, reset }
 }
 
+/** Msg
+ * Descrição: Tipo auxiliar para representar uma mensagem com role e content.
+ */
 type Msg = { role: string; content: string }
 
+/** compactSummarize
+ * Descrição: Compacta mensagens usando sumarização via LLM.
+ * Faz fallback para sliding-window se o summarizer não estiver configurado ou falhar.
+ * @param messages - Array de mensagens a compactar
+ * @param summarizer - Serviço de sumarização (pode ser undefined)
+ * @param windowSize - Tamanho da janela de mensagens recentes a preservar
+ * @returns Array compactado de mensagens
+ */
 async function compactSummarize(
   messages: Msg[],
   summarizer: SummarizationService | undefined,
@@ -95,12 +135,25 @@ async function compactSummarize(
   }
 }
 
+/** truncateMessages
+ * Descrição: Remove mensagens antigas mantendo apenas as mais recentes e mensagens de sistema.
+ * @param messages - Array de mensagens a truncar
+ * @param windowSize - Número de mensagens não-system a manter
+ * @returns Array truncado com system messages + mensagens recentes
+ */
 function truncateMessages(messages: Msg[], windowSize: number): Msg[] {
   const system = messages.filter((m) => m.role === 'system')
   const recent = messages.filter((m) => m.role !== 'system').slice(-windowSize)
   return [...system, ...recent]
 }
 
+/** slidingWindow
+ * Descrição: Mantém uma janela fixa das últimas N mensagens, preservando system e pinned.
+ * Adiciona uma mensagem de aviso indicando quantas mensagens foram removidas.
+ * @param messages - Array de mensagens a compactar
+ * @param windowSize - Número de mensagens recentes a manter
+ * @returns Array com system + pinned + aviso + mensagens recentes
+ */
 function slidingWindow(messages: Msg[], windowSize: number): Msg[] {
   const system = messages.filter((m) => m.role === 'system')
   const pinned = messages.filter((m) => m.role !== 'system' && isPinnedMessage(m))
@@ -114,6 +167,13 @@ function slidingWindow(messages: Msg[], windowSize: number): Msg[] {
   return [...system, ...pinned, notice, ...kept]
 }
 
+/** detectLoopPattern
+ * Descrição: Detecta padrões repetitivos em uma sequência de ações.
+ * Verifica padrões de comprimento 1 a 3 ações.
+ * @param actions - Array com os nomes das últimas ações executadas
+ * @param loopThreshold - Número mínimo de repetições para considerar como loop
+ * @returns Resultado com flag de detecção, contagem de repetições e padrão encontrado
+ */
 function detectLoopPattern(actions: string[], loopThreshold: number): LoopDetection {
   if (actions.length < loopThreshold) return { detected: false, repetitions: 0 }
   for (let len = 1; len <= 3; len++) {

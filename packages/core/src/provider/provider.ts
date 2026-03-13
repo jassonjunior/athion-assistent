@@ -10,26 +10,54 @@ import type {
   TokenUsage,
 } from './types'
 
-/**
- * Interface pública do Provider Layer.
+/** ProviderLayer
+ * Descrição: Interface pública do Provider Layer.
  * Abstração unificada para interagir com múltiplos provedores LLM.
  */
 export interface ProviderLayer {
+  /** listProviders
+   * Descrição: Lista todos os providers registrados
+   * @returns Lista de informações dos providers disponíveis
+   */
   listProviders(): ProviderInfo[]
+  /** listModels
+   * Descrição: Lista modelos disponíveis, opcionalmente filtrados por provider
+   * @param providerId - ID do provider para filtrar (opcional)
+   * @returns Lista de informações dos modelos disponíveis
+   */
   listModels(providerId?: string): ModelInfo[]
+  /** streamChat
+   * Descrição: Inicia streaming de chat com o LLM
+   * @param config - Configuração da chamada de streaming
+   * @returns AsyncGenerator que emite eventos de streaming
+   */
   streamChat(config: StreamChatConfig): AsyncGenerator<StreamEvent>
-  /** Chamada não-streaming ao LLM. Útil para summarização e tarefas internas. */
+  /** generateText
+   * Descrição: Chamada não-streaming ao LLM. Útil para sumarização e tarefas internas.
+   * @param config - Configuração da chamada
+   * @returns Resultado com texto gerado e uso de tokens
+   */
   generateText(config: GenerateConfig): Promise<GenerateResult>
 }
 
-/**
- * Cria uma instância do Provider Layer.
+/** createProviderLayer
+ * Descrição: Cria uma instância do Provider Layer que abstrai múltiplos provedores LLM.
+ * @returns Instância do ProviderLayer pronta para uso
  */
 export function createProviderLayer(): ProviderLayer {
+  /** listProviders
+   * Descrição: Lista todos os providers registrados no sistema
+   * @returns Array de ProviderInfo com metadados de cada provider
+   */
   function listProviders(): ProviderInfo[] {
     return Object.values(PROVIDERS).map((entry) => entry.info)
   }
 
+  /** listModels
+   * Descrição: Lista modelos disponíveis, opcionalmente filtrados por provider
+   * @param providerId - ID do provider para filtrar (opcional)
+   * @returns Array de ModelInfo com metadados de cada modelo
+   */
   function listModels(providerId?: string): ModelInfo[] {
     if (providerId) {
       return PROVIDERS[providerId]?.models ?? []
@@ -37,6 +65,11 @@ export function createProviderLayer(): ProviderLayer {
     return Object.values(PROVIDERS).flatMap((entry) => entry.models)
   }
 
+  /** streamChat
+   * Descrição: Inicia streaming de chat com o LLM usando Vercel AI SDK
+   * @param config - Configuração completa da chamada de streaming
+   * @returns AsyncGenerator que emite StreamEvent durante a resposta
+   */
   async function* streamChat(config: StreamChatConfig): AsyncGenerator<StreamEvent> {
     const entry = PROVIDERS[config.provider]
     if (!entry) {
@@ -87,6 +120,11 @@ export function createProviderLayer(): ProviderLayer {
     }
   }
 
+  /** generateText
+   * Descrição: Realiza chamada não-streaming ao LLM
+   * @param config - Configuração da chamada com mensagens e parâmetros
+   * @returns Resultado com texto gerado e contagem de tokens
+   */
   async function generateText(config: GenerateConfig): Promise<GenerateResult> {
     const entry = PROVIDERS[config.provider]
     if (!entry) {
@@ -116,7 +154,11 @@ export function createProviderLayer(): ProviderLayer {
   return { listProviders, listModels, streamChat, generateText }
 }
 
-/** Converte tools do formato Athion para formato AI SDK. */
+/** convertTools
+ * Descrição: Converte tools do formato Athion para formato AI SDK.
+ * @param tools - Mapa de tools no formato interno (opcional)
+ * @returns Mapa de tools no formato AI SDK ou undefined se vazio
+ */
 function convertTools(
   tools?: Record<string, { description: string; parameters: unknown }>,
 ): Record<string, ReturnType<typeof tool>> | undefined {

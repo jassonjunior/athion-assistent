@@ -1,6 +1,7 @@
 /**
- * Entry point do React App do webview.
- * Renderiza o App no root div injetado pelo WebviewViewProvider.
+ * main
+ * Descrição: Ponto de entrada do React App do webview.
+ * Inicializa o i18n e renderiza o componente App no root div injetado pelo WebviewViewProvider.
  */
 
 import { createRoot } from 'react-dom/client'

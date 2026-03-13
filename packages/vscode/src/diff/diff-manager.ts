@@ -1,26 +1,46 @@
 /**
- * DiffManager — Gerencia diffs sugeridos pelo assistente.
- *
- * Quando o assistente sugere mudanças, mostra decorações inline
- * (verde = adicionado, vermelho = removido) com CodeLens para
- * Accept/Reject por bloco.
+ * DiffManager
+ * Descrição: Gerencia diffs sugeridos pelo assistente com decorações inline no editor.
+ * Quando o assistente sugere mudanças, mostra decorações (verde = adicionado, vermelho = removido)
+ * com opções de Accept/Reject por bloco.
  */
 
 import * as vscode from 'vscode'
 
+/**
+ * PendingDiff
+ * Descrição: Representa um diff pendente de aceitação/rejeição no editor.
+ */
 export interface PendingDiff {
+  /** Identificador único do diff */
   id: string
+  /** URI do arquivo onde o diff está */
   uri: vscode.Uri
+  /** Range do texto original no editor */
   range: vscode.Range
+  /** Texto original antes da mudança */
   originalText: string
+  /** Texto novo sugerido pelo assistente */
   newText: string
 }
 
+/**
+ * DiffManager
+ * Descrição: Classe que gerencia o ciclo de vida dos diffs sugeridos pelo assistente.
+ * Implementa vscode.Disposable para cleanup automático de recursos.
+ */
 export class DiffManager implements vscode.Disposable {
+  /** Lista de diffs pendentes de aceitação */
   private pendingDiffs: PendingDiff[] = []
+  /** Decoração para linhas adicionadas (fundo verde) */
   private addedDecoration: vscode.TextEditorDecorationType
+  /** Decoração para linhas removidas (fundo vermelho com riscado) */
   private removedDecoration: vscode.TextEditorDecorationType
 
+  /**
+   * constructor
+   * Descrição: Inicializa as decorações de texto para diffs adicionados e removidos.
+   */
   constructor() {
     this.addedDecoration = vscode.window.createTextEditorDecorationType({
       backgroundColor: 'rgba(40, 167, 69, 0.15)',
@@ -39,13 +59,22 @@ export class DiffManager implements vscode.Disposable {
     })
   }
 
-  /** Add a diff to be displayed */
+  /**
+   * addDiff
+   * Descrição: Adiciona um diff pendente e atualiza as decorações no editor.
+   * @param diff - Diff pendente a ser adicionado
+   * @returns void
+   */
   addDiff(diff: PendingDiff): void {
     this.pendingDiffs.push(diff)
     this.refreshDecorations()
   }
 
-  /** Accept the diff at current cursor position */
+  /**
+   * acceptCurrent
+   * Descrição: Aceita o diff na posição atual do cursor, aplicando a mudança sugerida.
+   * @returns void
+   */
   acceptCurrent(): void {
     const editor = vscode.window.activeTextEditor
     if (!editor) return
@@ -61,7 +90,11 @@ export class DiffManager implements vscode.Disposable {
     this.removeDiff(diff.id)
   }
 
-  /** Reject the diff at current cursor position */
+  /**
+   * rejectCurrent
+   * Descrição: Rejeita o diff na posição atual do cursor, descartando a sugestão.
+   * @returns void
+   */
   rejectCurrent(): void {
     const editor = vscode.window.activeTextEditor
     if (!editor) return
@@ -73,7 +106,11 @@ export class DiffManager implements vscode.Disposable {
     this.removeDiff(diff.id)
   }
 
-  /** Accept all pending diffs */
+  /**
+   * acceptAll
+   * Descrição: Aceita todos os diffs pendentes no arquivo ativo, aplicando em ordem reversa para manter as posições.
+   * @returns void
+   */
   acceptAll(): void {
     const editor = vscode.window.activeTextEditor
     if (!editor) return
@@ -97,7 +134,11 @@ export class DiffManager implements vscode.Disposable {
     this.refreshDecorations()
   }
 
-  /** Reject all pending diffs */
+  /**
+   * rejectAll
+   * Descrição: Rejeita todos os diffs pendentes no arquivo ativo, descartando todas as sugestões.
+   * @returns void
+   */
   rejectAll(): void {
     const editor = vscode.window.activeTextEditor
     if (!editor) return
@@ -108,6 +149,11 @@ export class DiffManager implements vscode.Disposable {
     this.refreshDecorations()
   }
 
+  /**
+   * dispose
+   * Descrição: Libera recursos das decorações e limpa a lista de diffs pendentes.
+   * @returns void
+   */
   dispose(): void {
     this.addedDecoration.dispose()
     this.removedDecoration.dispose()
@@ -116,17 +162,35 @@ export class DiffManager implements vscode.Disposable {
 
   // ─── Private ──────────────────────────────────────────────────────
 
+  /**
+   * findDiffAt
+   * Descrição: Encontra um diff pendente que contém a posição fornecida no arquivo especificado.
+   * @param uri - URI do arquivo a buscar
+   * @param position - Posição do cursor a verificar
+   * @returns O PendingDiff encontrado ou undefined
+   */
   private findDiffAt(uri: vscode.Uri, position: vscode.Position): PendingDiff | undefined {
     return this.pendingDiffs.find(
       (d) => d.uri.toString() === uri.toString() && d.range.contains(position),
     )
   }
 
+  /**
+   * removeDiff
+   * Descrição: Remove um diff da lista de pendentes pelo ID e atualiza as decorações.
+   * @param id - Identificador do diff a remover
+   * @returns void
+   */
   private removeDiff(id: string): void {
     this.pendingDiffs = this.pendingDiffs.filter((d) => d.id !== id)
     this.refreshDecorations()
   }
 
+  /**
+   * refreshDecorations
+   * Descrição: Atualiza as decorações visuais de diff no editor ativo.
+   * @returns void
+   */
   private refreshDecorations(): void {
     const editor = vscode.window.activeTextEditor
     if (!editor) return

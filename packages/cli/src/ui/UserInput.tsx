@@ -1,12 +1,13 @@
 /**
  * UserInput — Campo de entrada de texto do usuário.
+ * Descrição: Componente de input com autocomplete contextual para comandos, skills e arquivos.
  *
  * Autocomplete em 3 contextos (sem LLM, baseado em prefix matching):
  *  1. `/`        → slash commands (lista estática)
  *  2. `/use-skill <prefix>` → skills carregadas (prefix match)
  *  3. `@<prefix>` → arquivos do workspace (glob async)
  *
- * Tab seleciona sugestão. Setas ↑↓ navegam.
+ * Tab seleciona sugestão. Setas navegam.
  */
 
 import { Box, Text, useInput } from 'ink'
@@ -15,9 +16,15 @@ import { useState, useMemo, useRef, useEffect } from 'react'
 import type { SkillDefinition } from '@athion/core'
 import type { Theme } from '../types.js'
 
+/** UserInputProps
+ * Descrição: Props do componente UserInput.
+ */
 interface UserInputProps {
+  /** Callback chamado ao submeter uma mensagem */
   onSubmit: (content: string) => void
+  /** Indica se o input está desabilitado (durante streaming, menus, etc.) */
   isDisabled: boolean
+  /** Tema visual com as cores a serem aplicadas */
   theme: Theme
   /** Skills carregadas para autocomplete de /use-skill */
   skills?: SkillDefinition[]
@@ -25,12 +32,21 @@ interface UserInputProps {
   workspacePath?: string
 }
 
+/** Suggestion
+ * Descrição: Representa uma sugestão de autocomplete no input.
+ */
 interface Suggestion {
+  /** Texto exibido na lista de sugestões */
   label: string
+  /** Texto descritivo da sugestão */
   description: string
+  /** Texto a ser inserido no input ao selecionar */
   insert: string
 }
 
+/** SLASH_COMMANDS
+ * Descrição: Lista estática de slash commands disponíveis para autocomplete.
+ */
 const SLASH_COMMANDS: Suggestion[] = [
   { label: '/help', description: 'Mostrar todos os comandos', insert: '/help' },
   { label: '/clear', description: 'Limpar histórico de mensagens', insert: '/clear' },
@@ -69,8 +85,18 @@ const SLASH_COMMANDS: Suggestion[] = [
   },
 ]
 
+/** IGNORED_DIRS
+ * Descrição: Conjunto de diretórios ignorados na busca de arquivos por prefixo.
+ */
 const IGNORED_DIRS = new Set(['node_modules', '.git', 'dist', '.next', 'build', 'coverage'])
 
+/** searchFilesByPrefix
+ * Descrição: Busca arquivos no workspace por prefixo usando glob assíncrono.
+ * @param prefix - Prefixo para filtrar arquivos (suporta caminhos parciais)
+ * @param cwd - Diretório de trabalho para a busca
+ * @param limit - Número máximo de resultados (padrão: 8)
+ * @returns Promise com array de caminhos de arquivos encontrados
+ */
 async function searchFilesByPrefix(prefix: string, cwd: string, limit = 8): Promise<string[]> {
   const results: string[] = []
   try {
@@ -89,6 +115,12 @@ async function searchFilesByPrefix(prefix: string, cwd: string, limit = 8): Prom
   return results
 }
 
+/** UserInput
+ * Descrição: Componente de entrada de texto com autocomplete contextual, suportando
+ * slash commands, skills e @mentions de arquivos com navegação por teclado.
+ * @param props - Props contendo callback de submit, estado desabilitado, tema, skills e workspace
+ * @returns Elemento React com o campo de input e painel de sugestões
+ */
 export function UserInput({ onSubmit, isDisabled, theme, skills, workspacePath }: UserInputProps) {
   const [value, setValue] = useState('')
   const [selectedIdx, setSelectedIdx] = useState(0)
@@ -165,9 +197,7 @@ export function UserInput({ onSubmit, isDisabled, theme, skills, workspacePath }
   suggestionsRef.current = suggestions
   selectedIdxRef.current = selectedIdx
 
-  // ── Teclado: Tab + ↑↓ + Esc ──────────────────────────────────────
-  // Guarda interna no callback em vez de { isActive } para evitar
-  // re-registro do hook quando isDisabled muda (causa perda de eventos).
+  // ── Teclado: Tab + setas + Esc ──────────────────────────────────────
   useInput((input, key) => {
     if (isDisabled) return
 
@@ -200,6 +230,10 @@ export function UserInput({ onSubmit, isDisabled, theme, skills, workspacePath }
     }
   })
 
+  /** handleChange
+   * Descrição: Processa mudanças no valor do input, tratando Tab como autocomplete.
+   * @param v - Novo valor do input
+   */
   function handleChange(v: string) {
     if (v.includes('\t')) {
       const sug = suggestionsRef.current
@@ -221,6 +255,10 @@ export function UserInput({ onSubmit, isDisabled, theme, skills, workspacePath }
     setDismissed(false)
   }
 
+  /** handleSubmit
+   * Descrição: Processa o envio do input, limpando o campo e chamando o callback onSubmit.
+   * @param text - Texto submetido pelo usuário
+   */
   function handleSubmit(text: string) {
     const trimmed = text.trim()
     if (!trimmed || isDisabled) return

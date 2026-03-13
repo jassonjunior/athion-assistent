@@ -5,110 +5,110 @@ import { randomUUID } from 'node:crypto'
 import type { Message, NewMessage, NewPermission, Permission, Session } from './schema'
 import * as schema from './schema'
 
-/**
- * Interface pública do DatabaseManager.
- * Centraliza todas as operações de persistência do Athion.
- * Usa SQLite com WAL mode para leitura/escrita simultâneas.
+/** DatabaseManager
+ * Descrição: Interface pública do gerenciador de banco de dados.
+ * Centraliza todas as operações de persistência do Athion usando SQLite com WAL mode.
  */
 export interface DatabaseManager {
   // ─── Sessions ───────────────────────────────────────────────
 
-  /**
-   * Cria uma nova sessão para um projeto.
+  /** createSession
+   * Descrição: Cria uma nova sessão para um projeto.
    * @param projectId - ID do projeto ao qual a sessão pertence
    * @param title - Título opcional (pode ser gerado depois pelo LLM)
    * @returns A sessão criada com id e timestamps
    */
   createSession(projectId: string, title?: string): Session
 
-  /**
-   * Busca uma sessão pelo ID.
+  /** getSession
+   * Descrição: Busca uma sessão pelo seu UUID.
    * @param id - UUID da sessão
    * @returns A sessão encontrada ou undefined se não existir
    */
   getSession(id: string): Session | undefined
 
-  /**
-   * Lista todas as sessões, opcionalmente filtrando por projeto.
+  /** listSessions
+   * Descrição: Lista todas as sessões, opcionalmente filtrando por projeto.
    * @param projectId - Se informado, retorna apenas sessões deste projeto
-   * @returns Array de sessões ordenadas por data de criação (mais recente primeiro)
+   * @returns Array de sessões
    */
   listSessions(projectId?: string): Session[]
 
-  /**
-   * Atualiza campos de uma sessão existente.
+  /** updateSession
+   * Descrição: Atualiza campos de uma sessão existente.
    * @param id - UUID da sessão a ser atualizada
    * @param data - Campos a atualizar (title, metadata)
    */
   updateSession(id: string, data: Partial<Pick<Session, 'title' | 'metadata'>>): void
 
-  /**
-   * Deleta uma sessão e todas as suas mensagens (cascade).
+  /** deleteSession
+   * Descrição: Deleta uma sessão e todas as suas mensagens (cascade).
    * @param id - UUID da sessão a ser deletada
    */
   deleteSession(id: string): void
 
   // ─── Messages ───────────────────────────────────────────────
 
-  /**
-   * Adiciona uma mensagem a uma sessão existente.
+  /** addMessage
+   * Descrição: Adiciona uma mensagem a uma sessão existente.
    * @param sessionId - UUID da sessão pai
    * @param message - Dados da mensagem (role, parts)
    * @returns A mensagem criada com id e timestamp
    */
   addMessage(sessionId: string, message: Pick<NewMessage, 'role' | 'parts'>): Message
 
-  /**
-   * Retorna todas as mensagens de uma sessão, ordenadas cronologicamente.
+  /** getMessages
+   * Descrição: Retorna todas as mensagens de uma sessão, ordenadas cronologicamente.
    * @param sessionId - UUID da sessão
-   * @returns Array de mensagens ordenadas por createdAt (mais antiga primeiro)
+   * @returns Array de mensagens ordenadas por createdAt
    */
   getMessages(sessionId: string): Message[]
 
-  /**
-   * Deleta todas as mensagens de uma sessão (sem deletar a sessão).
+  /** deleteMessages
+   * Descrição: Deleta todas as mensagens de uma sessão (sem deletar a sessão).
    * @param sessionId - UUID da sessão
    */
   deleteMessages(sessionId: string): void
 
   // ─── Permissions ────────────────────────────────────────────
 
-  /**
-   * Busca uma permissão por ação e alvo.
+  /** getPermission
+   * Descrição: Busca uma permissão por ação e alvo.
    * @param action - Ação (ex: 'read', 'bash')
    * @param target - Alvo (ex: '/src/file.ts')
    * @returns A permissão encontrada ou undefined
    */
   getPermission(action: string, target: string): Permission | undefined
 
-  /**
-   * Salva uma nova permissão no banco.
+  /** setPermission
+   * Descrição: Salva uma nova permissão no banco de dados.
    * @param permission - Dados da permissão (action, target, decision, scope)
    */
   setPermission(permission: Pick<NewPermission, 'action' | 'target' | 'decision' | 'scope'>): void
 
-  /**
-   * Lista todas as permissões salvas.
+  /** listPermissions
+   * Descrição: Lista todas as permissões salvas.
    * @returns Array de permissões
    */
   listPermissions(): Permission[]
 
-  /**
-   * Remove uma permissão pelo ID.
+  /** deletePermission
+   * Descrição: Remove uma permissão pelo ID.
    * @param id - UUID da permissão
    */
   deletePermission(id: string): void
 
   // ─── Lifecycle ──────────────────────────────────────────────
 
-  /** Fecha a conexão com o banco de dados */
+  /** close
+   * Descrição: Fecha a conexão com o banco de dados SQLite.
+   */
   close(): void
 }
 
-/**
- * Pragmas SQL para otimizar performance do SQLite.
- * WAL permite leitura e escrita simultâneas.
- * Cache de 64MB melhora performance em consultas frequentes.
+/** PRAGMAS
+ * Descrição: Pragmas SQL para otimizar performance do SQLite.
+ * WAL permite leitura/escrita simultâneas. Cache de 64MB.
  */
 const PRAGMAS = [
   'PRAGMA journal_mode = WAL',
@@ -119,8 +119,8 @@ const PRAGMAS = [
   'PRAGMA temp_store = MEMORY',
 ]
 
-/**
- * SQL para criar as tabelas do banco.
+/** CREATE_TABLES
+ * Descrição: SQL para criar as tabelas do banco (sessions, messages, permissions).
  * Executado automaticamente na primeira conexão.
  */
 const CREATE_TABLES = `
@@ -151,17 +151,12 @@ const CREATE_TABLES = `
   );
 `
 
-/**
- * Cria uma instância do DatabaseManager.
- * Abre (ou cria) o banco SQLite no path informado,
- * configura pragmas de performance e cria tabelas se necessário.
- *
+/** createDatabaseManager
+ * Descrição: Cria uma instância do DatabaseManager.
+ * Abre (ou cria) o banco SQLite no path informado, configura pragmas de performance
+ * e cria tabelas se necessário.
  * @param dbPath - Caminho do arquivo .db (ex: '~/.athion/athion.db')
  * @returns Instância do DatabaseManager pronta para uso
- * @example
- * const db = createDatabaseManager('/home/user/.athion/athion.db')
- * const session = db.createSession('my-project', 'Nova sessão')
- * db.addMessage(session.id, { role: 'user', parts: [{ type: 'text', text: 'Olá!' }] })
  */
 export function createDatabaseManager(dbPath: string): DatabaseManager {
   const sqlite = new Database(dbPath)
@@ -173,6 +168,12 @@ export function createDatabaseManager(dbPath: string): DatabaseManager {
 
   const db = drizzle(sqlite, { schema })
 
+  /** createSession
+   * Descrição: Cria uma nova sessão para um projeto no banco de dados.
+   * @param projectId - ID do projeto ao qual a sessão pertence
+   * @param title - Título opcional da sessão
+   * @returns A sessão criada com id e timestamps
+   */
   function createSession(projectId: string, title?: string): Session {
     const now = new Date()
     const session = {
@@ -187,10 +188,20 @@ export function createDatabaseManager(dbPath: string): DatabaseManager {
     return session
   }
 
+  /** getSession
+   * Descrição: Busca uma sessão pelo seu UUID.
+   * @param id - UUID da sessão
+   * @returns A sessão encontrada ou undefined se não existir
+   */
   function getSession(id: string): Session | undefined {
     return db.select().from(schema.sessions).where(eq(schema.sessions.id, id)).get()
   }
 
+  /** listSessions
+   * Descrição: Lista todas as sessões, opcionalmente filtrando por projeto.
+   * @param projectId - Se informado, filtra sessões deste projeto
+   * @returns Array de sessões
+   */
   function listSessions(projectId?: string): Session[] {
     if (projectId) {
       return db.select().from(schema.sessions).where(eq(schema.sessions.projectId, projectId)).all()
@@ -198,6 +209,11 @@ export function createDatabaseManager(dbPath: string): DatabaseManager {
     return db.select().from(schema.sessions).all()
   }
 
+  /** updateSession
+   * Descrição: Atualiza campos de uma sessão existente (title e/ou metadata).
+   * @param id - UUID da sessão a ser atualizada
+   * @param data - Campos a atualizar
+   */
   function updateSession(id: string, data: Partial<Pick<Session, 'title' | 'metadata'>>): void {
     db.update(schema.sessions)
       .set({ ...data, updatedAt: new Date() })
@@ -205,10 +221,20 @@ export function createDatabaseManager(dbPath: string): DatabaseManager {
       .run()
   }
 
+  /** deleteSession
+   * Descrição: Deleta uma sessão e todas as suas mensagens (cascade).
+   * @param id - UUID da sessão a ser deletada
+   */
   function deleteSession(id: string): void {
     db.delete(schema.sessions).where(eq(schema.sessions.id, id)).run()
   }
 
+  /** addMessage
+   * Descrição: Adiciona uma mensagem a uma sessão existente no banco de dados.
+   * @param sessionId - UUID da sessão pai
+   * @param message - Dados da mensagem (role, parts)
+   * @returns A mensagem criada com id e timestamp
+   */
   function addMessage(sessionId: string, message: Pick<NewMessage, 'role' | 'parts'>): Message {
     const now = new Date()
     const msg = {
@@ -222,14 +248,29 @@ export function createDatabaseManager(dbPath: string): DatabaseManager {
     return msg
   }
 
+  /** getMessages
+   * Descrição: Retorna todas as mensagens de uma sessão, ordenadas cronologicamente.
+   * @param sessionId - UUID da sessão
+   * @returns Array de mensagens ordenadas por createdAt
+   */
   function getMessages(sessionId: string): Message[] {
     return db.select().from(schema.messages).where(eq(schema.messages.sessionId, sessionId)).all()
   }
 
+  /** deleteMessages
+   * Descrição: Deleta todas as mensagens de uma sessão (sem deletar a sessão).
+   * @param sessionId - UUID da sessão
+   */
   function deleteMessages(sessionId: string): void {
     db.delete(schema.messages).where(eq(schema.messages.sessionId, sessionId)).run()
   }
 
+  /** getPermission
+   * Descrição: Busca uma permissão por ação e alvo no banco de dados.
+   * @param action - Ação a buscar (ex: 'read', 'bash')
+   * @param target - Alvo a buscar (ex: '/src/file.ts')
+   * @returns A permissão encontrada ou undefined
+   */
   function getPermission(action: string, target: string): Permission | undefined {
     return db
       .select()
@@ -239,6 +280,10 @@ export function createDatabaseManager(dbPath: string): DatabaseManager {
       .find((p) => p.target === target || p.target === '*')
   }
 
+  /** setPermission
+   * Descrição: Salva uma nova permissão no banco de dados.
+   * @param permission - Dados da permissão (action, target, decision, scope)
+   */
   function setPermission(
     permission: Pick<NewPermission, 'action' | 'target' | 'decision' | 'scope'>,
   ): void {
@@ -252,14 +297,25 @@ export function createDatabaseManager(dbPath: string): DatabaseManager {
       .run()
   }
 
+  /** listPermissions
+   * Descrição: Lista todas as permissões salvas no banco de dados.
+   * @returns Array de permissões
+   */
   function listPermissions(): Permission[] {
     return db.select().from(schema.permissions).all()
   }
 
+  /** deletePermission
+   * Descrição: Remove uma permissão pelo seu UUID.
+   * @param id - UUID da permissão a ser removida
+   */
   function deletePermission(id: string): void {
     db.delete(schema.permissions).where(eq(schema.permissions.id, id)).run()
   }
 
+  /** close
+   * Descrição: Fecha a conexão com o banco de dados SQLite.
+   */
   function close(): void {
     sqlite.close()
   }

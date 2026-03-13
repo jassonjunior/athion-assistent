@@ -1,5 +1,5 @@
-/**
- * ModelSwapProvider — wrapper em torno do ProviderLayer que faz swap automático
+/** ModelSwapProvider
+ * Descrição: Wrapper em torno do ProviderLayer que faz swap automático
  * do modelo vLLM antes de cada chamada de streaming.
  *
  * Intercepta `streamChat()` e, se o modelo solicitado difere do atualmente
@@ -24,20 +24,41 @@ import type { VllmManager } from '../server/vllm-manager'
 
 const log = createLogger('model-swap')
 
+/** LOG_PATH
+ * Descrição: Caminho do arquivo de log para requisições LLM
+ */
 const LOG_PATH = '/tmp/athion-llm.log'
-/** Limite do log em bytes (~2MB). Ao exceder, trunca para metade. */
+
+/** LOG_MAX_BYTES
+ * Descrição: Limite do log em bytes (~2MB). Ao exceder, trunca para metade.
+ */
 const LOG_MAX_BYTES = 2 * 1024 * 1024
+
+/** requestCounter
+ * Descrição: Contador incremental de requisições para rastreamento no log
+ */
 let requestCounter = 0
 
+/** ts
+ * Descrição: Gera timestamp formatado para uso nos logs
+ * @returns String com timestamp no formato [YYYY-MM-DD HH:MM:SS]
+ */
 function ts(): string {
   return `[${new Date().toISOString().replace('T', ' ').slice(0, 19)}]`
 }
 
+/** filelog
+ * Descrição: Escreve uma linha no arquivo de log de forma assíncrona
+ * @param line - Linha a ser escrita no log
+ */
 function filelog(line: string): void {
   appendFile(LOG_PATH, `${line}\n`).catch(() => {})
 }
 
-/** Rotaciona o log se exceder LOG_MAX_BYTES. */
+/** rotateLogIfNeeded
+ * Descrição: Rotaciona o arquivo de log se exceder LOG_MAX_BYTES, evitando crescimento infinito
+ * @returns Promise que resolve quando a verificação/rotação termina
+ */
 async function rotateLogIfNeeded(): Promise<void> {
   try {
     const { stat, writeFile } = await import('node:fs/promises')
@@ -50,7 +71,11 @@ async function rotateLogIfNeeded(): Promise<void> {
   }
 }
 
-/** Log compacto: só metadata, sem serializar mensagens inteiras. */
+/** logRequest
+ * Descrição: Registra metadados compactos de uma requisição ao LLM no log (sem serializar mensagens inteiras)
+ * @param config - Configuração da chamada de streaming
+ * @param counter - Número sequencial da requisição
+ */
 function logRequest(config: StreamChatConfig, counter: number): void {
   const toolNames = config.tools ? Object.keys(config.tools) : []
   const maxTok = config.maxTokens !== null ? String(config.maxTokens) : 'default'
@@ -72,6 +97,11 @@ function logRequest(config: StreamChatConfig, counter: number): void {
   filelog(line)
 }
 
+/** logFinish
+ * Descrição: Registra no log os dados de uso de tokens ao finalizar uma requisição
+ * @param counter - Número sequencial da requisição
+ * @param usage - Contagem de tokens consumidos (prompt, completion, total)
+ */
 function logFinish(
   counter: number,
   usage: { promptTokens: number; completionTokens: number; totalTokens: number },
@@ -81,19 +111,24 @@ function logFinish(
   )
 }
 
-/**
- * Cria um ProviderLayer que intercepta streamChat e faz swap de modelo vLLM
+/** createModelSwapProvider
+ * Descrição: Cria um ProviderLayer que intercepta streamChat e faz swap de modelo vLLM
  * automaticamente quando o modelo solicitado difere do atualmente carregado.
- *
- * @param base - Provider base a ser wrapped
- * @param vllm - VllmManager para realizar o swap
- * @param singleModel - quando true, desabilita swap (usa modelo atual para tudo)
+ * @param base - Provider base a ser encapsulado
+ * @param vllm - VllmManager para realizar o swap de modelo
+ * @param singleModel - Quando true, desabilita swap (usa modelo atual para tudo)
+ * @returns Instância do ProviderLayer com swap automático
  */
 export function createModelSwapProvider(
   base: ProviderLayer,
   vllm: VllmManager,
   singleModel = false,
 ): ProviderLayer {
+  /** streamChat
+   * Descrição: Streaming de chat com swap automático de modelo quando necessário
+   * @param config - Configuração da chamada de streaming
+   * @returns AsyncGenerator que emite StreamEvent incluindo eventos de swap
+   */
   async function* streamChat(config: StreamChatConfig): AsyncGenerator<StreamEvent> {
     // Garante que o servidor está no ar antes de qualquer request.
     // Se o servidor caiu após o bootstrap, ensureRunning() sobe novamente.
@@ -156,13 +191,27 @@ export function createModelSwapProvider(
   }
 
   return {
+    /** listProviders
+     * Descrição: Delega listagem de providers ao provider base
+     * @returns Lista de informações dos providers disponíveis
+     */
     listProviders(): ProviderInfo[] {
       return base.listProviders()
     },
+    /** listModels
+     * Descrição: Delega listagem de modelos ao provider base
+     * @param providerId - ID do provider para filtrar (opcional)
+     * @returns Lista de informações dos modelos disponíveis
+     */
     listModels(providerId?: string): ModelInfo[] {
       return base.listModels(providerId)
     },
     streamChat,
+    /** generateText
+     * Descrição: Delega chamada não-streaming ao provider base
+     * @param config - Configuração da chamada
+     * @returns Resultado com texto gerado e uso de tokens
+     */
     generateText(config: GenerateConfig): Promise<GenerateResult> {
       return base.generateText(config)
     },

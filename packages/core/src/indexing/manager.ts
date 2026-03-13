@@ -1,20 +1,8 @@
-/**
- * CodebaseIndexer — orquestra a indexação e busca do codebase.
- *
- * Fluxo de indexação:
- *  1. walkDirectory → lista arquivos respeitando .gitignore
- *  2. chunkFile → divide cada arquivo em chunks semânticos
- *  3. EmbeddingService.embedBatch → gera vetores (se configurado)
- *  4. DbStore.upsertChunk + upsertVector → persiste no SQLite
- *
- * Fluxo de busca:
- *  - FTS: DbStore.searchFts → resultados por palavras-chave (rápido)
- *  - Vector: getAllVectors → cosine similarity em JS (semântico)
- *  - Hybrid: combina FTS + Vector com re-ranking por score médio
- *
- * Atualização incremental:
- *  - indexFile: re-indexa apenas um arquivo específico
- *  - deleteFile: remove chunks de um arquivo deletado
+/** CodebaseIndexer
+ * Descrição: Orquestra a indexação e busca do codebase.
+ * Fluxo de indexação: walkDirectory -> chunkFile -> embedBatch -> upsert no SQLite.
+ * Fluxo de busca: FTS (palavras-chave) + Vector (similaridade semântica) = Hybrid.
+ * Suporta atualização incremental (indexFile) e remoção (deleteFile).
  */
 
 import { statSync } from 'node:fs'
@@ -30,11 +18,29 @@ import type { EmbeddingService } from './embeddings'
 import { walkDirectory } from './file-walker'
 import type { CodeChunk, IndexerConfig, IndexStats, SearchResult } from './types'
 
+/** CodebaseIndexer
+ * Descrição: Classe principal que gerencia a indexação e busca semântica do codebase.
+ * Combina FTS5 (busca por palavras) com embeddings (busca vetorial) para
+ * busca híbrida de código.
+ */
 export class CodebaseIndexer {
+  /** store
+   * Descrição: Instância do banco SQLite para persistência do índice
+   */
   private store: DbStore
+  /** embedding
+   * Descrição: Serviço de embeddings (null se modo FTS-only)
+   */
   private embedding: EmbeddingService | null
+  /** config
+   * Descrição: Configuração completa do indexador com valores padrão preenchidos
+   */
   private config: Required<IndexerConfig>
 
+  /** constructor
+   * Descrição: Inicializa o indexador com configuração, banco SQLite e serviço de embeddings
+   * @param config - Configuração do indexador (workspace, banco, embeddings)
+   */
   constructor(config: IndexerConfig) {
     this.config = {
       workspacePath: config.workspacePath,
@@ -57,7 +63,12 @@ export class CodebaseIndexer {
       : null
   }
 
-  /** Indexa o workspace completo. Progresso via callback opcional. */
+  /** indexWorkspace
+   * Descrição: Indexa o workspace completo. Percorre todos os arquivos,
+   * divide em chunks e gera embeddings.
+   * @param onProgress - Callback opcional para acompanhar progresso (indexed, total, arquivo)
+   * @returns Estatísticas do índice após a indexação
+   */
   async indexWorkspace(
     onProgress?: (indexed: number, total: number, currentFile: string) => void,
   ): Promise<IndexStats> {
@@ -76,7 +87,11 @@ export class CodebaseIndexer {
     return this.getStats()
   }
 
-  /** Indexa (ou re-indexa) um único arquivo. */
+  /** indexFile
+   * Descrição: Indexa (ou re-indexa) um único arquivo. Remove chunks antigos antes
+   * de inserir os novos. Gera embeddings se o serviço estiver configurado.
+   * @param filePath - Caminho absoluto do arquivo a indexar
+   */
   async indexFile(filePath: string): Promise<void> {
     // Remove chunks antigos do arquivo antes de re-indexar
     this.store.deleteByFile(filePath)
@@ -115,14 +130,21 @@ export class CodebaseIndexer {
     }
   }
 
-  /** Remove um arquivo do índice (arquivo foi deletado). */
+  /** deleteFile
+   * Descrição: Remove um arquivo do índice (para quando o arquivo foi deletado)
+   * @param filePath - Caminho absoluto do arquivo a remover
+   */
   deleteFile(filePath: string): void {
     this.store.deleteByFile(filePath)
   }
 
-  /**
-   * Busca híbrida: FTS + vector similarity.
-   * Se embeddings não configurado, usa apenas FTS.
+  /** search
+   * Descrição: Busca híbrida combinando FTS (palavras-chave) e similaridade vetorial.
+   * Se embeddings não configurado, usa apenas FTS. Combina scores com pesos
+   * FTS(0.4) + vector(0.6) para resultados híbridos.
+   * @param query - Texto de busca
+   * @param limit - Número máximo de resultados (default: 10)
+   * @returns Array de resultados ordenados por score decrescente
    */
   async search(query: string, limit = 10): Promise<SearchResult[]> {
     const results = new Map<string, SearchResult>()
@@ -164,7 +186,10 @@ export class CodebaseIndexer {
       .slice(0, limit)
   }
 
-  /** Retorna estatísticas do índice. */
+  /** getStats
+   * Descrição: Retorna estatísticas do índice atual
+   * @returns Objeto com total de arquivos, chunks, data de indexação e status de vetores
+   */
   getStats(): IndexStats {
     const stats = this.store.getStats()
     const files = this.store.getIndexedFiles()
@@ -177,17 +202,25 @@ export class CodebaseIndexer {
     }
   }
 
-  /** Limpa o índice completamente. */
+  /** clear
+   * Descrição: Limpa o índice completamente (remove todos os dados)
+   */
   clear(): void {
     this.store.clear()
   }
 
-  /** Fecha conexão com o banco. */
+  /** close
+   * Descrição: Fecha a conexão com o banco de dados SQLite
+   */
   close(): void {
     this.store.close()
   }
 
-  /** Verifica se o workspace mudou desde a última indexação. */
+  /** needsReindex
+   * Descrição: Verifica se o workspace precisa ser reindexado (nunca indexado
+   * ou workspace não encontrado)
+   * @returns true se o índice precisa ser recriado
+   */
   needsReindex(): boolean {
     const stats = this.store.getStats()
     if (!stats.indexedAt) return true
@@ -202,14 +235,23 @@ export class CodebaseIndexer {
   }
 }
 
-/** Cria instância do CodebaseIndexer. */
+/** createCodebaseIndexer
+ * Descrição: Factory function para criar uma instância do CodebaseIndexer
+ * @param config - Configuração do indexador
+ * @returns Nova instância do CodebaseIndexer
+ */
 export function createCodebaseIndexer(config: IndexerConfig): CodebaseIndexer {
   return new CodebaseIndexer(config)
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-/** Texto para embedding: símbolo + linguagem + conteúdo. */
+/** buildEmbeddingText
+ * Descrição: Monta o texto para embedding a partir de um chunk, incluindo
+ * nome do símbolo, linguagem e conteúdo (limitado a 512 chars)
+ * @param chunk - Chunk de código fonte
+ * @returns Texto formatado para geração de embedding
+ */
 function buildEmbeddingText(chunk: CodeChunk): string {
   const parts: string[] = []
   if (chunk.symbolName) parts.push(`${chunk.chunkType}: ${chunk.symbolName}`)
@@ -218,7 +260,14 @@ function buildEmbeddingText(chunk: CodeChunk): string {
   return parts.join('\n')
 }
 
-/** Calcula top-K por cosine similarity. */
+/** computeTopK
+ * Descrição: Calcula os top-K resultados por similaridade de cosseno entre o
+ * vetor de query e todos os vetores armazenados
+ * @param queryVec - Vetor da query de busca
+ * @param allVectors - Todos os vetores do banco
+ * @param k - Número máximo de resultados
+ * @returns Array de chunkId + score ordenado por score decrescente (score > 0.1)
+ */
 function computeTopK(
   queryVec: number[],
   allVectors: Array<{ chunkId: string; vector: Buffer }>,
@@ -233,9 +282,11 @@ function computeTopK(
   return scored.slice(0, k).filter((s) => s.score > 0.1)
 }
 
-/**
- * Sanitiza query para FTS5.
- * Remove caracteres especiais que causam parse errors no FTS5.
+/** sanitizeFtsQuery
+ * Descrição: Sanitiza uma query para FTS5, removendo caracteres especiais
+ * que causam parse errors. Para múltiplas palavras, usa operador OR.
+ * @param query - Query do usuário em texto livre
+ * @returns Query sanitizada compatível com FTS5
  */
 function sanitizeFtsQuery(query: string): string {
   // Remove aspas não fechadas e caracteres especiais do FTS5

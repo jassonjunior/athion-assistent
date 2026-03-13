@@ -1,5 +1,6 @@
 /**
- * MessageList — Lista de mensagens do chat com auto-scroll.
+ * MessageList
+ * Descrição: Componente que exibe a lista de mensagens do chat com auto-scroll e suporte a code blocks.
  */
 
 import { useEffect, useRef } from 'react'
@@ -8,11 +9,22 @@ import { CodeBlock } from './CodeBlock.js'
 import { ToolCallCard } from './ToolCallCard.js'
 import { useFeedbackPhrase } from '../hooks/useFeedbackPhrase.js'
 
+/** MessageListProps
+ * Descrição: Propriedades do componente MessageList
+ */
 interface MessageListProps {
+  /** Lista de mensagens a serem exibidas */
   messages: ChatMessage[]
+  /** Indica se o assistente está gerando uma resposta */
   isStreaming: boolean
 }
 
+/** MessageList
+ * Descrição: Componente que renderiza todas as mensagens do chat com auto-scroll, code blocks formatados e cards de tool calls
+ * @param messages - Lista de mensagens do chat
+ * @param isStreaming - Estado de streaming do assistente
+ * @returns Elemento JSX com a lista de mensagens renderizadas
+ */
 export function MessageList({ messages, isStreaming }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const feedbackPhrase = useFeedbackPhrase(isStreaming)
@@ -75,7 +87,11 @@ export function MessageList({ messages, isStreaming }: MessageListProps) {
   )
 }
 
-/** Renderiza conteúdo com code blocks formatados */
+/** FormattedContent
+ * Descrição: Componente auxiliar que renderiza conteúdo de texto com code blocks formatados usando o componente CodeBlock
+ * @param content - Conteúdo textual a ser renderizado, podendo conter blocos de código delimitados por ```
+ * @returns Elemento JSX com o conteúdo formatado
+ */
 function FormattedContent({ content }: { content: string }) {
   if (!content) return null
 

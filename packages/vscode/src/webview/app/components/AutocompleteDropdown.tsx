@@ -1,22 +1,31 @@
 /**
- * AutocompleteDropdown — Dropdown com suporte a menu e submenu.
- *
- * Modos:
- *  - command       → lista de slash commands com descrição e badge "→" para submenus
- *  - skills-browser → submenu de skills com nome, descrição e badge "ativar"
- *  - skill         → autocomplete inline de /use-skill
- *  - file          → autocomplete inline de @arquivo
+ * AutocompleteDropdown
+ * Descrição: Dropdown com suporte a menu e submenu para autocomplete do input de chat.
+ * Modos disponíveis:
+ *  - command       -> lista de slash commands com descrição e badge para submenus
+ *  - skills-browser -> submenu de skills com nome, descrição e badge "ativar"
+ *  - skill         -> autocomplete inline de /use-skill
+ *  - file          -> autocomplete inline de @arquivo
  */
 
 import type { AutocompleteItem, AutocompleteMode } from '../hooks/useInputAutocomplete.js'
 
+/**
+ * AutocompleteDropdownProps
+ * Descrição: Props do componente AutocompleteDropdown.
+ */
 interface AutocompleteDropdownProps {
+  /** Lista de itens a exibir no dropdown */
   items: AutocompleteItem[]
+  /** Índice do item atualmente selecionado */
   selectedIndex: number
+  /** Modo atual do autocomplete (command, skill, file, etc.) */
   mode: AutocompleteMode
+  /** Callback chamado quando um item é selecionado */
   onSelect: (item: AutocompleteItem) => void
 }
 
+/** HEADERS - Títulos dos headers para cada modo de autocomplete */
 const HEADERS: Record<string, string> = {
   command: 'Comandos',
   'skills-browser': '● Skills instaladas',
@@ -24,6 +33,15 @@ const HEADERS: Record<string, string> = {
   file: 'Arquivos',
 }
 
+/**
+ * AutocompleteDropdown
+ * Descrição: Renderiza o dropdown de autocomplete com items, navegação por teclado e suporte a submenus.
+ * @param items - Itens do autocomplete
+ * @param selectedIndex - Índice selecionado
+ * @param mode - Modo atual
+ * @param onSelect - Callback de seleção
+ * @returns Elemento JSX do dropdown ou null se não aplicável
+ */
 export function AutocompleteDropdown({
   items,
   selectedIndex,

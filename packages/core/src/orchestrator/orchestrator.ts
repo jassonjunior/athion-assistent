@@ -19,64 +19,132 @@ import type {
   UserMessage,
 } from './types'
 
-/** Dependencias injetadas no Orchestrator.
- * @typedef {Object} OrchestratorDeps
- * @property {ConfigManager} config - Configuracao do sistema
- * @property {Bus} bus - Bus de eventos
- * @property {ProviderLayer} provider - Provider do LLM
- * @property {ToolRegistry} tools - Registro de ferramentas
- * @property {TokenManager} tokens - Gerenciador de tokens
- * @property {SkillManager} skills - Gerenciador de skills
- * @property {SessionManager} session - Gerenciador de sessoes
+/** OrchestratorDeps
+ * Descrição: Dependências injetadas no Orchestrator via inversão de controle.
  */
 export interface OrchestratorDeps {
+  /** config
+   * Descrição: Gerenciador de configuração do sistema
+   */
   config: ConfigManager
+  /** bus
+   * Descrição: Bus de eventos para comunicação entre módulos
+   */
   bus: Bus
+  /** provider
+   * Descrição: Camada de abstração dos provedores LLM
+   */
   provider: ProviderLayer
+  /** tools
+   * Descrição: Registro de ferramentas disponíveis
+   */
   tools: ToolRegistry
+  /** tokens
+   * Descrição: Gerenciador de tokens para controle de contexto
+   */
   tokens: TokenManager
+  /** skills
+   * Descrição: Gerenciador de skills (instruções especializadas)
+   */
   skills: SkillManager
+  /** session
+   * Descrição: Gerenciador de sessões de conversa
+   */
   session: SessionManager
+  /** promptBuilder
+   * Descrição: Construtor do system prompt para o LLM
+   */
   promptBuilder: PromptBuilder
+  /** toolDispatcher
+   * Descrição: Despachante de tool calls com verificação de permissões
+   */
   toolDispatcher: ToolDispatcher
+  /** subagents
+   * Descrição: Gerenciador de subagentes especializados
+   */
   subagents: SubAgentManager
 }
 
-/** Cria uma instancia do Orchestrator.
- * @param deps - Dependencias injetadas
- * @returns Instancia do Orchestrator
- * @example
- * const orchestrator = createOrchestrator({ config: createConfigManager(), bus: createBus(), provider: createProviderLayer(), tools: createToolRegistry(), tokens: createTokenManager(), skills: createSkillManager(), session: createSessionManager(), promptBuilder: createPromptBuilder(), toolDispatcher: createToolDispatcher() })
- * console.log(orchestrator) // { chat: createOrchestrator({ config: createConfigManager(), bus: createBus(), provider: createProviderLayer(), tools: createToolRegistry(), tokens: createTokenManager(), skills: createSkillManager(), session: createSessionManager(), promptBuilder: createPromptBuilder(), toolDispatcher: createToolDispatcher() })
+/** LlmMessage
+ * Descrição: Tipo de mensagem para o LLM (suporta content string ou array de parts para tool calls).
  */
-/** Tipo de mensagem para o LLM (suporta content string ou array de parts para tool calls). */
 type LlmMessage = {
+  /** role
+   * Descrição: Papel da mensagem na conversa
+   */
   role: 'user' | 'assistant' | 'system' | 'tool'
+  /** content
+   * Descrição: Conteúdo da mensagem — string para texto simples, array para tool calls
+   */
   content: string | unknown[]
 }
 
-/** Contexto compartilhado entre funcoes do chat. */
+/** ChatContext
+ * Descrição: Contexto compartilhado entre funções do chat durante um ciclo de conversa.
+ */
 interface ChatContext {
+  /** sessionId
+   * Descrição: ID da sessão atual
+   */
   sessionId: string
+  /** deps
+   * Descrição: Dependências injetadas do Orchestrator
+   */
   deps: OrchestratorDeps
+  /** agents
+   * Descrição: Lista de agentes disponíveis para delegação
+   */
   agents: AgentDefinition[]
+  /** messages
+   * Descrição: Histórico de mensagens no formato simples (role + content)
+   */
   messages: Array<{ role: string; content: string }>
+  /** llmMessages
+   * Descrição: Mensagens formatadas para envio ao provider LLM
+   */
   llmMessages: LlmMessage[]
+  /** actions
+   * Descrição: Lista de nomes de tools chamadas neste ciclo, usada para detecção de loops
+   */
   actions: string[]
-  /** Se true, proximo turno nao passa tools — forca resposta texto */
+  /** forceTextOnly
+   * Descrição: Se true, próximo turno não passa tools — força resposta texto
+   */
   forceTextOnly: boolean
+  /** onPermissionRequest
+   * Descrição: Callback para resolução interativa de permissão (opcional)
+   * @param toolName - Nome da tool
+   * @param target - Alvo da operação
+   * @returns Promise com 'allow' ou 'deny'
+   */
   onPermissionRequest?: (toolName: string, target: string) => Promise<'allow' | 'deny'>
 }
 
-/** Resultado de um turno de streaming. */
+/** TurnResult
+ * Descrição: Resultado de um turno de streaming com o LLM.
+ */
 interface TurnResult {
+  /** assistantContent
+   * Descrição: Conteúdo textual gerado pelo assistente neste turno
+   */
   assistantContent: string
+  /** pendingToolCalls
+   * Descrição: Tool calls pendentes que precisam ser executadas
+   */
   pendingToolCalls: Array<{ id: string; name: string; args: unknown }>
+  /** hasError
+   * Descrição: Indica se ocorreu erro durante o turno
+   */
   hasError: boolean
 }
 
 const log = createLogger('orchestrator')
 
+/** createOrchestrator
+ * Descrição: Cria uma instância do Orchestrator que coordena chat, sessões e delegação para subagentes.
+ * @param deps - Dependências injetadas via inversão de controle
+ * @returns Instância do Orchestrator
+ */
 export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
   const agents: AgentDefinition[] = deps.subagents.list().map((a) => ({
     name: a.name,
@@ -85,13 +153,11 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     tools: a.tools,
   }))
 
-  /** Inicia chat streaming com uma sessao existente.
-   * @param sessionId - ID da sessao
-   * @param message - Mensagem do usuario
-   * @returns AsyncGenerator<OrchestratorEvent>
-   * @example
-   * const chat = await chat('123', { content: 'Hello, how are you?' })
-   * console.log(chat) // { type: 'content', content: 'Hello, how are you?' }
+  /** chat
+   * Descrição: Inicia chat streaming com uma sessão existente, executando loop de turnos com tools
+   * @param sessionId - ID da sessão
+   * @param message - Mensagem do usuário
+   * @returns AsyncGenerator que emite OrchestratorEvent
    */
   async function* chat(sessionId: string, message: UserMessage): AsyncGenerator<OrchestratorEvent> {
     const ctx = await prepareChat(sessionId, message, deps, agents)
@@ -103,7 +169,7 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
       continueLoop = false
       log.info({ loopIteration, forceTextOnly: ctx.forceTextOnly }, 'orchestrator loop iteration')
 
-      // Verificar compactacao entre turnos
+      // Verificar compactação entre turnos
       if (deps.tokens.needsCompaction()) {
         await deps.session.compress(sessionId)
         const compacted = deps.session.getMessages(sessionId)
@@ -166,53 +232,54 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
     ctx.actions.length = 0
   }
 
-  /** Cria uma nova sessao de conversa.
+  /** createSession
+   * Descrição: Cria uma nova sessão de conversa para um projeto
    * @param projectId - ID do projeto
-   * @param title - Titulo da sessao
-   * @returns Promise<Session>
-   * @example
-   * const session = await createSession('123', 'My Project')
-   * console.log(session) // { id: '123', title: 'My Project' }
+   * @param title - Título opcional da sessão
+   * @returns Promise com a sessão criada
    */
   function createSession(projectId: string, title?: string): Promise<Session> {
     return Promise.resolve(deps.session.create(projectId, title))
   }
 
-  /** Carrega uma sessao existente pelo ID.
-   * @param sessionId - ID da sessao
-   * @returns Promise<Session>
-   * @example
-   * const session = await loadSession('123')
-   * console.log(session) // { id: '123', title: 'My Project' }
+  /** loadSession
+   * Descrição: Carrega uma sessão existente pelo ID
+   * @param sessionId - ID da sessão a carregar
+   * @returns Promise com a sessão carregada
    */
   function loadSession(sessionId: string): Promise<Session> {
     return Promise.resolve(deps.session.load(sessionId))
   }
 
-  /** Lista tools disponiveis para o LLM.
-   * @returns ToolDefinition[]
-   * @example
-   * const tools = getAvailableTools()
-   * console.log(tools) // [{ name: 'search', description: 'Search the web for information', parameters: { type: 'object', properties: { query: { type: 'string', description: 'The query to search for' } }, required: ['query'] } }]
+  /** getAvailableTools
+   * Descrição: Lista todas as tools disponíveis registradas no sistema
+   * @returns Array de ToolDefinition
    */
   function getAvailableTools(): ToolDefinition[] {
     return deps.tools.list()
   }
 
-  /** Lista subagentes disponiveis.
-   * @returns AgentDefinition[]
-   * @example
-   * const agents = getAvailableAgents()
-   * console.log(agents) // [{ name: 'search', description: 'Search the web for information', parameters: { type: 'object', properties: { query: { type: 'string', description: 'The query to search for' } }, required: ['query'] } }]
+  /** getAvailableAgents
+   * Descrição: Lista todos os subagentes disponíveis para delegação
+   * @returns Array de AgentDefinition
    */
   function getAvailableAgents(): AgentDefinition[] {
     return [...agents]
   }
 
+  /** listSessions
+   * Descrição: Lista sessões, opcionalmente filtradas por projeto
+   * @param projectId - ID do projeto para filtrar (opcional)
+   * @returns Array de sessões
+   */
   function listSessions(projectId?: string): Session[] {
     return deps.session.list(projectId)
   }
 
+  /** deleteSession
+   * Descrição: Deleta uma sessão e todas as suas mensagens
+   * @param sessionId - ID da sessão a deletar
+   */
   function deleteSession(sessionId: string): void {
     deps.session.delete(sessionId)
   }
@@ -228,15 +295,13 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
   }
 }
 
-/** Prepara o contexto do chat: carrega sessao, monta prompt, aplica compaction.
- * @param sessionId - ID da sessao
- * @param message - Mensagem do usuario
- * @param deps - Dependencias injetadas
- * @param agents - Agentes disponiveis
- * @returns ChatContext
- * @example
- * const ctx = prepareChat('123', { content: 'Hello, how are you?' }, deps, agents)
- * console.log(ctx) // { sessionId: '123', deps: deps, agents: agents, messages: [{ role: 'user', content: 'Hello, how are you?' }], llmMessages: [{ role: 'system', content: 'You are a helpful assistant.' }, { role: 'user', content: 'Hello, how are you?' }], actions: [] }
+/** prepareChat
+ * Descrição: Prepara o contexto do chat: carrega sessão, monta prompt e aplica compactação se necessário
+ * @param sessionId - ID da sessão
+ * @param message - Mensagem do usuário
+ * @param deps - Dependências injetadas
+ * @param agents - Agentes disponíveis
+ * @returns Promise com o ChatContext preparado
  */
 async function prepareChat(
   sessionId: string,
@@ -279,19 +344,17 @@ async function prepareChat(
   return ctx
 }
 
-/** Executa um turno de streaming com o LLM.
- * @param ctx - ChatContext
- * @returns AsyncGenerator<OrchestratorEvent, TurnResult>
- * @example
- * const turn = await runStreamTurn(ctx)
- * console.log(turn) // { type: 'content', content: 'Hello, how are you?' }
+/** runStreamTurn
+ * Descrição: Executa um turno de streaming com o LLM, coletando conteúdo e tool calls
+ * @param ctx - Contexto do chat com estado acumulado
+ * @returns AsyncGenerator que emite OrchestratorEvent e retorna TurnResult
  */
 async function* runStreamTurn(ctx: ChatContext): AsyncGenerator<OrchestratorEvent, TurnResult> {
   const { config, provider, tokens } = ctx.deps
   let assistantContent = ''
   const pendingToolCalls: Array<{ id: string; name: string; args: unknown }> = []
 
-  // Se forceTextOnly, nao passa tools — modelo deve gerar resposta texto
+  // Se forceTextOnly, não passa tools — modelo deve gerar resposta texto
   // Usa tool.level para filtrar: só envia tools com level='orchestrator' ao provider.
   let providerTools: Record<string, { description: string; parameters: unknown }> | undefined
   if (!ctx.forceTextOnly) {
@@ -340,17 +403,14 @@ async function* runStreamTurn(ctx: ChatContext): AsyncGenerator<OrchestratorEven
       return { assistantContent, pendingToolCalls: [], hasError: true }
     }
   }
-  /** Retorna o resultado do turno. */
   return { assistantContent, pendingToolCalls, hasError: false }
 }
 
-/** Despacha tool calls pendentes e retorna se o loop deve continuar.
- * @param ctx - ChatContext
- * @param pendingToolCalls - Tool calls pendentes
- * @returns AsyncGenerator<OrchestratorEvent, boolean>
- * @example
- * const shouldContinue = await handleToolCalls(ctx, [{ id: '123', name: 'search', args: { query: 'Hello, how are you?' } }])
- * console.log(shouldContinue) // true
+/** handleToolCalls
+ * Descrição: Despacha tool calls pendentes, verifica permissões e retorna se o loop deve continuar
+ * @param ctx - Contexto do chat
+ * @param pendingToolCalls - Tool calls pendentes a serem executadas
+ * @returns AsyncGenerator que emite OrchestratorEvent e retorna boolean indicando continuação
  */
 async function* handleToolCalls(
   ctx: ChatContext,
@@ -432,13 +492,11 @@ async function* handleToolCalls(
   return true
 }
 
-/** Processa um evento do provider stream.
- * @param event - ProviderStreamEvent
- * @param currentContent - Conteudo atual
- * @returns { assistantContent: string; yieldEvent?: OrchestratorEvent; toolCall?: { id: string; name: string; args: unknown } }
- * @example
- * const result = processStreamEvent({ type: 'content', content: 'Hello, how are you?' }, 'Hello, how are you?')
- * console.log(result) // { assistantContent: 'Hello, how are you?', yieldEvent: { type: 'content', content: 'Hello, how are you?' } }
+/** processStreamEvent
+ * Descrição: Processa um evento do provider stream, extraindo conteúdo e tool calls
+ * @param event - Evento recebido do provider
+ * @param currentContent - Conteúdo acumulado do assistente até agora
+ * @returns Objeto com conteúdo atualizado, evento para emitir e tool call (se houver)
  */
 function processStreamEvent(
   event: ProviderStreamEvent,
@@ -465,18 +523,22 @@ function processStreamEvent(
   }
 }
 
-/** Converte mensagem para formato do provider.
- * @param msg - Mensagem
- * @returns { role: 'user' | 'assistant' | 'system' | 'tool'; content: string }
- * @example
- * const providerMessage = toProviderMessage({ role: 'user', content: 'Hello, how are you?' })
- * console.log(providerMessage) // { role: 'user', content: 'Hello, how are you?' }
+/** truncateResult
+ * Descrição: Trunca texto de resultado se exceder o limite de caracteres
+ * @param text - Texto a ser truncado
+ * @param maxChars - Número máximo de caracteres permitidos
+ * @returns Texto truncado com indicação de quantos caracteres foram removidos
  */
 function truncateResult(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text
   return text.slice(0, maxChars) + `\n...[truncated: ${text.length - maxChars} chars removed]`
 }
 
+/** toProviderMessage
+ * Descrição: Converte mensagem do formato simples para o formato do provider LLM
+ * @param msg - Mensagem com role e content como strings
+ * @returns Mensagem no formato LlmMessage
+ */
 function toProviderMessage(msg: { role: string; content: string }): LlmMessage {
   return {
     role: msg.role as 'user' | 'assistant' | 'system' | 'tool',

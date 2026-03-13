@@ -1,5 +1,6 @@
 /**
  * Markdown — Renderiza markdown básico no terminal.
+ * Descrição: Componente React/Ink que converte markdown simplificado em elementos visuais do terminal.
  *
  * Suporta: **bold**, *italic*, `code`, ```code blocks```, - listas
  * Usa Text do Ink com formatação inline.
@@ -8,11 +9,21 @@
 import { Text } from 'ink'
 import type { Theme } from '../types.js'
 
+/** MarkdownProps
+ * Descrição: Props do componente Markdown.
+ */
 interface MarkdownProps {
+  /** Conteúdo markdown a ser renderizado */
   content: string
+  /** Tema visual com as cores a serem aplicadas */
   theme: Theme
 }
 
+/** Markdown
+ * Descrição: Componente que renderiza conteúdo markdown no terminal linha a linha.
+ * @param props - Props contendo o conteúdo markdown e o tema visual
+ * @returns Elemento React com o markdown renderizado
+ */
 export function Markdown({ content, theme }: MarkdownProps) {
   const lines = content.split('\n')
 
@@ -25,6 +36,11 @@ export function Markdown({ content, theme }: MarkdownProps) {
   )
 }
 
+/** MarkdownLine
+ * Descrição: Renderiza uma única linha de markdown com formatação apropriada (headers, listas, código).
+ * @param props - Props contendo a linha de texto e o tema visual
+ * @returns Elemento React com a linha formatada
+ */
 function MarkdownLine({ line, theme }: { line: string; theme: Theme }) {
   // Code block delimiter
   if (line.startsWith('```')) {
@@ -74,6 +90,11 @@ function MarkdownLine({ line, theme }: { line: string; theme: Theme }) {
   return <FormattedText text={line} theme={theme} />
 }
 
+/** FormattedText
+ * Descrição: Renderiza texto com formatação inline (código, negrito) usando cores do tema.
+ * @param props - Props contendo o texto a ser formatado e o tema visual
+ * @returns Elemento React com formatação inline aplicada
+ */
 function FormattedText({ text, theme }: { text: string; theme: Theme }) {
   // Split by inline code backticks
   const parts = text.split(/(`[^`]+`)/)

@@ -1,10 +1,8 @@
-/**
- * Tree-sitter chunker — divide arquivos de código em chunks semânticos usando AST real.
- *
- * Usa web-tree-sitter (WASM, compatível com Bun) com grammars instalados via npm.
+/** TreeSitterChunker
+ * Descrição: Divide arquivos de código em chunks semânticos usando AST real
+ * via web-tree-sitter (WASM, compatível com Bun). Grammars instalados via npm.
  * Fallback automático para regex-chunker se WASM não disponível.
- *
- * Linguagens suportadas: typescript, javascript, python, rust, go
+ * Linguagens suportadas: typescript, javascript, python, rust, go.
  */
 
 import { readFile } from 'node:fs/promises'
@@ -12,22 +10,43 @@ import type { Parser as ParserType, Language, Node as SyntaxNode } from 'web-tre
 import type { ChunkType, CodeChunk } from './types'
 import { detectLanguage } from './file-walker'
 
-/** Módulo web-tree-sitter com todas as exportações necessárias (lazy-loaded). */
+/** WebTreeSitterModule
+ * Descrição: Módulo web-tree-sitter com todas as exportações necessárias (lazy-loaded)
+ */
 interface WebTreeSitterModule {
+  /** Parser
+   * Descrição: Construtor do parser tree-sitter
+   */
   Parser: {
     new (): ParserType
     init(moduleOptions?: Record<string, unknown>): Promise<void>
   }
+  /** Language
+   * Descrição: Loader de gramáticas de linguagem
+   */
   Language: {
     load(input: string | Uint8Array): Promise<Language>
   }
 }
 
+/** tsModule
+ * Descrição: Referência ao módulo web-tree-sitter carregado (null se não inicializado)
+ */
 let tsModule: WebTreeSitterModule | null = null
+
+/** moduleInitialized
+ * Descrição: Flag indicando se a inicialização do módulo já foi tentada
+ */
 let moduleInitialized = false
+
+/** languageCache
+ * Descrição: Cache de gramáticas WASM carregadas, indexado por nome da linguagem
+ */
 const languageCache = new Map<string, Language>()
 
-/** Map de linguagem → nome do pacote npm e arquivo .wasm */
+/** GRAMMAR_PACKAGES
+ * Descrição: Mapeamento de linguagem para pacote npm e arquivo WASM da gramática
+ */
 const GRAMMAR_PACKAGES: Record<string, { pkg: string; wasm: string }> = {
   typescript: { pkg: 'tree-sitter-typescript', wasm: 'tree-sitter-typescript.wasm' },
   javascript: { pkg: 'tree-sitter-javascript', wasm: 'tree-sitter-javascript.wasm' },
@@ -36,8 +55,9 @@ const GRAMMAR_PACKAGES: Record<string, { pkg: string; wasm: string }> = {
   go: { pkg: 'tree-sitter-go', wasm: 'tree-sitter-go.wasm' },
 }
 
-/**
- * Tipos de nó AST que representam declarações top-level a usar como fronteiras de chunk.
+/** DECLARATION_TYPES
+ * Descrição: Tipos de nó AST que representam declarações top-level usadas
+ * como fronteiras de chunk, organizados por linguagem
  */
 const DECLARATION_TYPES: Record<string, Set<string>> = {
   typescript: new Set([
@@ -89,7 +109,11 @@ const DECLARATION_TYPES: Record<string, Set<string>> = {
   ]),
 }
 
-/** Inicializa o módulo web-tree-sitter (lazy, uma única vez). */
+/** ensureModuleInit
+ * Descrição: Inicializa o módulo web-tree-sitter de forma lazy (uma única vez).
+ * Resolve o WASM do pacote npm e configura o Parser.
+ * @returns Módulo inicializado ou null se não disponível
+ */
 async function ensureModuleInit(): Promise<WebTreeSitterModule | null> {
   if (moduleInitialized) return tsModule
 
@@ -111,7 +135,12 @@ async function ensureModuleInit(): Promise<WebTreeSitterModule | null> {
   }
 }
 
-/** Carrega uma gramática WASM para a linguagem dada (cache por linguagem). */
+/** loadLanguage
+ * Descrição: Carrega uma gramática WASM para a linguagem dada, com cache por linguagem
+ * @param lang - Nome da linguagem (ex: 'typescript', 'python')
+ * @param mod - Módulo web-tree-sitter inicializado
+ * @returns Gramática da linguagem ou null se não suportada
+ */
 async function loadLanguage(lang: string, mod: WebTreeSitterModule): Promise<Language | null> {
   const cached = languageCache.get(lang)
   if (cached) return cached
@@ -131,15 +160,27 @@ async function loadLanguage(lang: string, mod: WebTreeSitterModule): Promise<Lan
   }
 }
 
-/** Resultado do tree-sitter chunker. */
+/** TreeSitterChunkerResult
+ * Descrição: Resultado do chunker tree-sitter com flag indicando uso de AST real
+ */
 export interface TreeSitterChunkerResult {
+  /** chunks
+   * Descrição: Array de chunks extraídos da AST (sem o campo id)
+   */
   chunks: Omit<CodeChunk, 'id'>[]
+  /** usedTreeSitter
+   * Descrição: Se o tree-sitter foi efetivamente utilizado (sempre true neste resultado)
+   */
   usedTreeSitter: boolean
 }
 
-/**
- * Chunkeia um arquivo usando AST tree-sitter.
+/** chunkFileWithTreeSitter
+ * Descrição: Divide um arquivo em chunks semânticos usando AST tree-sitter.
  * Retorna null se tree-sitter não disponível ou linguagem não suportada.
+ * @param filePath - Caminho absoluto do arquivo a chunkar
+ * @param maxChunkLines - Máximo de linhas por chunk (default: 60)
+ * @param minChunkLines - Mínimo de linhas por chunk (default: 3)
+ * @returns Resultado com chunks ou null se fallback necessário
  */
 export async function chunkFileWithTreeSitter(
   filePath: string,
@@ -180,7 +221,17 @@ export async function chunkFileWithTreeSitter(
   }
 }
 
-/** Extrai chunks a partir do nó raiz da AST. */
+/** extractChunks
+ * Descrição: Extrai chunks a partir do nó raiz da AST. Identifica declarações
+ * top-level e cria chunks para cada uma, incluindo um header chunk para imports.
+ * @param root - Nó raiz da árvore AST
+ * @param lines - Linhas do arquivo fonte
+ * @param filePath - Caminho absoluto do arquivo
+ * @param lang - Linguagem detectada
+ * @param maxChunkLines - Máximo de linhas por chunk
+ * @param minChunkLines - Mínimo de linhas por chunk
+ * @returns Array de chunks extraídos da AST
+ */
 function extractChunks(
   root: SyntaxNode,
   lines: string[],
@@ -245,19 +296,47 @@ function extractChunks(
   return chunks
 }
 
+/** NodeInfo
+ * Descrição: Informações extraídas de um nó da AST para criação de chunk
+ */
 interface NodeInfo {
+  /** startLine
+   * Descrição: Linha de início do nó na AST
+   */
   startLine: number
+  /** endLine
+   * Descrição: Linha de fim do nó na AST
+   */
   endLine: number
+  /** chunkType
+   * Descrição: Tipo do chunk derivado do tipo de nó AST
+   */
   chunkType: ChunkType
+  /** symbolName
+   * Descrição: Nome do símbolo (função, classe, etc.) extraído do nó
+   */
   symbolName?: string
 }
 
+/** collectDeclarations
+ * Descrição: Coleta os nós de declaração top-level da AST que servem como fronteiras de chunk
+ * @param root - Nó raiz da AST
+ * @param declTypes - Set de tipos de nó considerados declarações
+ * @param lang - Linguagem para extração de informações
+ * @returns Array de NodeInfo com informações de cada declaração
+ */
 function collectDeclarations(root: SyntaxNode, declTypes: Set<string>, lang: string): NodeInfo[] {
   return root.children
     .filter((c: SyntaxNode) => declTypes.has(c.type))
     .map((c: SyntaxNode) => extractNodeInfo(c, lang))
 }
 
+/** extractNodeInfo
+ * Descrição: Extrai informações de posição, tipo e símbolo de um nó da AST
+ * @param node - Nó da AST a analisar
+ * @param lang - Linguagem para extração de símbolo
+ * @returns NodeInfo com posição, tipo e nome do símbolo
+ */
 function extractNodeInfo(node: SyntaxNode, lang: string): NodeInfo {
   const symbolName = extractSymbolFromNode(node, lang)
   const info: NodeInfo = {
@@ -269,6 +348,11 @@ function extractNodeInfo(node: SyntaxNode, lang: string): NodeInfo {
   return info
 }
 
+/** mapNodeTypeToChunkType
+ * Descrição: Mapeia o tipo de nó da AST para o tipo de chunk correspondente
+ * @param nodeType - Tipo do nó na AST (ex: 'function_declaration', 'class_declaration')
+ * @returns Tipo de chunk correspondente
+ */
 function mapNodeTypeToChunkType(nodeType: string): ChunkType {
   if (
     nodeType.includes('function') ||
@@ -288,6 +372,13 @@ function mapNodeTypeToChunkType(nodeType: string): ChunkType {
   return 'block'
 }
 
+/** extractSymbolFromNode
+ * Descrição: Extrai o nome do símbolo de um nó da AST, tratando export statements,
+ * declarações de variáveis, decorators e construções específicas de Rust.
+ * @param node - Nó da AST
+ * @param lang - Linguagem para lógica específica
+ * @returns Nome do símbolo ou undefined se não encontrado
+ */
 function extractSymbolFromNode(node: SyntaxNode, lang: string): string | undefined {
   if (node.type === 'export_statement') {
     const decl =
@@ -331,13 +422,23 @@ function extractSymbolFromNode(node: SyntaxNode, lang: string): string | undefin
   return undefined
 }
 
+/** truncateContent
+ * Descrição: Trunca conteúdo para máximo de chars, preservando início e fim
+ * @param content - Conteúdo a truncar
+ * @param maxChars - Máximo de caracteres (default: 2048)
+ * @returns Conteúdo truncado ou original se menor que maxChars
+ */
 function truncateContent(content: string, maxChars = 2048): string {
   if (content.length <= maxChars) return content
   const half = Math.floor(maxChars / 2) - 20
   return `${content.slice(0, half)}\n...(truncated)...\n${content.slice(-half)}`
 }
 
-/** Retorna true se tree-sitter está disponível para a linguagem dada. */
+/** isTreeSitterAvailable
+ * Descrição: Verifica se o tree-sitter está disponível para uma linguagem específica
+ * @param lang - Nome da linguagem a verificar
+ * @returns true se tree-sitter está disponível e a gramática carregou com sucesso
+ */
 export async function isTreeSitterAvailable(lang: string): Promise<boolean> {
   if (!GRAMMAR_PACKAGES[lang]) return false
   const mod = await ensureModuleInit()

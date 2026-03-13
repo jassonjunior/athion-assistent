@@ -3,34 +3,29 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { createOpenAI } from '@ai-sdk/openai'
 import type { ModelInfo, ProviderInfo } from './types'
 
-/**
- * Fetch wrapper para Qwen3.5 thinking models no LM Studio.
- *
- * Modelos Qwen3.5 enviam `delta.reasoning_content` antes de `delta.content`.
- * O Vercel AI SDK ignora `reasoning_content`, resultando em respostas vazias.
- *
- * Em modo GGUF: tool_calls funcionam normalmente com reasoning
- * Em modo MLX: tool_calls podem falhar com reasoning ativo
- *
- * Este wrapper descarta chunks de `reasoning_content` silenciosamente,
- * mantendo apenas `content` e `tool_calls` para o AI SDK processar.
- */
-
-/**
- * Configuração de um provider registrado.
+/** ProviderEntry
+ * Descrição: Configuração de um provider registrado.
  * Contém a factory do Vercel AI SDK e metadados.
  */
 interface ProviderEntry {
-  /** Metadados do provider (id, nome, isLocal) */
+  /** info
+   * Descrição: Metadados do provider (id, nome, isLocal)
+   */
   info: ProviderInfo
-  /** Factory que cria a instância do Vercel AI SDK para este provider */
+  /** createModel
+   * Descrição: Factory que cria a instância do Vercel AI SDK para este provider
+   * @param modelId - Identificador do modelo a ser criado
+   * @returns Instância do modelo do Vercel AI SDK
+   */
   createModel: (modelId: string) => ReturnType<ReturnType<typeof createOpenAI>>
-  /** Modelos disponíveis neste provider */
+  /** models
+   * Descrição: Lista de modelos disponíveis neste provider
+   */
   models: ModelInfo[]
 }
 
-/**
- * Registro de todos os providers LLM disponíveis.
+/** PROVIDERS
+ * Descrição: Registro de todos os providers LLM disponíveis.
  * Cada provider tem uma factory que cria instâncias do Vercel AI SDK.
  *
  * Providers suportados:

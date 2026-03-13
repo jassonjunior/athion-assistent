@@ -1,14 +1,23 @@
 /**
  * Comando `athion agents` — Listar agentes disponíveis.
- * Mostra os 7 subagentes built-in + qualquer agente registrado por plugins.
+ * Descrição: Mostra os 7 subagentes built-in + qualquer agente registrado por plugins.
  */
 
 import type { Argv } from 'yargs'
 
+/** agentsCommand
+ * Descrição: Configura o comando yargs para listagem de agentes.
+ * @param yargs - Instância do yargs para configuração do comando
+ * @returns Instância do yargs configurada
+ */
 export function agentsCommand(yargs: Argv) {
   return yargs
 }
 
+/** agentsHandler
+ * Descrição: Handler que executa a listagem de agentes disponíveis no terminal.
+ * @returns Promise que resolve quando a listagem é concluída
+ */
 export async function agentsHandler() {
   const { bootstrap } = await import('@athion/core')
   const { resolve } = await import('node:path')

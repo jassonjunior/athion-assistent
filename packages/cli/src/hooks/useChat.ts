@@ -1,7 +1,6 @@
 /**
  * Hook useChat — Gerencia estado do chat e streaming.
- *
- * Consome o AsyncGenerator<OrchestratorEvent> do core e traduz
+ * Descrição: Consome o AsyncGenerator<OrchestratorEvent> do core e traduz
  * os eventos em estado React para os componentes renderizarem.
  *
  * Funcionalidades:
@@ -16,27 +15,50 @@ import { useCallback, useRef, useState } from 'react'
 import type { AthionCore } from '@athion/core'
 import type { ChatMessage, SubAgentInfo, TokenInfo, ToolCallInfo } from '../types.js'
 
+/** UseChatReturn
+ * Descrição: Retorno do hook useChat com estado do chat e funções de controle.
+ */
 interface UseChatReturn {
+  /** Lista de mensagens no histórico do chat */
   messages: ChatMessage[]
+  /** Indica se o assistente está gerando uma resposta em streaming */
   isStreaming: boolean
+  /** Conteúdo parcial sendo recebido durante o streaming */
   streamingContent: string
+  /** Ferramenta sendo executada atualmente, se houver */
   currentTool: ToolCallInfo | null
+  /** Subagente em execução atualmente, se houver */
   currentAgent: SubAgentInfo | null
+  /** Informações de uso de tokens da última resposta */
   tokens: TokenInfo | null
+  /** Envia uma mensagem do usuário e inicia o streaming da resposta */
   sendMessage: (content: string) => Promise<void>
+  /** Aborta o streaming da resposta atual */
   abort: () => void
+  /** Limpa todo o histórico de mensagens */
   clearMessages: () => void
+  /** Adiciona uma mensagem de sistema ao histórico */
   addMessage: (content: string) => void
+  /** Indica se o menu de skills está aberto */
   skillsMenuOpen: boolean
+  /** Controla a abertura/fechamento do menu de skills */
   setSkillsMenuOpen: (open: boolean) => void
 }
 
-/** Cria mensagem de sistema local (não vai para o LLM). */
+/** systemMsg
+ * Descrição: Cria uma mensagem de sistema local (não é enviada ao LLM).
+ * @param content - Conteúdo textual da mensagem de sistema
+ * @returns Objeto ChatMessage com role 'assistant' e timestamp atual
+ */
 function systemMsg(content: string): ChatMessage {
   return { id: crypto.randomUUID(), role: 'assistant', content, timestamp: new Date() }
 }
 
-/** Resolve @mentions em paths e injeta conteúdo do arquivo no prompt. */
+/** resolveAtMentions
+ * Descrição: Resolve @mentions em paths de arquivos e injeta o conteúdo no prompt.
+ * @param content - Texto do usuário contendo possíveis @mentions
+ * @returns Texto com @mentions substituídas pelo conteúdo dos arquivos referenciados
+ */
 function resolveAtMentions(content: string): string {
   return content.replace(/@([\w./-]+)/g, (_match, filePath: string) => {
     const resolved = resolve(process.cwd(), filePath)
@@ -55,6 +77,14 @@ function resolveAtMentions(content: string): string {
   })
 }
 
+/** useChat
+ * Descrição: Hook React que gerencia o estado completo do chat, incluindo envio de mensagens,
+ * streaming de respostas, slash commands, @mentions e controle de ferramentas/subagentes.
+ * @param core - Instância do core do Athion para comunicação com o orchestrator
+ * @param sessionId - ID da sessão ativa para envio de mensagens
+ * @param onPermissionRequest - Callback opcional para solicitar permissão do usuário para tools
+ * @returns Objeto com estado do chat e funções de controle
+ */
 export function useChat(
   core: AthionCore,
   sessionId: string,
@@ -70,16 +100,27 @@ export function useChat(
   const streamingContentRef = useRef('')
   const abortRef = useRef(false)
 
+  /** clearMessages
+   * Descrição: Limpa o histórico de mensagens e reseta os tokens.
+   */
   const clearMessages = useCallback(() => {
     setMessages([])
     setTokens(null)
   }, [])
 
+  /** addMessage
+   * Descrição: Adiciona uma mensagem de sistema ao histórico.
+   * @param content - Conteúdo da mensagem a ser adicionada
+   */
   const addMessage = useCallback((content: string) => {
     setMessages((prev) => [...prev, systemMsg(content)])
   }, [])
 
-  /** Processa slash commands. Retorna true se foi um comando. */
+  /** handleSlashCommand
+   * Descrição: Processa slash commands interceptados localmente antes de enviar ao LLM.
+   * @param content - Texto digitado pelo usuário
+   * @returns true se o texto era um slash command e foi processado, false caso contrário
+   */
   function handleSlashCommand(content: string): boolean {
     const trimmed = content.trim()
     if (!trimmed.startsWith('/')) return false
@@ -321,10 +362,19 @@ export function useChat(
     }
   }
 
+  /** abort
+   * Descrição: Aborta o streaming da resposta atual do assistente.
+   */
   const abort = useCallback(() => {
     abortRef.current = true
   }, [])
 
+  /** sendMessage
+   * Descrição: Envia uma mensagem do usuário, processa slash commands e @mentions,
+   * e inicia o streaming da resposta do assistente.
+   * @param content - Texto da mensagem do usuário
+   * @returns Promise que resolve quando o streaming é concluído ou abortado
+   */
   const sendMessage = useCallback(
     async (content: string) => {
       // Slash commands interceptados localmente
@@ -402,6 +452,12 @@ export function useChat(
     [core, sessionId, onPermissionRequest],
   )
 
+  /** updateAssistantMessage
+   * Descrição: Atualiza ou cria a mensagem do assistente no histórico com conteúdo e tool calls.
+   * @param id - ID da mensagem do assistente
+   * @param content - Conteúdo textual acumulado
+   * @param tools - Lista de chamadas de ferramentas realizadas
+   */
   function updateAssistantMessage(id: string, content: string, tools: ToolCallInfo[]) {
     setMessages((prev) => {
       const existing = prev.find((m) => m.id === id)
@@ -421,6 +477,11 @@ export function useChat(
     })
   }
 
+  /** handleToolCallEvent
+   * Descrição: Processa um evento de chamada de ferramenta e atualiza o estado da UI.
+   * @param event - Evento contendo ID, nome e argumentos da tool call
+   * @param toolCalls - Array acumulador de chamadas de ferramentas
+   */
   function handleToolCallEvent(
     event: { id: string; name: string; args: unknown },
     toolCalls: ToolCallInfo[],
@@ -435,6 +496,11 @@ export function useChat(
     setCurrentTool(tc)
   }
 
+  /** handleToolResult
+   * Descrição: Processa o resultado de uma chamada de ferramenta e atualiza seu status.
+   * @param event - Evento contendo ID, nome e resultado da tool
+   * @param toolCalls - Array de chamadas de ferramentas para atualização de status
+   */
   function handleToolResult(
     event: { id: string; name: string; result: { success: boolean; error?: string } },
     toolCalls: ToolCallInfo[],

@@ -4,9 +4,14 @@ import es from './locales/es.json'
 import fr from './locales/fr.json'
 import zhCN from './locales/zh-CN.json'
 
-/** Locales suportados */
+/** SupportedLocale
+ * Descrição: Union type com os locales (idiomas) suportados pelo sistema de internacionalização
+ */
 export type SupportedLocale = 'pt-BR' | 'en-US' | 'es' | 'fr' | 'zh-CN'
 
+/** LOCALES
+ * Descrição: Mapa de todos os locales suportados para seus respectivos arquivos de tradução
+ */
 const LOCALES: Record<SupportedLocale, typeof ptBR> = {
   'pt-BR': ptBR,
   'en-US': enUS,
@@ -15,7 +20,10 @@ const LOCALES: Record<SupportedLocale, typeof ptBR> = {
   'zh-CN': zhCN,
 }
 
-/** Resolve o locale do sistema operacional (Node.js ou Browser) */
+/** detectLocale
+ * Descrição: Detecta automaticamente o locale do sistema operacional (Node.js ou Browser)
+ * @returns O locale detectado do ambiente, com fallback para 'pt-BR'
+ */
 function detectLocale(): SupportedLocale {
   // Browser (VSCode webview, Desktop)
   if (typeof navigator !== 'undefined' && navigator.language) {
@@ -46,18 +54,24 @@ function detectLocale(): SupportedLocale {
   return 'pt-BR' // default
 }
 
-/**
- * Substitui placeholders {{key}} com valores fornecidos.
+/** interpolate
+ * Descrição: Substitui placeholders {{key}} em uma string template com os valores fornecidos
+ * @param template - String com placeholders no formato {{chave}}
+ * @param vars - Objeto com os valores para substituição
+ * @returns String com os placeholders substituídos pelos valores correspondentes
  */
 export function interpolate(template: string, vars: Record<string, string | number>): string {
   return template.replace(/\{\{(\w+)\}\}/g, (_, key: string) => String(vars[key] ?? `{{${key}}}`))
 }
 
-/** Singleton do i18n */
+/** currentLocale
+ * Descrição: Singleton que armazena o locale atualmente ativo no sistema de i18n
+ */
 let currentLocale: SupportedLocale | null = null
 
-/**
- * Inicializa o i18n com um locale específico ou detecta automaticamente.
+/** initI18n
+ * Descrição: Inicializa o sistema de internacionalização com um locale específico ou detecta automaticamente
+ * @param locale - Locale opcional a ser definido; se omitido, detecta automaticamente do ambiente
  */
 export function initI18n(locale?: SupportedLocale | string): void {
   if (locale && locale in LOCALES) {
@@ -90,25 +104,37 @@ export function initI18n(locale?: SupportedLocale | string): void {
   currentLocale = detectLocale()
 }
 
-/**
- * Define o locale diretamente (alias de initI18n para clareza).
+/** setLocale
+ * Descrição: Define o locale ativo diretamente (alias de initI18n para maior clareza semântica)
+ * @param locale - Locale a ser definido como ativo
  */
 export function setLocale(locale: SupportedLocale | string): void {
   initI18n(locale)
 }
 
-/**
- * Retorna o locale atualmente ativo.
+/** getLocale
+ * Descrição: Retorna o locale atualmente ativo no sistema de i18n
+ * @returns O locale ativo, ou detecta automaticamente caso não tenha sido inicializado
  */
 export function getLocale(): SupportedLocale {
   return currentLocale ?? detectLocale()
 }
 
+/** DeepRecordValue
+ * Descrição: Tipo recursivo que representa os valores possíveis dentro de um objeto de traduções aninhado
+ */
 type DeepRecordValue = string | string[] | { [key: string]: DeepRecordValue }
+
+/** DeepRecord
+ * Descrição: Tipo que representa um objeto de traduções com chaves string e valores aninhados recursivamente
+ */
 type DeepRecord = { [key: string]: DeepRecordValue }
 
-/**
- * Navega em um objeto aninhado usando dot-notation.
+/** resolve
+ * Descrição: Navega em um objeto aninhado usando notação de ponto (dot-notation) para encontrar um valor
+ * @param obj - Objeto de traduções aninhado
+ * @param key - Chave em notação de ponto (ex: 'cli.chat.start')
+ * @returns O valor encontrado ou undefined se a chave não existir
  */
 function resolve(obj: DeepRecord, key: string): DeepRecordValue | undefined {
   const parts = key.split('.')
@@ -123,8 +149,11 @@ function resolve(obj: DeepRecord, key: string): DeepRecordValue | undefined {
   return current
 }
 
-/**
- * Traduz uma chave de mensagem para o locale atual.
+/** t
+ * Descrição: Traduz uma chave de mensagem para o locale atualmente ativo
+ * @param key - Chave da mensagem em notação de ponto (ex: 'cli.chat.start')
+ * @param vars - Variáveis opcionais para interpolação nos placeholders {{chave}}
+ * @returns A string traduzida, ou a própria chave se a tradução não for encontrada
  * @example t('cli.chat.start')  →  "Iniciando chat..."
  */
 export function t(key: string, vars?: Record<string, string | number>): string {
@@ -135,8 +164,10 @@ export function t(key: string, vars?: Record<string, string | number>): string {
   return vars ? interpolate(template, vars) : template
 }
 
-/**
- * Traduz uma chave que aponta para um array de strings (ex: frases de loading).
+/** ta
+ * Descrição: Traduz uma chave que aponta para um array de strings no locale atualmente ativo
+ * @param key - Chave da mensagem em notação de ponto que aponta para um array
+ * @returns Array de strings traduzidas, ou array vazio se não encontrado
  * @example ta('feedback.loading_phrases')  →  ["Calibrando...", "Tentando sair do Vim...", ...]
  */
 export function ta(key: string): string[] {

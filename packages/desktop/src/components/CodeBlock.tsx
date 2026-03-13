@@ -1,17 +1,32 @@
 /**
- * CodeBlock — Bloco de código com label de linguagem e botão copiar.
+ * CodeBlock
+ * Descrição: Bloco de código com label de linguagem e botão de copiar para a área de transferência.
  */
 
 import { useCallback, useState } from 'react'
 
+/** CodeBlockProps
+ * Descrição: Propriedades do componente CodeBlock
+ */
 interface CodeBlockProps {
+  /** Linguagem do bloco de código (ex: "typescript", "python") */
   language: string
+  /** Conteúdo do código a ser exibido */
   code: string
 }
 
+/** CodeBlock
+ * Descrição: Componente que renderiza um bloco de código com destaque de linguagem e funcionalidade de copiar
+ * @param language - Linguagem do código para exibição no label
+ * @param code - Conteúdo do código a ser renderizado
+ * @returns Elemento JSX com o bloco de código estilizado
+ */
 export function CodeBlock({ language, code }: CodeBlockProps) {
   const [copied, setCopied] = useState(false)
 
+  /** handleCopy
+   * Descrição: Copia o código para a área de transferência e exibe feedback visual temporário
+   */
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(code).then(() => {
       setCopied(true)

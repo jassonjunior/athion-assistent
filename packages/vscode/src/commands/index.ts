@@ -1,6 +1,6 @@
 /**
- * Registro de todos os comandos da extensão.
- *
+ * commands/index
+ * Descrição: Registro centralizado de todos os comandos da extensão.
  * Cada comando é registrado via vscode.commands.registerCommand
  * e adicionado ao context.subscriptions para cleanup automático.
  */
@@ -11,8 +11,21 @@ import type { ChatViewProvider } from '../webview/chat-view-provider.js'
 import type { DiffManager } from '../diff/diff-manager.js'
 import { getSelectionContext } from '../context/selection-context.js'
 
+/**
+ * CommandEntry
+ * Descrição: Tupla representando um comando: [id do comando, handler].
+ */
 type CommandEntry = [string, (...args: unknown[]) => unknown]
 
+/**
+ * registerCommands
+ * Descrição: Registra todos os comandos da extensão no VS Code.
+ * @param context - Contexto da extensão para registrar subscriptions
+ * @param bridge - Instância do CoreBridge para comunicação com o core
+ * @param chatProvider - Provedor do chat para interação com o painel lateral
+ * @param diffManager - Gerenciador de diffs para aceitar/rejeitar sugestões
+ * @returns void
+ */
 export function registerCommands(
   context: vscode.ExtensionContext,
   bridge: CoreBridge,
@@ -33,6 +46,12 @@ export function registerCommands(
   }
 }
 
+/**
+ * chatCommands
+ * Descrição: Retorna os comandos relacionados ao chat (novo chat, abortar, focar).
+ * @param chatProvider - Provedor do chat para executar as ações
+ * @returns Lista de CommandEntry para comandos de chat
+ */
 function chatCommands(chatProvider: ChatViewProvider): CommandEntry[] {
   return [
     [
@@ -57,6 +76,12 @@ function chatCommands(chatProvider: ChatViewProvider): CommandEntry[] {
   ]
 }
 
+/**
+ * codeCommands
+ * Descrição: Retorna os comandos de ação sobre código selecionado (explicar, revisar, refatorar, testes, fix).
+ * @param chatProvider - Provedor do chat para enviar instruções com o código selecionado
+ * @returns Lista de CommandEntry para comandos de código
+ */
 function codeCommands(chatProvider: ChatViewProvider): CommandEntry[] {
   return [
     ['athion.explainCode', () => sendCodeCommand(chatProvider, 'Explique este código')],
@@ -80,6 +105,11 @@ function codeCommands(chatProvider: ChatViewProvider): CommandEntry[] {
   ]
 }
 
+/**
+ * inlineCommands
+ * Descrição: Retorna o comando para alternar inline completion (habilitar/desabilitar).
+ * @returns Lista de CommandEntry para comandos de inline
+ */
 function inlineCommands(): CommandEntry[] {
   return [
     [
@@ -94,6 +124,12 @@ function inlineCommands(): CommandEntry[] {
   ]
 }
 
+/**
+ * diffCommands
+ * Descrição: Retorna os comandos de gerenciamento de diffs (aceitar/rejeitar individual e em lote).
+ * @param diffManager - Gerenciador de diffs para executar as ações
+ * @returns Lista de CommandEntry para comandos de diff
+ */
 function diffCommands(diffManager: DiffManager): CommandEntry[] {
   return [
     ['athion.acceptDiff', () => diffManager.acceptCurrent()],
@@ -103,6 +139,11 @@ function diffCommands(diffManager: DiffManager): CommandEntry[] {
   ]
 }
 
+/**
+ * settingsCommands
+ * Descrição: Retorna o comando para abrir as configurações da extensão.
+ * @returns Lista de CommandEntry para comandos de configuração
+ */
 function settingsCommands(): CommandEntry[] {
   return [
     [
@@ -119,6 +160,13 @@ function settingsCommands(): CommandEntry[] {
 
 // ─── Codebase Commands ──────────────────────────────────────────────
 
+/**
+ * codebaseCommands
+ * Descrição: Retorna os comandos de indexação e busca semântica no codebase.
+ * @param bridge - Instância do CoreBridge para requisições de indexação e busca
+ * @param chatProvider - Provedor do chat para exibir resultados
+ * @returns Lista de CommandEntry para comandos de codebase
+ */
 function codebaseCommands(bridge: CoreBridge, chatProvider: ChatViewProvider): CommandEntry[] {
   return [
     [
@@ -224,6 +272,13 @@ function codebaseCommands(bridge: CoreBridge, chatProvider: ChatViewProvider): C
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
+/**
+ * sendCodeCommand
+ * Descrição: Obtém a seleção do editor e envia ao chat com uma instrução específica.
+ * @param chatProvider - Provedor do chat para enviar a mensagem
+ * @param instruction - Instrução a ser aplicada ao código selecionado
+ * @returns Promise que resolve quando a mensagem é enviada
+ */
 async function sendCodeCommand(chatProvider: ChatViewProvider, instruction: string): Promise<void> {
   const ctx = getSelectionContext()
   if (!ctx) return
@@ -233,6 +288,12 @@ async function sendCodeCommand(chatProvider: ChatViewProvider, instruction: stri
   )
 }
 
+/**
+ * sendFixBugCommand
+ * Descrição: Obtém a seleção e diagnósticos do editor e envia ao chat pedindo correção de bug.
+ * @param chatProvider - Provedor do chat para enviar a mensagem com diagnósticos
+ * @returns Promise que resolve quando a mensagem é enviada
+ */
 async function sendFixBugCommand(chatProvider: ChatViewProvider): Promise<void> {
   const ctx = getSelectionContext()
   if (!ctx) return

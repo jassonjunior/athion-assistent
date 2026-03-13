@@ -1,5 +1,6 @@
 /**
  * Comando `athion sessions` — Gerenciar sessões.
+ * Descrição: Permite listar e deletar sessões de conversa do Athion.
  *
  * Subcomandos:
  *   list             — Lista todas as sessões
@@ -8,6 +9,11 @@
 
 import type { ArgumentsCamelCase, Argv } from 'yargs'
 
+/** sessionsCommand
+ * Descrição: Configura os subcomandos de gerenciamento de sessões no yargs.
+ * @param yargs - Instância do yargs para configuração dos subcomandos
+ * @returns Instância do yargs com subcomandos list e delete registrados
+ */
 export function sessionsCommand(yargs: Argv) {
   return yargs
     .command('list', 'Listar todas as sessões', {}, sessionsListHandler)
@@ -20,6 +26,10 @@ export function sessionsCommand(yargs: Argv) {
     .demandCommand(1, 'Especifique um subcomando: list, delete')
 }
 
+/** sessionsListHandler
+ * Descrição: Lista todas as sessões de conversa existentes em formato tabular.
+ * @returns Promise que resolve quando a listagem é concluída
+ */
 async function sessionsListHandler() {
   const { bootstrap } = await import('@athion/core')
   const core = await bootstrap()
@@ -45,6 +55,11 @@ async function sessionsListHandler() {
   process.stdout.write('\n')
 }
 
+/** sessionsDeleteHandler
+ * Descrição: Deleta uma sessão de conversa pelo seu ID.
+ * @param args - Argumentos do comando contendo o ID da sessão a ser deletada
+ * @returns Promise que resolve quando a sessão é deletada
+ */
 async function sessionsDeleteHandler(args: ArgumentsCamelCase<{ id: string }>) {
   const { bootstrap } = await import('@athion/core')
   const core = await bootstrap()

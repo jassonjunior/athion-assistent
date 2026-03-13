@@ -1,11 +1,8 @@
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
-/**
- * Tabela de sessões — cada sessão é uma conversa completa.
- * Uma sessão pertence a um projeto e pode ter várias mensagens.
- * @example
- * // Uma sessão criada para o projeto "athion-assistent"
- * { id: 'abc123', projectId: 'athion-assistent', title: 'Refatorar config' }
+/** sessions
+ * Descrição: Tabela de sessões Drizzle ORM. Cada sessão é uma conversa completa
+ * que pertence a um projeto e pode ter várias mensagens.
  */
 export const sessions = sqliteTable('sessions', {
   /** Identificador único da sessão (UUID) */
@@ -22,10 +19,9 @@ export const sessions = sqliteTable('sessions', {
   metadata: text('metadata', { mode: 'json' }),
 })
 
-/**
- * Tabela de mensagens — cada mensagem pertence a uma sessão.
- * Armazena o histórico completo da conversa (user, assistant, system, tool).
- * Cascade delete: ao deletar uma sessão, todas as mensagens são removidas.
+/** messages
+ * Descrição: Tabela de mensagens Drizzle ORM. Armazena o histórico completo da conversa
+ * (user, assistant, system, tool). Cascade delete ao deletar a sessão pai.
  */
 export const messages = sqliteTable('messages', {
   /** Identificador único da mensagem (UUID) */
@@ -42,10 +38,9 @@ export const messages = sqliteTable('messages', {
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
 })
 
-/**
- * Tabela de permissões — regras de acesso persistidas.
- * Apenas permissões com scope='remember' são salvas aqui.
- * Permissões scope='once' e scope='session' ficam apenas em memória.
+/** permissions
+ * Descrição: Tabela de permissões Drizzle ORM. Armazena regras de acesso persistidas
+ * (apenas scope='remember'). Regras 'once' e 'session' ficam em memória.
  */
 export const permissions = sqliteTable('permissions', {
   /** Identificador único da permissão (UUID) */
@@ -62,17 +57,29 @@ export const permissions = sqliteTable('permissions', {
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
 })
 
-/** Tipo inferido de uma sessão completa (todas as colunas) */
+/** Session
+ * Descrição: Tipo inferido de uma sessão completa (todas as colunas da tabela sessions).
+ */
 export type Session = typeof sessions.$inferSelect
-/** Tipo para inserir uma nova sessão (colunas obrigatórias) */
+/** NewSession
+ * Descrição: Tipo para inserir uma nova sessão (colunas obrigatórias e opcionais).
+ */
 export type NewSession = typeof sessions.$inferInsert
 
-/** Tipo inferido de uma mensagem completa */
+/** Message
+ * Descrição: Tipo inferido de uma mensagem completa (todas as colunas da tabela messages).
+ */
 export type Message = typeof messages.$inferSelect
-/** Tipo para inserir uma nova mensagem */
+/** NewMessage
+ * Descrição: Tipo para inserir uma nova mensagem (colunas obrigatórias e opcionais).
+ */
 export type NewMessage = typeof messages.$inferInsert
 
-/** Tipo inferido de uma permissão completa */
+/** Permission
+ * Descrição: Tipo inferido de uma permissão completa (todas as colunas da tabela permissions).
+ */
 export type Permission = typeof permissions.$inferSelect
-/** Tipo para inserir uma nova permissão */
+/** NewPermission
+ * Descrição: Tipo para inserir uma nova permissão (colunas obrigatórias e opcionais).
+ */
 export type NewPermission = typeof permissions.$inferInsert
