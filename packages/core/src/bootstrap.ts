@@ -27,8 +27,8 @@ import { createLmStudioManager } from './server/lm-studio-manager'
 import { createMlxOmniManager } from './server/mlx-omni-manager'
 import type { VllmManager } from './server/vllm-manager'
 import { createVllmManager } from './server/vllm-manager'
-import type { SkillManager } from './skills'
-import { createSkillManager } from './skills'
+import type { SkillManager, SkillRegistry } from './skills'
+import { createSkillManager, createSkillRegistry } from './skills'
 import { createDatabaseManager } from './storage'
 import type { SubAgentManager } from './subagent'
 import { builtinAgents, createSubAgentManager } from './subagent'
@@ -88,6 +88,8 @@ export interface AthionCore {
   proxy: ProxyServer | null
   /** Indexador de codebase — disponível quando workspacePath foi configurado */
   indexer: CodebaseIndexer | null
+  /** Registry de skills — busca e instalação de skills do catálogo */
+  skillRegistry: SkillRegistry
 }
 
 /** Inicializa o core do Athion.
@@ -225,6 +227,7 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
     subagents,
   })
 
+  const skillRegistry = createSkillRegistry(skills)
   log.info({ provider: config.get('provider'), model: config.get('model') }, 'bootstrap complete')
 
   return {
@@ -240,6 +243,7 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
     vllm,
     proxy,
     indexer,
+    skillRegistry,
   }
 }
 

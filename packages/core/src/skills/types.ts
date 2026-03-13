@@ -80,3 +80,31 @@ export interface SkillManager {
    */
   clearActive(): void
 }
+
+/** Entrada no catálogo de skills disponíveis para instalação. */
+export interface SkillRegistryEntry {
+  name: string
+  description: string
+  triggers: string[]
+  tags: string[]
+  author: string
+  /** Conteúdo .md embutido (para skills bundled). */
+  content?: string
+  /** URL para download (para skills da comunidade). */
+  url?: string
+}
+
+/** Dados do registry (catálogo completo). */
+export interface SkillRegistryData {
+  version: number
+  skills: SkillRegistryEntry[]
+}
+
+/** Interface do Skill Registry — busca e instalação de skills. */
+export interface SkillRegistry {
+  search(query?: string): SkillRegistryEntry[]
+  listAvailable(): SkillRegistryEntry[]
+  install(name: string): Promise<{ success: boolean; error?: string }>
+  uninstall(name: string): Promise<{ success: boolean; error?: string }>
+  isInstalled(name: string): boolean
+}

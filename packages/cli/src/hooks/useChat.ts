@@ -13,7 +13,6 @@
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { useCallback, useRef, useState } from 'react'
-import { createPluginInstaller } from '@athion/core'
 import type { AthionCore } from '@athion/core'
 import type { ChatMessage, SubAgentInfo, TokenInfo, ToolCallInfo } from '../types.js'
 
@@ -204,39 +203,31 @@ export function useChat(
         return true
       }
       case 'find-skills': {
-        setMessages((prev) => [...prev, systemMsg('Buscando skills disponíveis...')])
-        const installer = createPluginInstaller()
-        installer
-          .search(arg || undefined)
-          .then((results) => {
-            if (results.length === 0) {
-              setMessages((prev) => [
-                ...prev,
-                systemMsg(
-                  arg
-                    ? `Nenhuma skill encontrada para "${arg}".`
-                    : 'Nenhuma skill disponível no registry ainda.',
-                ),
-              ])
-              return
-            }
-            const list = results
-              .map(
-                (r) =>
-                  `- **${r.pluginName}** \`v${r.version}\`${r.author ? ` — ${r.author}` : ''}\n  ${r.description}`,
-              )
-              .join('\n')
-            setMessages((prev) => [
-              ...prev,
-              systemMsg(
-                `**Skills disponíveis${arg ? ` para "${arg}"` : ''}:**\n\n${list}\n\n` +
-                  `Para instalar: \`/install-skill <nome>\``,
-              ),
-            ])
+        const results = core.skillRegistry.search(arg || undefined)
+        if (results.length === 0) {
+          setMessages((prev) => [
+            ...prev,
+            systemMsg(
+              arg
+                ? `Nenhuma skill encontrada para "${arg}".`
+                : 'Nenhuma skill disponível no registry.',
+            ),
+          ])
+          return true
+        }
+        const list = results
+          .map((r) => {
+            const installed = core.skillRegistry.isInstalled(r.name) ? ' ✓' : ''
+            return `- **${r.name}**${installed} — ${r.description}\n  Tags: ${r.tags.join(', ')}`
           })
-          .catch((err: Error) => {
-            setMessages((prev) => [...prev, systemMsg(`Erro ao buscar skills: ${err.message}`)])
-          })
+          .join('\n')
+        setMessages((prev) => [
+          ...prev,
+          systemMsg(
+            `**Skills disponíveis${arg ? ` para "${arg}"` : ''}:**\n\n${list}\n\n` +
+              `Para instalar: \`/install-skill <nome>\``,
+          ),
+        ])
         return true
       }
       case 'install-skill': {
@@ -245,25 +236,16 @@ export function useChat(
           return true
         }
         setMessages((prev) => [...prev, systemMsg(`Instalando skill \`${arg}\`...`)])
-        const installer = createPluginInstaller()
-        installer
+        core.skillRegistry
           .install(arg)
-          .then(async (result) => {
+          .then((result) => {
             if (!result.success) {
-              setMessages((prev) => [
-                ...prev,
-                systemMsg(`Erro ao instalar: ${result.error ?? 'desconhecido'}`),
-              ])
+              setMessages((prev) => [...prev, systemMsg(`Erro: ${result.error ?? 'desconhecido'}`)])
               return
-            }
-            if (result.installedPath) {
-              await core.skills.loadFromDirectory(result.installedPath)
             }
             setMessages((prev) => [
               ...prev,
-              systemMsg(
-                `Skill \`${result.pluginName}\` instalada com sucesso! Use \`/skills\` para ver.`,
-              ),
+              systemMsg(`Skill \`${arg}\` instalada! Use \`/use-skill ${arg}\` para ativar.`),
             ])
           })
           .catch((err: Error) => {

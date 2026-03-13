@@ -6,7 +6,6 @@
  * e envia cada OrchestratorEvent como notificação JSON-RPC ao client.
  */
 
-import { createPluginInstaller } from '@athion/core'
 import type { AthionCore } from '@athion/core'
 
 type NotifyFn = (method: string, params?: unknown) => void
@@ -16,8 +15,6 @@ export type RpcHandlers = Record<string, Handler>
 
 /** Active abort controllers for chat sessions */
 const activeChats = new Map<string, AbortController>()
-
-const pluginInstaller = createPluginInstaller()
 
 export function createHandlers(core: AthionCore, notify: NotifyFn): RpcHandlers {
   return {
@@ -40,7 +37,7 @@ export function createHandlers(core: AthionCore, notify: NotifyFn): RpcHandlers 
     'codebase.status': async () => handleCodebaseStatus(core),
     'codebase.clear': async () => handleCodebaseClear(core),
     // Plugin/Skills discovery
-    'plugin.search': (params: unknown) => handlePluginSearch(params),
+    'plugin.search': (params: unknown) => handlePluginSearch(core, params),
     'plugin.install': (params: unknown) => handlePluginInstall(core, params),
     // Skill activation
     'skill.list': async () =>
@@ -326,20 +323,26 @@ function handleCodebaseClear(core: AthionCore): unknown {
 
 // ─── Plugin/Skills Handlers ─────────────────────────────────────────
 
-async function handlePluginSearch(params: unknown): Promise<unknown> {
+async function handlePluginSearch(core: AthionCore, params: unknown): Promise<unknown> {
   const { query } = (params as { query?: string }) ?? {}
-  const results = await pluginInstaller.search(query)
-  return { results }
+  const results = core.skillRegistry.search(query)
+  return {
+    results: results.map((r) => ({
+      pluginName: r.name,
+      packageName: r.name,
+      description: r.description,
+      version: '1.0.0',
+      author: r.author,
+      tags: r.tags,
+      installed: core.skillRegistry.isInstalled(r.name),
+    })),
+  }
 }
 
 async function handlePluginInstall(core: AthionCore, params: unknown): Promise<unknown> {
   const { name } = params as { name: string }
-  const result = await pluginInstaller.install(name)
-  if (result.success && result.installedPath) {
-    // Tenta carregar a skill do pacote instalado
-    await core.skills.loadFromDirectory(result.installedPath)
-  }
-  return result
+  const result = await core.skillRegistry.install(name)
+  return { ...result, pluginName: name, packageName: name }
 }
 
 // ─── Completion Handler ─────────────────────────────────────────────

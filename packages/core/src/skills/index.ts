@@ -1,3 +1,4 @@
 export { createSkillManager } from './manager'
 export { parseSkillFile } from './parser'
-export type { SkillDefinition, SkillManager } from './types'
+export { createSkillRegistry } from './registry'
+export type { SkillDefinition, SkillManager, SkillRegistry, SkillRegistryEntry } from './types'
