@@ -2,7 +2,7 @@
   "name": "athion-assistent",
   "displayName": "Athion Assistent",
   "description": "AI coding assistant with orchestrator + subagents",
-  "version": "0.1.5",
+  "version": "0.1.7",
   "publisher": "athion",
   "license": "MIT",
   "icon": "image.png",

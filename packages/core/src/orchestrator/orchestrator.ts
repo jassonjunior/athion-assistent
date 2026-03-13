@@ -161,6 +161,9 @@ export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
       }
     }
     log.info({ loopIteration }, 'orchestrator chat loop ended')
+    // Libera referências pesadas — session já persistiu tudo
+    ctx.llmMessages.length = 0
+    ctx.actions.length = 0
   }
 
   /** Cria uma nova sessao de conversa.

@@ -134,6 +134,9 @@ export async function* runSubAgent(
     task.accumulatedResults.push(...resultParts)
     task.remainingWork = buildRemainingWorkSummary(task, resultParts)
     task.updatedAt = new Date()
+    // Libera memória: messages e resultParts não serão mais usados
+    messages.length = 0
+    resultParts.length = 0
     yield { type: 'continuation_needed', task }
     return
   }
@@ -141,6 +144,9 @@ export async function* runSubAgent(
   task.result = resultParts.join('\n')
   task.status = 'completed'
   task.updatedAt = new Date()
+  // Libera memória: o subagent terminou, descarta contexto acumulado
+  messages.length = 0
+  resultParts.length = 0
   yield { type: 'complete', task }
 }
 
