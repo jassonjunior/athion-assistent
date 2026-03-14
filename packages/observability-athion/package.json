@@ -14,7 +14,8 @@
     "playwright:install": "bunx playwright install chromium",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "test:e2e:desktop": "bun test e2e/desktop/"
   },
   "dependencies": {
     "@athion/core": "workspace:*",
