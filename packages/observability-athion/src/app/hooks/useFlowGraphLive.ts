@@ -6,7 +6,6 @@ import { applyDagreLayout } from '../layout/dagre-layout'
 
 type FlowNode = Node<NodeData>
 
-/** Mapeia flowEvent.type para nodeType do React Flow */
 const TYPE_TO_NODE: Record<string, string> = {
   user_message: 'userMessageNode',
   system_prompt: 'systemPromptNode',
@@ -26,19 +25,23 @@ const TYPE_TO_NODE: Record<string, string> = {
 }
 
 function relativeTime(ts: number, startTs: number): string {
-  const diff = (ts - startTs) / 1000
-  return `+${diff.toFixed(1)}s`
+  return `+${((ts - startTs) / 1000).toFixed(1)}s`
 }
 
-/** Estado interno do builder de grafo (preservado entre renders) */
 interface GraphState {
   nodes: FlowNode[]
   edges: Edge[]
-  lastNodeId: string | null
+  /** Último nó do fluxo principal (orquestrador) */
+  mainLastNodeId: string | null
+  /** Último nó adicionado (qualquer nível) — usado para subagent linkage */
   contentNodeId: string | null
-  subContentNodeId: string | null
+  /** Map: parentId do subagente → último nó dentro desse subagente */
+  subagentLastNode: Map<string, string>
+  /** Map: parentId do subagente → content node sendo merged */
+  subagentContentNode: Map<string, string>
+  /** Nó de onde subagentes ramificam (normalmente o tool_call que spawnou) */
+  subagentBranchPoint: string | null
   startTs: number
-  parentLastChild: Map<string, string>
   processedCount: number
   nodeCount: number
 }
@@ -47,25 +50,26 @@ function createGraphState(): GraphState {
   return {
     nodes: [],
     edges: [],
-    lastNodeId: null,
+    mainLastNodeId: null,
     contentNodeId: null,
-    subContentNodeId: null,
+    subagentLastNode: new Map(),
+    subagentContentNode: new Map(),
+    subagentBranchPoint: null,
     startTs: 0,
-    parentLastChild: new Map(),
     processedCount: 0,
     nodeCount: 0,
   }
 }
 
-function addNodeToState(
+function addNode(
   state: GraphState,
   id: string,
   type: string,
   label: string,
-  data: Partial<NodeData> = {},
-  parentId?: string,
+  data: Partial<NodeData>,
+  sourceId: string | null,
+  isSubAgent: boolean,
 ): void {
-  const isSubAgent = !!parentId
   state.nodes.push({
     id,
     type,
@@ -73,9 +77,6 @@ function addNodeToState(
     position: { x: 0, y: 0 },
   })
 
-  const sourceId = parentId
-    ? (state.parentLastChild.get(parentId) ?? state.lastNodeId)
-    : state.lastNodeId
   if (sourceId) {
     state.edges.push({
       id: `e-${sourceId}-${id}`,
@@ -86,14 +87,36 @@ function addNodeToState(
     })
   }
 
-  if (parentId) {
-    state.parentLastChild.set(parentId, id)
-  }
-  state.lastNodeId = id
   state.nodeCount++
 }
 
-/** Processa UMA mensagem e atualiza o estado do grafo in-place */
+/** Adiciona nó ao fluxo principal do orquestrador */
+function addMainNode(
+  state: GraphState,
+  id: string,
+  type: string,
+  label: string,
+  data: Partial<NodeData> = {},
+): void {
+  addNode(state, id, type, label, data, state.mainLastNodeId, false)
+  state.mainLastNodeId = id
+}
+
+/** Adiciona nó dentro do branch de um subagente */
+function addSubNode(
+  state: GraphState,
+  id: string,
+  type: string,
+  label: string,
+  data: Partial<NodeData>,
+  parentId: string,
+): void {
+  // Source: último nó deste subagente, ou o branch point se é o primeiro
+  const sourceId = state.subagentLastNode.get(parentId) ?? state.subagentBranchPoint
+  addNode(state, id, type, label, { ...data, isSubAgent: true }, sourceId, true)
+  state.subagentLastNode.set(parentId, id)
+}
+
 function processMessage(state: GraphState, msg: FlowEventMessage): boolean {
   const nodeType = TYPE_TO_NODE[msg.type]
   if (!nodeType) return false
@@ -106,12 +129,12 @@ function processMessage(state: GraphState, msg: FlowEventMessage): boolean {
 
   switch (msg.type) {
     case 'user_message':
-      addNodeToState(state, msg.id, nodeType, 'User Message', { detail: d.content as string })
+      addMainNode(state, msg.id, nodeType, 'User Message', { detail: d.content as string })
       addedNode = true
       break
 
     case 'system_prompt':
-      addNodeToState(state, msg.id, nodeType, 'System Prompt', {
+      addMainNode(state, msg.id, nodeType, 'System Prompt', {
         detail: `${d.toolCount} tools, ${d.agentCount} agents (${d.length} chars)`,
       })
       addedNode = true
@@ -120,7 +143,7 @@ function processMessage(state: GraphState, msg: FlowEventMessage): boolean {
     case 'llm_content':
       if (!state.contentNodeId) {
         state.contentNodeId = msg.id
-        addNodeToState(state, msg.id, nodeType, `LLM Response ${ts}`, {
+        addMainNode(state, msg.id, nodeType, `LLM Response ${ts}`, {
           detail: d.content as string,
           status: 'running',
         })
@@ -138,10 +161,12 @@ function processMessage(state: GraphState, msg: FlowEventMessage): boolean {
 
     case 'tool_call':
       state.contentNodeId = null
-      addNodeToState(state, msg.id, nodeType, `Tool: ${d.name} ${ts}`, {
+      addMainNode(state, msg.id, nodeType, `Tool: ${d.name} ${ts}`, {
         args: d.args,
         status: 'running',
       })
+      // Subagentes spawnam a partir deste tool_call
+      state.subagentBranchPoint = msg.id
       addedNode = true
       break
 
@@ -149,7 +174,7 @@ function processMessage(state: GraphState, msg: FlowEventMessage): boolean {
       const success = d.success as boolean
       const tcNode = [...state.nodes]
         .reverse()
-        .find((n) => n.type === 'toolCallNode' && n.data.status === 'running')
+        .find((n) => n.type === 'toolCallNode' && n.data.status === 'running' && !n.data.isSubAgent)
       if (tcNode) {
         tcNode.data = {
           ...tcNode.data,
@@ -160,33 +185,43 @@ function processMessage(state: GraphState, msg: FlowEventMessage): boolean {
       break
     }
 
-    case 'subagent_start':
-      state.subContentNodeId = null
-      addNodeToState(
+    case 'subagent_start': {
+      const agentParent = msg.parentId ?? msg.id
+      state.subagentContentNode.delete(agentParent)
+      addSubNode(
         state,
         msg.id,
         nodeType,
         `Agent: ${d.agentName} ${ts}`,
-        { agentName: d.agentName as string, status: 'running' },
-        msg.parentId,
+        {
+          agentName: d.agentName as string,
+          status: 'running',
+        },
+        agentParent,
       )
       addedNode = true
       break
+    }
 
-    case 'subagent_content':
-      if (!state.subContentNodeId) {
-        state.subContentNodeId = msg.id
-        addNodeToState(
+    case 'subagent_content': {
+      const agentParent = msg.parentId ?? ''
+      const contentId = state.subagentContentNode.get(agentParent)
+      if (!contentId) {
+        state.subagentContentNode.set(agentParent, msg.id)
+        addSubNode(
           state,
           msg.id,
           nodeType,
           `Agent Response ${ts}`,
-          { detail: (d.content as string) ?? (d.text as string), status: 'running' },
-          msg.parentId,
+          {
+            detail: (d.content as string) ?? (d.text as string),
+            status: 'running',
+          },
+          agentParent,
         )
         addedNode = true
       } else {
-        const node = state.nodes.find((n) => n.id === state.subContentNodeId)
+        const node = state.nodes.find((n) => n.id === contentId)
         if (node) {
           const text = (d.content as string) ?? (d.text as string) ?? ''
           node.data = {
@@ -196,25 +231,31 @@ function processMessage(state: GraphState, msg: FlowEventMessage): boolean {
         }
       }
       break
+    }
 
-    case 'subagent_tool_call':
-      state.subContentNodeId = null
-      addNodeToState(
+    case 'subagent_tool_call': {
+      const agentParent = msg.parentId ?? ''
+      state.subagentContentNode.delete(agentParent)
+      addSubNode(
         state,
         msg.id,
         nodeType,
         `Tool: ${d.toolName ?? d.name} ${ts}`,
-        { args: d.args ?? d.input, status: 'running' },
-        msg.parentId,
+        {
+          args: d.args ?? d.input,
+          status: 'running',
+        },
+        agentParent,
       )
       addedNode = true
       break
+    }
 
     case 'subagent_tool_result': {
       const subSuccess = (d.success as boolean) ?? true
       const subTcNode = [...state.nodes]
         .reverse()
-        .find((n) => n.type === 'toolCallNode' && n.data.status === 'running')
+        .find((n) => n.type === 'toolCallNode' && n.data.status === 'running' && n.data.isSubAgent)
       if (subTcNode) {
         subTcNode.data = {
           ...subTcNode.data,
@@ -225,40 +266,48 @@ function processMessage(state: GraphState, msg: FlowEventMessage): boolean {
       break
     }
 
-    case 'subagent_continuation':
-      addNodeToState(
+    case 'subagent_continuation': {
+      const agentParent = msg.parentId ?? ''
+      addSubNode(
         state,
         msg.id,
         nodeType,
         `Continuation ${ts}`,
-        { detail: `Index: ${d.continuationIndex}` },
-        msg.parentId,
+        {
+          detail: `Index: ${d.continuationIndex}`,
+        },
+        agentParent,
       )
       addedNode = true
       break
+    }
 
     case 'subagent_complete': {
-      state.subContentNodeId = null
+      const agentParent = msg.parentId ?? ''
+      state.subagentContentNode.delete(agentParent)
       const agentNode = [...state.nodes]
         .reverse()
         .find((n) => n.type === 'subAgentNode' && n.data.status === 'running')
       if (agentNode) {
         agentNode.data = { ...agentNode.data, status: 'success' }
       }
-      addNodeToState(
+      addSubNode(
         state,
         msg.id,
         'completeNode',
         `Agent Complete ${ts}`,
-        { status: 'success', preview: String(d.agentName ?? '') },
-        msg.parentId,
+        {
+          status: 'success',
+          preview: String(d.agentName ?? ''),
+        },
+        agentParent,
       )
       addedNode = true
       break
     }
 
     case 'model_loading':
-      addNodeToState(state, msg.id, nodeType, `Loading: ${d.modelName} ${ts}`, {
+      addMainNode(state, msg.id, nodeType, `Loading: ${d.modelName} ${ts}`, {
         status: 'running',
       })
       addedNode = true
@@ -276,7 +325,7 @@ function processMessage(state: GraphState, msg: FlowEventMessage): boolean {
 
     case 'finish':
       state.contentNodeId = null
-      addNodeToState(state, msg.id, nodeType, `Finish ${ts}`, {
+      addMainNode(state, msg.id, nodeType, `Finish ${ts}`, {
         detail: `Input: ${d.promptTokens} | Output: ${d.completionTokens} | Total: ${d.totalTokens}`,
         status: 'success',
       })
@@ -284,7 +333,7 @@ function processMessage(state: GraphState, msg: FlowEventMessage): boolean {
       break
 
     case 'error':
-      addNodeToState(state, msg.id, nodeType, `Error ${ts}`, {
+      addMainNode(state, msg.id, nodeType, `Error ${ts}`, {
         detail: (d.message as string) ?? 'Unknown error',
         status: 'error',
       })
@@ -295,7 +344,6 @@ function processMessage(state: GraphState, msg: FlowEventMessage): boolean {
   return addedNode
 }
 
-/** Constroi grafo de nodes/edges incrementalmente a partir de FlowEventMessages */
 export function useFlowGraphLive(messages: FlowEventMessage[]): {
   nodes: FlowNode[]
   edges: Edge[]
@@ -309,42 +357,35 @@ export function useFlowGraphLive(messages: FlowEventMessage[]): {
   useEffect(() => {
     const state = stateRef.current
 
-    // Se as mensagens foram limpas, resetar estado
     if (messages.length === 0 && state.processedCount > 0) {
       stateRef.current = createGraphState()
       setResult({ nodes: [], edges: [] })
       return
     }
 
-    // Se o array de mensagens encolheu (clear parcial), rebuild
     if (messages.length < state.processedCount) {
       stateRef.current = createGraphState()
       stateRef.current.processedCount = 0
     }
 
-    // Processar apenas mensagens novas
     const startIdx = stateRef.current.processedCount
     if (startIdx >= messages.length) return
 
     let addedNewNodes = false
     for (let i = startIdx; i < messages.length; i++) {
-      const added = processMessage(stateRef.current, messages[i])
-      if (added) addedNewNodes = true
+      if (processMessage(stateRef.current, messages[i])) addedNewNodes = true
     }
     stateRef.current.processedCount = messages.length
 
-    // Só recalcular layout quando novos nós foram adicionados
     if (addedNewNodes) {
       const { nodes: layoutNodes, edges: layoutEdges } = applyDagreLayout(
         stateRef.current.nodes,
         stateRef.current.edges,
       )
-      // Atualizar referências no state
       stateRef.current.nodes = layoutNodes
       stateRef.current.edges = layoutEdges
       setResult({ nodes: [...layoutNodes], edges: [...layoutEdges] })
     } else {
-      // Mesmo sem novos nós, atualizar para refletir data changes (content merge, status)
       setResult({ nodes: [...stateRef.current.nodes], edges: [...stateRef.current.edges] })
     }
   }, [messages])
