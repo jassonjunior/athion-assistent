@@ -1,34 +1,37 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-/**
- * Opções para criar um novo plugin.
+/** ScaffoldOptions
+ * Descrição: Opções para criar a estrutura de um novo plugin Athion
  */
 export interface ScaffoldOptions {
-  /** Nome do plugin (ex: 'git-tools', 'my-plugin') */
+  /** name
+   * Descrição: Nome do plugin (ex: 'git-tools', 'my-plugin')
+   */
   name: string
-  /** Descrição do plugin */
+  /** description
+   * Descrição: Descrição do que o plugin faz
+   */
   description?: string
-  /** Autor do plugin */
+  /** author
+   * Descrição: Nome do autor do plugin
+   */
   author?: string
-  /** Diretório onde criar (default: ~/.athion/plugins/) */
+  /** targetDir
+   * Descrição: Diretório onde criar o scaffold (default: ~/.athion/plugins/)
+   */
   targetDir?: string
-  /** Se deve criar uma tool de exemplo */
+  /** withExampleTool
+   * Descrição: Se deve criar uma tool de exemplo no plugin gerado
+   */
   withExampleTool?: boolean
 }
 
-/**
- * Cria a estrutura de diretórios e arquivos para um novo plugin Athion.
- *
- * Gera:
- *   <targetDir>/<name>/
- *   ├── index.ts        — entry point com PluginDefinition
- *   ├── package.json    — metadata do plugin
- *   └── README.md       — documentação básica
- *
- * @param options - Configuração do scaffold
+/** scaffoldPlugin
+ * Descrição: Cria a estrutura de diretórios e arquivos para um novo plugin Athion.
+ * Gera index.ts (entry point), package.json (metadata) e README.md (documentação).
+ * @param options - Configuração do scaffold (nome, descrição, autor, diretório)
  * @returns Caminho do diretório criado
- * @throws Se o diretório já existir
  */
 export function scaffoldPlugin(options: ScaffoldOptions): string {
   const {
@@ -73,6 +76,13 @@ export function scaffoldPlugin(options: ScaffoldOptions): string {
 
 // ── Generators ──────────────────────────────────────────────
 
+/** generateIndexTs
+ * Descrição: Gera o conteúdo do arquivo index.ts do plugin scaffold
+ * @param name - Nome do plugin
+ * @param description - Descrição do plugin
+ * @param withTool - Se deve incluir uma tool de exemplo
+ * @returns Conteúdo do arquivo index.ts como string
+ */
 function generateIndexTs(name: string, description: string, withTool: boolean): string {
   const toolBlock = withTool
     ? `
@@ -124,6 +134,12 @@ export default plugin
 `
 }
 
+/** generateReadme
+ * Descrição: Gera o conteúdo do arquivo README.md do plugin scaffold
+ * @param name - Nome do plugin
+ * @param description - Descrição do plugin
+ * @returns Conteúdo do README.md como string
+ */
 function generateReadme(name: string, description: string): string {
   return `# athion-plugin-${name}
 

@@ -1,10 +1,8 @@
-/**
- * Skill Registry — busca e instalação de skills.
- *
+/** createSkillRegistry
+ * Descrição: Skill Registry — busca e instalação de skills.
  * Fontes de skills:
- * 1. Catálogo embutido (registry-data.ts) — fallback offline
- * 2. GitHub repos — busca em repos conhecidos via API
- *
+ *  1. Catálogo embutido (registry-data.ts) — fallback offline
+ *  2. GitHub repos — busca em repos conhecidos via API
  * Instalação: baixa SKILL.md + arquivos auxiliares para ~/.athion/skills/<name>/
  */
 
@@ -15,7 +13,9 @@ import { join } from 'node:path'
 import type { SkillManager, SkillRegistry, SkillSearchResult } from './types'
 import { registryData } from './registry-data'
 
-/** Repos GitHub conhecidos para busca de skills. */
+/** KNOWN_REPOS
+ * Descrição: Repositórios GitHub conhecidos para busca de skills
+ */
 const KNOWN_REPOS = [
   'anthropics/skills',
   'daymade/claude-code-skills',
@@ -23,28 +23,72 @@ const KNOWN_REPOS = [
   'VoltAgent/awesome-agent-skills',
 ]
 
-/** Cache de skills encontradas no GitHub (evita chamadas repetidas). */
+/** GitHubSkillCache
+ * Descrição: Cache de skills encontradas no GitHub (evita chamadas repetidas)
+ */
 interface GitHubSkillCache {
+  /** skills
+   * Descrição: Mapa de skills encontradas indexado por repo/nome
+   */
   skills: Map<string, GitHubSkillInfo>
+  /** lastFetch
+   * Descrição: Timestamp do último fetch para controle de TTL
+   */
   lastFetch: number
 }
 
+/** GitHubSkillInfo
+ * Descrição: Informações de uma skill encontrada no GitHub
+ */
 interface GitHubSkillInfo {
+  /** name
+   * Descrição: Nome da skill
+   */
   name: string
+  /** description
+   * Descrição: Descrição da skill
+   */
   description: string
+  /** repo
+   * Descrição: Repositório de origem (ex: 'anthropics/skills')
+   */
   repo: string
+  /** path
+   * Descrição: Caminho dentro do repositório
+   */
   path: string
+  /** hasSkillMd
+   * Descrição: Se o diretório contém um arquivo SKILL.md
+   */
   hasSkillMd: boolean
 }
 
+/** CACHE_TTL_MS
+ * Descrição: Tempo de vida do cache de skills do GitHub em milissegundos (5 minutos)
+ */
 const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutos
+
+/** cache
+ * Descrição: Instância do cache de skills do GitHub
+ */
 const cache: GitHubSkillCache = { skills: new Map(), lastFetch: 0 }
 
+/** createSkillRegistry
+ * Descrição: Cria uma instância do Skill Registry que permite buscar e instalar skills
+ * a partir do catálogo embutido ou de repositórios GitHub conhecidos.
+ * @param skillManager - Instância do SkillManager para verificar skills instaladas
+ * @returns Instância do SkillRegistry pronta para uso
+ */
 export function createSkillRegistry(skillManager: SkillManager): SkillRegistry {
   const skillsDir = join(homedir(), '.athion', 'skills')
 
   // ── Busca local (catálogo embutido) ──────────────────────────────
 
+  /** search
+   * Descrição: Busca skills no catálogo embutido local por nome, descrição, tags ou triggers
+   * @param query - Termo de busca (opcional, retorna tudo se omitido)
+   * @returns Array de entradas do catálogo que batem com a busca
+   */
   function search(query?: string) {
     if (!query) return registryData.skills
     const lower = query.toLowerCase()
@@ -57,16 +101,31 @@ export function createSkillRegistry(skillManager: SkillManager): SkillRegistry {
     )
   }
 
+  /** listAvailable
+   * Descrição: Lista todas as skills disponíveis no catálogo embutido
+   * @returns Array de entradas do catálogo
+   */
   function listAvailable() {
     return registryData.skills
   }
 
+  /** isInstalled
+   * Descrição: Verifica se uma skill está instalada no sistema
+   * @param name - Nome da skill
+   * @returns true se a skill está registrada no SkillManager
+   */
   function isInstalled(name: string) {
     return skillManager.get(name) !== undefined
   }
 
   // ── Busca GitHub ─────────────────────────────────────────────────
 
+  /** searchGitHub
+   * Descrição: Busca skills no catálogo local e nos repositórios GitHub conhecidos.
+   * Combina resultados locais com remotos, evitando duplicatas.
+   * @param query - Termo de busca
+   * @returns Array de resultados de busca com status de instalação
+   */
   async function searchGitHub(query: string): Promise<SkillSearchResult[]> {
     const lower = query.toLowerCase()
     const results: SkillSearchResult[] = []
@@ -101,6 +160,10 @@ export function createSkillRegistry(skillManager: SkillManager): SkillRegistry {
     return results
   }
 
+  /** refreshCacheIfNeeded
+   * Descrição: Atualiza o cache de skills do GitHub se o TTL expirou.
+   * Faz fetch em paralelo de todos os repos conhecidos.
+   */
   async function refreshCacheIfNeeded(): Promise<void> {
     if (Date.now() - cache.lastFetch < CACHE_TTL_MS && cache.skills.size > 0) return
 
@@ -117,6 +180,12 @@ export function createSkillRegistry(skillManager: SkillManager): SkillRegistry {
     cache.lastFetch = Date.now()
   }
 
+  /** fetchRepoSkills
+   * Descrição: Lista skills disponíveis em um repositório GitHub.
+   * Tenta o diretório 'skills/' primeiro, depois a raiz do repo.
+   * @param repo - Repositório no formato 'owner/repo'
+   * @returns Array de informações de skills encontradas
+   */
   async function fetchRepoSkills(repo: string): Promise<GitHubSkillInfo[]> {
     const skills: GitHubSkillInfo[] = []
     try {
@@ -162,6 +231,13 @@ export function createSkillRegistry(skillManager: SkillManager): SkillRegistry {
     return skills
   }
 
+  /** fetchSkillDescription
+   * Descrição: Busca a descrição de uma skill a partir do seu SKILL.md no GitHub.
+   * Extrai do frontmatter YAML ou da primeira linha após o título.
+   * @param repo - Repositório no formato 'owner/repo'
+   * @param path - Caminho do diretório da skill dentro do repo
+   * @returns Descrição extraída (até 120 caracteres) ou string vazia
+   */
   async function fetchSkillDescription(repo: string, path: string): Promise<string> {
     const content = await ghApiFileContent(repo, `${path}/SKILL.md`)
     if (!content) return ''
@@ -193,6 +269,12 @@ export function createSkillRegistry(skillManager: SkillManager): SkillRegistry {
 
   // ── GitHub API helpers ───────────────────────────────────────────
 
+  /** ghApiContents
+   * Descrição: Lista o conteúdo de um diretório via API do GitHub
+   * @param repo - Repositório no formato 'owner/repo'
+   * @param path - Caminho dentro do repositório
+   * @returns Array de itens com nome, tipo e caminho
+   */
   async function ghApiContents(
     repo: string,
     path: string,
@@ -210,6 +292,12 @@ export function createSkillRegistry(skillManager: SkillManager): SkillRegistry {
     return data as Array<{ name: string; type: string; path: string }>
   }
 
+  /** ghApiFileContent
+   * Descrição: Busca o conteúdo de um arquivo via API do GitHub (decodifica base64)
+   * @param repo - Repositório no formato 'owner/repo'
+   * @param path - Caminho do arquivo dentro do repositório
+   * @returns Conteúdo do arquivo como string ou null se não encontrado
+   */
   async function ghApiFileContent(repo: string, path: string): Promise<string | null> {
     const url = `https://api.github.com/repos/${repo}/contents/${path}`
     const res = await fetch(url, {
@@ -224,6 +312,11 @@ export function createSkillRegistry(skillManager: SkillManager): SkillRegistry {
     return null
   }
 
+  /** ghHeaders
+   * Descrição: Retorna headers HTTP para chamadas à API do GitHub.
+   * Usa token do ambiente (GITHUB_TOKEN/GH_TOKEN) se disponível para aumentar rate limit.
+   * @returns Objeto com headers HTTP
+   */
   function ghHeaders(): Record<string, string> {
     const headers: Record<string, string> = {
       Accept: 'application/vnd.github.v3+json',
@@ -237,6 +330,12 @@ export function createSkillRegistry(skillManager: SkillManager): SkillRegistry {
 
   // ── Instalação ───────────────────────────────────────────────────
 
+  /** install
+   * Descrição: Instala uma skill. Aceita nome simples, owner/repo ou owner/repo/skill-name.
+   * Busca primeiro no catálogo local, depois no cache do GitHub.
+   * @param nameOrPath - Nome da skill ou caminho no formato owner/repo/skill
+   * @returns Objeto com status de sucesso e mensagem de erro se falhar
+   */
   async function install(nameOrPath: string): Promise<{ success: boolean; error?: string }> {
     // Formato: owner/repo/skill-name
     const parts = nameOrPath.split('/')
@@ -274,6 +373,12 @@ export function createSkillRegistry(skillManager: SkillManager): SkillRegistry {
     }
   }
 
+  /** installLocal
+   * Descrição: Instala uma skill a partir do catálogo local embutido.
+   * Salva o conteúdo .md no diretório de skills do usuário.
+   * @param entry - Entrada do catálogo com nome, conteúdo e/ou URL
+   * @returns Objeto com status de sucesso e mensagem de erro se falhar
+   */
   async function installLocal(entry: {
     name: string
     content?: string
@@ -299,6 +404,14 @@ export function createSkillRegistry(skillManager: SkillManager): SkillRegistry {
     return { success: true }
   }
 
+  /** installFromRepo
+   * Descrição: Instala uma skill a partir de um repositório GitHub específico.
+   * Baixa os arquivos do diretório da skill e salva localmente.
+   * @param owner - Dono do repositório GitHub
+   * @param repo - Nome do repositório
+   * @param skillPath - Caminho da skill dentro do repositório
+   * @returns Objeto com status de sucesso e mensagem de erro se falhar
+   */
   async function installFromRepo(
     owner: string,
     repo: string,
@@ -329,6 +442,11 @@ export function createSkillRegistry(skillManager: SkillManager): SkillRegistry {
     }
   }
 
+  /** installFromKnownRepos
+   * Descrição: Busca e instala uma skill dos repositórios GitHub conhecidos
+   * @param query - Nome da skill ou caminho repo/skill-name
+   * @returns Objeto com status de sucesso e mensagem de erro se falhar
+   */
   async function installFromKnownRepos(
     query: string,
   ): Promise<{ success: boolean; error?: string }> {
@@ -343,6 +461,15 @@ export function createSkillRegistry(skillManager: SkillManager): SkillRegistry {
     return { success: false, error: `Skill '${query}' não encontrada nos repos conhecidos.` }
   }
 
+  /** downloadSkillFiles
+   * Descrição: Baixa os arquivos de uma skill do GitHub e salva no diretório local.
+   * Processa arquivos e subdiretórios recursivamente (1 nível).
+   * @param repo - Repositório no formato 'owner/repo'
+   * @param path - Caminho da skill dentro do repositório
+   * @param skillName - Nome da skill para criar o diretório local
+   * @param items - Lista de itens retornados pela API do GitHub
+   * @returns Objeto com status de sucesso e mensagem de erro se falhar
+   */
   async function downloadSkillFiles(
     repo: string,
     path: string,
@@ -375,6 +502,12 @@ export function createSkillRegistry(skillManager: SkillManager): SkillRegistry {
     return { success: true }
   }
 
+  /** downloadSubdir
+   * Descrição: Baixa os arquivos de um subdiretório do GitHub
+   * @param repo - Repositório no formato 'owner/repo'
+   * @param path - Caminho do subdiretório dentro do repositório
+   * @param destDir - Caminho local de destino
+   */
   async function downloadSubdir(repo: string, path: string, destDir: string): Promise<void> {
     const items = await ghApiContents(repo, path)
     if (!items || items.length === 0) return
@@ -391,6 +524,12 @@ export function createSkillRegistry(skillManager: SkillManager): SkillRegistry {
 
   // ── Desinstalação ────────────────────────────────────────────────
 
+  /** uninstall
+   * Descrição: Remove uma skill instalada. Tenta remover como diretório (novo formato)
+   * e depois como arquivo .md solto (formato antigo).
+   * @param name - Nome da skill a desinstalar
+   * @returns Objeto com status de sucesso e mensagem de erro se falhar
+   */
   async function uninstall(name: string) {
     // Tenta como diretório primeiro (novo formato)
     const dirPath = join(skillsDir, name)

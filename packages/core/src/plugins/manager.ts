@@ -13,30 +13,34 @@ import type {
   PluginManager,
 } from './types'
 
-/**
- * Dependências que o PluginManager precisa do core.
+/** PluginManagerDeps
+ * Descrição: Dependências que o PluginManager precisa do core.
  * Injetadas via factory — o manager não importa nada diretamente.
  */
 export interface PluginManagerDeps {
+  /** bus
+   * Descrição: Bus de eventos para comunicação entre módulos
+   */
   bus: Bus
+  /** config
+   * Descrição: Gerenciador de configuração do sistema
+   */
   config: ConfigManager
+  /** tools
+   * Descrição: Registry de tools para o LLM
+   */
   tools: ToolRegistry
+  /** provider
+   * Descrição: Camada de acesso a provedores de LLM
+   */
   provider: ProviderLayer
 }
 
-/**
- * Cria uma instância do PluginManager.
- *
- * O manager controla o ciclo de vida dos plugins:
- * 1. Load → importa o módulo, chama onLoad(), rastreia registros
- * 2. Unload → chama onUnload(), remove tools e listeners automaticamente
- * 3. Reload → unload + load (hot-reload sem restart)
- *
- * Tracking automático:
- * - Wrapa o ToolRegistry para interceptar register/unregister do plugin
- * - Wrapa o Bus para interceptar subscribe do plugin
- * - No unload, tudo que o plugin registrou é removido automaticamente
- *
+/** createPluginManager
+ * Descrição: Cria uma instância do PluginManager. Controla o ciclo de vida dos plugins:
+ * load (importa e chama onLoad), unload (chama onUnload e cleanup), reload (hot-reload).
+ * Faz tracking automático de tools e bus listeners registrados pelo plugin para
+ * cleanup automático no unload.
  * @param deps - Dependências do core (bus, config, tools, provider)
  * @returns Instância do PluginManager
  */
@@ -45,6 +49,12 @@ export function createPluginManager(deps: PluginManagerDeps): PluginManager {
 
   // ── Load ──────────────────────────────────────────────────
 
+  /** load
+   * Descrição: Carrega um plugin a partir de sua definição. Cria contexto com tracking,
+   * chama onLoad() e emite evento no bus.
+   * @param definition - Definição do plugin a carregar
+   * @param sourcePath - Caminho opcional de onde foi carregado (para hot-reload)
+   */
   async function load(definition: PluginDefinition, sourcePath?: string): Promise<void> {
     if (plugins.has(definition.name)) {
       throw new Error(`Plugin '${definition.name}' já está carregado. Use reload() para atualizar.`)
@@ -84,6 +94,11 @@ export function createPluginManager(deps: PluginManagerDeps): PluginManager {
 
   // ── Unload ────────────────────────────────────────────────
 
+  /** unload
+   * Descrição: Descarrega um plugin pelo nome. Chama onUnload() do plugin se existir,
+   * depois faz cleanup automático de tools e bus listeners.
+   * @param name - Nome do plugin a descarregar
+   */
   async function unload(name: string): Promise<void> {
     const loaded = plugins.get(name)
     if (!loaded) {
@@ -111,6 +126,12 @@ export function createPluginManager(deps: PluginManagerDeps): PluginManager {
 
   // ── Reload ────────────────────────────────────────────────
 
+  /** reload
+   * Descrição: Hot-reload de um plugin. Descarrega e recarrega com nova definição
+   * ou reimporta do path original.
+   * @param name - Nome do plugin a recarregar
+   * @param newDefinition - Nova definição (se omitida, reimporta do path original)
+   */
   async function reload(name: string, newDefinition?: PluginDefinition): Promise<void> {
     const loaded = plugins.get(name)
     if (!loaded) {
@@ -126,6 +147,11 @@ export function createPluginManager(deps: PluginManagerDeps): PluginManager {
 
   // ── Load from Directory ───────────────────────────────────
 
+  /** loadFromDirectory
+   * Descrição: Carrega todos os plugins de um diretório. Cada subdiretório deve
+   * ter um entry point (index.ts, index.js, plugin.ts ou plugin.js).
+   * @param dir - Caminho do diretório de plugins
+   */
   async function loadFromDirectory(dir: string): Promise<void> {
     const resolvedDir = resolve(dir.replace('~', process.env.HOME ?? '.'))
 
@@ -150,14 +176,28 @@ export function createPluginManager(deps: PluginManagerDeps): PluginManager {
 
   // ── Consultas ─────────────────────────────────────────────
 
+  /** list
+   * Descrição: Retorna a lista de todos os plugins carregados
+   * @returns Array de plugins carregados com seus estados
+   */
   function list(): LoadedPlugin[] {
     return [...plugins.values()]
   }
 
+  /** get
+   * Descrição: Busca um plugin carregado pelo nome
+   * @param name - Nome do plugin
+   * @returns O plugin carregado ou undefined se não encontrado
+   */
   function get(name: string): LoadedPlugin | undefined {
     return plugins.get(name)
   }
 
+  /** has
+   * Descrição: Verifica se um plugin está carregado
+   * @param name - Nome do plugin
+   * @returns true se o plugin está carregado
+   */
   function has(name: string): boolean {
     return plugins.has(name)
   }
@@ -167,10 +207,14 @@ export function createPluginManager(deps: PluginManagerDeps): PluginManager {
 
 // ── Helpers internos ──────────────────────────────────────────
 
-/**
- * Cria um PluginContext com tracking automático.
- * Wrapa tools.register e bus.subscribe para rastrear o que o plugin faz.
- * Isso permite cleanup automático no unload, mesmo se o plugin não fizer.
+/** createTrackedContext
+ * Descrição: Cria um PluginContext com tracking automático. Wrapa tools.register
+ * e bus.subscribe para rastrear o que o plugin faz, permitindo cleanup automático
+ * no unload mesmo se o plugin não fizer.
+ * @param deps - Dependências do core
+ * @param pluginName - Nome do plugin para logging
+ * @param loaded - Estado do plugin carregado (mutado para adicionar tracking)
+ * @returns PluginContext com interceptação de registros
  */
 function createTrackedContext(
   deps: PluginManagerDeps,
@@ -216,9 +260,12 @@ function createTrackedContext(
   }
 }
 
-/**
- * Cria um PluginContext simples (sem tracking).
- * Usado no onUnload — nesse ponto o plugin já está saindo.
+/** createSimpleContext
+ * Descrição: Cria um PluginContext simples (sem tracking). Usado no onUnload,
+ * quando o plugin já está saindo e não precisa mais de rastreamento.
+ * @param deps - Dependências do core
+ * @param pluginName - Nome do plugin para logging
+ * @returns PluginContext simples sem interceptação
  */
 function createSimpleContext(deps: PluginManagerDeps, pluginName: string): PluginContext {
   return {
@@ -230,9 +277,11 @@ function createSimpleContext(deps: PluginManagerDeps, pluginName: string): Plugi
   }
 }
 
-/**
- * Remove tudo que o plugin registrou — tools e bus listeners.
+/** cleanupPlugin
+ * Descrição: Remove tudo que o plugin registrou — tools e bus listeners.
  * Chamado no unload e também se onLoad falhar (rollback).
+ * @param loaded - Estado do plugin com lista de registros a limpar
+ * @param deps - Dependências do core para acessar tools e bus
  */
 function cleanupPlugin(loaded: LoadedPlugin, deps: PluginManagerDeps): void {
   // Remove tools registradas pelo plugin
@@ -254,9 +303,12 @@ function cleanupPlugin(loaded: LoadedPlugin, deps: PluginManagerDeps): void {
   }
 }
 
-/**
- * Importa um plugin de um diretório.
- * Busca index.ts ou index.js e espera um export default com PluginDefinition.
+/** importPlugin
+ * Descrição: Importa um plugin de um diretório. Busca entry points candidatos
+ * (index.ts, index.js, plugin.ts, plugin.js) e espera um export default
+ * com PluginDefinition válida.
+ * @param pluginDir - Caminho absoluto do diretório do plugin
+ * @returns Definição do plugin importada
  */
 async function importPlugin(pluginDir: string): Promise<PluginDefinition> {
   const candidates = ['index.ts', 'index.js', 'plugin.ts', 'plugin.js']
@@ -284,9 +336,11 @@ async function importPlugin(pluginDir: string): Promise<PluginDefinition> {
   return definition
 }
 
-/**
- * Reimporta um plugin do path original (para hot-reload).
- * Usa cache-busting com query param de timestamp.
+/** reimportPlugin
+ * Descrição: Reimporta um plugin do path original (para hot-reload).
+ * Usa cache-busting com query param de timestamp para forçar reimportação.
+ * @param loaded - Estado do plugin carregado com o path original
+ * @returns Nova definição do plugin reimportada
  */
 async function reimportPlugin(loaded: LoadedPlugin): Promise<PluginDefinition> {
   if (!loaded.path) {
@@ -310,8 +364,10 @@ async function reimportPlugin(loaded: LoadedPlugin): Promise<PluginDefinition> {
   throw new Error(`Entry point não encontrado em ${loaded.path}`)
 }
 
-/**
- * Cria um logger prefixado com o nome do plugin.
+/** createLogger
+ * Descrição: Cria um logger prefixado com o nome do plugin
+ * @param pluginName - Nome do plugin para usar como prefixo
+ * @returns Objeto PluginLogger com métodos info, warn e error
  */
 function createLogger(pluginName: string): PluginLogger {
   const prefix = `[plugin:${pluginName}]`

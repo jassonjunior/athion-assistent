@@ -1,5 +1,6 @@
 /**
  * Handlers para cada método JSON-RPC.
+ * Descrição: Define os handlers que processam requisições JSON-RPC do servidor stdio.
  *
  * Cada handler recebe params e retorna result (ou throws para error).
  * O handler `chat.send` é especial: consome o AsyncGenerator do orchestrator
@@ -8,14 +9,37 @@
 
 import type { AthionCore } from '@athion/core'
 
+/** NotifyFn
+ * Descrição: Tipo de função para enviar notificações JSON-RPC ao cliente.
+ */
 type NotifyFn = (method: string, params?: unknown) => void
+
+/** Handler
+ * Descrição: Tipo de função handler que processa uma requisição JSON-RPC.
+ */
 type Handler = (params: unknown) => Promise<unknown>
 
+/** RpcHandlers
+ * Descrição: Mapa de handlers JSON-RPC indexados pelo nome do método.
+ */
 export type RpcHandlers = Record<string, Handler>
 
-/** Active abort controllers for chat sessions */
+/** activeChats
+ * Descrição: Mapa de AbortControllers ativos para sessões de chat em andamento.
+ */
 const activeChats = new Map<string, AbortController>()
 
+/** IGNORED_DIRS
+ * Descrição: Conjunto de diretórios ignorados na busca de arquivos por prefixo.
+ */
+const IGNORED_DIRS = new Set(['node_modules', '.git', 'dist', '.next', 'build', 'coverage'])
+
+/** createHandlers
+ * Descrição: Cria e retorna todos os handlers JSON-RPC disponíveis no servidor.
+ * @param core - Instância do core do Athion para processamento das requisições
+ * @param notify - Função para enviar notificações JSON-RPC ao cliente
+ * @returns Mapa de handlers indexados pelo nome do método JSON-RPC
+ */
 export function createHandlers(core: AthionCore, notify: NotifyFn): RpcHandlers {
   return {
     ping: async () => ({ pong: true, timestamp: Date.now() }),
@@ -68,8 +92,13 @@ export function createHandlers(core: AthionCore, notify: NotifyFn): RpcHandlers 
 
 // ─── File Search ─────────────────────────────────────────────────────
 
-const IGNORED_DIRS = new Set(['node_modules', '.git', 'dist', '.next', 'build', 'coverage'])
-
+/** listFilesByPrefix
+ * Descrição: Busca arquivos no workspace por prefixo, ignorando diretórios comuns.
+ * @param prefix - Prefixo para filtrar arquivos (suporta caminhos parciais)
+ * @param cwd - Diretório de trabalho para a busca
+ * @param limit - Número máximo de resultados (padrão: 10)
+ * @returns Promise com array de caminhos de arquivos encontrados
+ */
 async function listFilesByPrefix(prefix: string, cwd: string, limit = 10): Promise<string[]> {
   const results: string[] = []
   try {
@@ -90,6 +119,14 @@ async function listFilesByPrefix(prefix: string, cwd: string, limit = 10): Promi
 
 // ─── Chat Handlers ──────────────────────────────────────────────────
 
+/** handleChatSend
+ * Descrição: Processa o envio de uma mensagem de chat, consumindo o stream do orchestrator
+ * e enviando cada evento como notificação JSON-RPC ao cliente.
+ * @param core - Instância do core do Athion
+ * @param notify - Função de notificação JSON-RPC
+ * @param params - Parâmetros contendo sessionId e content da mensagem
+ * @returns Promise com indicador de sucesso
+ */
 async function handleChatSend(
   core: AthionCore,
   notify: NotifyFn,
@@ -114,6 +151,11 @@ async function handleChatSend(
   return { ok: true }
 }
 
+/** notifyChatEvent
+ * Descrição: Converte um evento do orchestrator em notificação JSON-RPC e a envia ao cliente.
+ * @param notify - Função de notificação JSON-RPC
+ * @param event - Evento do orchestrator a ser convertido e enviado
+ */
 function notifyChatEvent(notify: NotifyFn, event: { type: string; [key: string]: unknown }): void {
   switch (event.type) {
     case 'content':
@@ -178,6 +220,11 @@ function notifyChatEvent(notify: NotifyFn, event: { type: string; [key: string]:
   }
 }
 
+/** handleChatAbort
+ * Descrição: Aborta uma sessão de chat em andamento pelo seu sessionId.
+ * @param params - Parâmetros contendo o sessionId da sessão a ser abortada
+ * @returns Promise com indicador se houve aborto
+ */
 async function handleChatAbort(params: unknown): Promise<unknown> {
   const { sessionId } = params as { sessionId: string }
   const controller = activeChats.get(sessionId)
@@ -190,6 +237,12 @@ async function handleChatAbort(params: unknown): Promise<unknown> {
 
 // ─── Session Handlers ───────────────────────────────────────────────
 
+/** handleSessionCreate
+ * Descrição: Cria uma nova sessão de conversa no orchestrator.
+ * @param core - Instância do core do Athion
+ * @param params - Parâmetros contendo projectId e título opcional
+ * @returns Promise com dados da sessão criada
+ */
 async function handleSessionCreate(core: AthionCore, params: unknown): Promise<unknown> {
   const { projectId, title } = params as { projectId: string; title?: string }
   const session = await core.orchestrator.createSession(projectId, title)
@@ -201,6 +254,12 @@ async function handleSessionCreate(core: AthionCore, params: unknown): Promise<u
   }
 }
 
+/** handleSessionList
+ * Descrição: Lista todas as sessões, opcionalmente filtradas por projectId.
+ * @param core - Instância do core do Athion
+ * @param params - Parâmetros contendo projectId opcional para filtragem
+ * @returns Promise com array de sessões serializadas
+ */
 async function handleSessionList(core: AthionCore, params: unknown): Promise<unknown> {
   const { projectId } = (params as { projectId?: string }) ?? {}
   return core.orchestrator.listSessions(projectId).map((s) => ({
@@ -211,6 +270,12 @@ async function handleSessionList(core: AthionCore, params: unknown): Promise<unk
   }))
 }
 
+/** handleSessionLoad
+ * Descrição: Carrega uma sessão existente pelo seu ID.
+ * @param core - Instância do core do Athion
+ * @param params - Parâmetros contendo o sessionId da sessão a ser carregada
+ * @returns Promise com dados da sessão carregada
+ */
 async function handleSessionLoad(core: AthionCore, params: unknown): Promise<unknown> {
   const { sessionId } = params as { sessionId: string }
   const session = await core.orchestrator.loadSession(sessionId)
@@ -222,6 +287,12 @@ async function handleSessionLoad(core: AthionCore, params: unknown): Promise<unk
   }
 }
 
+/** handleSessionDelete
+ * Descrição: Deleta uma sessão pelo seu ID.
+ * @param core - Instância do core do Athion
+ * @param params - Parâmetros contendo o sessionId da sessão a ser deletada
+ * @returns Promise com indicador de exclusão
+ */
 async function handleSessionDelete(core: AthionCore, params: unknown): Promise<unknown> {
   const { sessionId } = params as { sessionId: string }
   core.orchestrator.deleteSession(sessionId)
@@ -230,11 +301,23 @@ async function handleSessionDelete(core: AthionCore, params: unknown): Promise<u
 
 // ─── Config Handlers ────────────────────────────────────────────────
 
+/** handleConfigGet
+ * Descrição: Obtém o valor de uma chave de configuração.
+ * @param core - Instância do core do Athion
+ * @param params - Parâmetros contendo a chave de configuração
+ * @returns Promise com a chave e seu valor
+ */
 async function handleConfigGet(core: AthionCore, params: unknown): Promise<unknown> {
   const { key } = params as { key: string }
   return { key, value: core.config.get(key as never) }
 }
 
+/** handleConfigSet
+ * Descrição: Define o valor de uma chave de configuração.
+ * @param core - Instância do core do Athion
+ * @param params - Parâmetros contendo a chave e o valor a ser definido
+ * @returns Promise com indicador de sucesso
+ */
 async function handleConfigSet(core: AthionCore, params: unknown): Promise<unknown> {
   const { key, value } = params as { key: string; value: unknown }
   core.config.set(key as never, value as never)
@@ -243,18 +326,35 @@ async function handleConfigSet(core: AthionCore, params: unknown): Promise<unkno
 
 // ─── List Handlers ──────────────────────────────────────────────────
 
+/** handleToolsList
+ * Descrição: Lista todas as ferramentas disponíveis no core.
+ * @param core - Instância do core do Athion
+ * @returns Array de ferramentas com nome, descrição e nível
+ */
 function handleToolsList(core: AthionCore): unknown {
   return core.tools
     .list()
     .map((t) => ({ name: t.name, description: t.description, level: t.level }))
 }
 
+/** handleAgentsList
+ * Descrição: Lista todos os agentes disponíveis no core.
+ * @param core - Instância do core do Athion
+ * @returns Array de agentes com nome e descrição
+ */
 function handleAgentsList(core: AthionCore): unknown {
   return core.subagents.list().map((a) => ({ name: a.name, description: a.description }))
 }
 
 // ─── Codebase Handlers ──────────────────────────────────────────────
 
+/** handleCodebaseIndex
+ * Descrição: Indexa o workspace ou um arquivo específico, enviando progresso via notificações.
+ * @param core - Instância do core do Athion
+ * @param notify - Função de notificação JSON-RPC para enviar progresso
+ * @param params - Parâmetros contendo arquivo específico opcional para re-indexação
+ * @returns Promise com estatísticas da indexação ou indicador de sucesso
+ */
 async function handleCodebaseIndex(
   core: AthionCore,
   notify: NotifyFn,
@@ -282,6 +382,12 @@ async function handleCodebaseIndex(
   return stats
 }
 
+/** handleCodebaseSearch
+ * Descrição: Busca semanticamente no índice do codebase.
+ * @param core - Instância do core do Athion
+ * @param params - Parâmetros contendo a query de busca e limite opcional de resultados
+ * @returns Promise com os resultados da busca formatados
+ */
 async function handleCodebaseSearch(core: AthionCore, params: unknown): Promise<unknown> {
   if (!core.indexer) {
     throw new Error('Indexer não configurado.')
@@ -305,6 +411,11 @@ async function handleCodebaseSearch(core: AthionCore, params: unknown): Promise<
   }
 }
 
+/** handleCodebaseStatus
+ * Descrição: Retorna as estatísticas do índice de busca do codebase.
+ * @param core - Instância do core do Athion
+ * @returns Objeto com status de disponibilidade e estatísticas do índice
+ */
 function handleCodebaseStatus(core: AthionCore): unknown {
   if (!core.indexer) {
     return { available: false, reason: 'Indexer não configurado.' }
@@ -313,6 +424,11 @@ function handleCodebaseStatus(core: AthionCore): unknown {
   return { available: true, ...stats }
 }
 
+/** handleCodebaseClear
+ * Descrição: Limpa todos os dados do índice de busca do codebase.
+ * @param core - Instância do core do Athion
+ * @returns Objeto com indicador de sucesso
+ */
 function handleCodebaseClear(core: AthionCore): unknown {
   if (!core.indexer) {
     throw new Error('Indexer não configurado.')
@@ -323,6 +439,12 @@ function handleCodebaseClear(core: AthionCore): unknown {
 
 // ─── Plugin/Skills Handlers ─────────────────────────────────────────
 
+/** handlePluginSearch
+ * Descrição: Busca skills no registry local e/ou no GitHub.
+ * @param core - Instância do core do Athion
+ * @param params - Parâmetros contendo query opcional para busca no GitHub
+ * @returns Promise com lista de skills encontradas
+ */
 async function handlePluginSearch(core: AthionCore, params: unknown): Promise<unknown> {
   const { query } = (params as { query?: string }) ?? {}
 
@@ -355,6 +477,12 @@ async function handlePluginSearch(core: AthionCore, params: unknown): Promise<un
   }
 }
 
+/** handlePluginInstall
+ * Descrição: Instala uma skill a partir do registry.
+ * @param core - Instância do core do Athion
+ * @param params - Parâmetros contendo o nome da skill a ser instalada
+ * @returns Promise com resultado da instalação
+ */
 async function handlePluginInstall(core: AthionCore, params: unknown): Promise<unknown> {
   const { name } = params as { name: string }
   const result = await core.skillRegistry.install(name)
@@ -363,6 +491,12 @@ async function handlePluginInstall(core: AthionCore, params: unknown): Promise<u
 
 // ─── Completion Handler ─────────────────────────────────────────────
 
+/** handleCompletion
+ * Descrição: Gera completação de código usando o modelo LLM via fill-in-middle (FIM).
+ * @param core - Instância do core do Athion
+ * @param params - Parâmetros contendo prefix, suffix, language e filePath do código
+ * @returns Promise com o texto completado, linguagem e motivo de finalização
+ */
 async function handleCompletion(core: AthionCore, params: unknown): Promise<unknown> {
   const { prefix, suffix, language } = params as {
     prefix: string

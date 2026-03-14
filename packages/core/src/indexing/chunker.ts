@@ -1,14 +1,10 @@
-/**
- * Chunker — divide arquivos de código em chunks semânticos.
- *
- * Estratégia primária: tree-sitter (AST real, via web-tree-sitter WASM)
- * Fallback: heurística regex por linguagem
- *  - TypeScript/JavaScript: detecta declarações de função/classe/export const/arrow functions
- *  - Python: detecta def/class
- *  - Outros: janela deslizante com sobreposição
- *
+/** Chunker
+ * Descrição: Divide arquivos de código em chunks semânticos.
+ * Estratégia primária: tree-sitter (AST real, via web-tree-sitter WASM).
+ * Fallback: heurística regex por linguagem (TypeScript/JavaScript detecta
+ * declarações de função/classe/export const/arrow functions; Python detecta
+ * def/class; outros usam janela deslizante com sobreposição).
  * Cada chunk tem no máximo maxChunkLines linhas.
- * Chunks muito pequenos (<minChunkLines) são merged com o anterior ou descartados.
  */
 
 import { createHash } from 'node:crypto'
@@ -17,10 +13,19 @@ import type { ChunkType, CodeChunk } from './types'
 import { detectLanguage } from './file-walker'
 import { chunkFileWithTreeSitter } from './tree-sitter-chunker'
 
+/** DEFAULT_MAX_CHUNK_LINES
+ * Descrição: Número máximo padrão de linhas por chunk
+ */
 const DEFAULT_MAX_CHUNK_LINES = 60
+
+/** DEFAULT_MIN_CHUNK_LINES
+ * Descrição: Número mínimo padrão de linhas por chunk
+ */
 const DEFAULT_MIN_CHUNK_LINES = 3
 
-/** Regex de início de declaração por linguagem. */
+/** DECLARATION_PATTERNS
+ * Descrição: Regex de início de declaração por linguagem para chunking semântico
+ */
 const DECLARATION_PATTERNS: Record<string, RegExp> = {
   typescript:
     /^(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:function|class|const|let|var|interface|type|enum)\s+\w/,
@@ -33,7 +38,12 @@ const DECLARATION_PATTERNS: Record<string, RegExp> = {
   csharp: /^(?:public|private|protected|static|class|interface|enum|struct|void|async)\s+/,
 }
 
-/** Detecta nome do símbolo em uma linha de declaração. */
+/** extractSymbolName
+ * Descrição: Detecta o nome do símbolo em uma linha de declaração
+ * @param line - Linha de código contendo a declaração
+ * @param lang - Linguagem do arquivo
+ * @returns Nome do símbolo ou undefined se não detectado
+ */
 function extractSymbolName(line: string, lang: string): string | undefined {
   if (lang === 'typescript' || lang === 'javascript') {
     const m = line.match(/(?:function|class|const|let|var|interface|type|enum)\s+(\w+)/)
@@ -46,7 +56,12 @@ function extractSymbolName(line: string, lang: string): string | undefined {
   return undefined
 }
 
-/** Detecta tipo do chunk com base na linha de declaração. */
+/** detectChunkType
+ * Descrição: Detecta o tipo do chunk com base na linha de declaração
+ * @param line - Linha de código contendo a declaração
+ * @param lang - Linguagem do arquivo
+ * @returns Tipo do chunk (function, class, method ou block)
+ */
 function detectChunkType(line: string, lang: string): ChunkType {
   const trimmed = line.trim()
   if (/\bclass\b/.test(trimmed)) return 'class'
@@ -59,15 +74,22 @@ function detectChunkType(line: string, lang: string): ChunkType {
   return 'block'
 }
 
-/** Resultado do chunker. */
+/** ChunkerResult
+ * Descrição: Resultado do chunker contendo os chunks extraídos de um arquivo
+ */
 export interface ChunkerResult {
+  /** chunks
+   * Descrição: Array de chunks extraídos (sem o campo id, que é gerado pelo manager)
+   */
   chunks: Omit<CodeChunk, 'id'>[]
 }
 
-/**
- * Divide um arquivo em chunks semânticos.
- * Tenta tree-sitter (AST real) primeiro; cai para regex se não disponível.
- * Retorna chunks sem o campo `id` (gerado pelo manager com hash).
+/** chunkFile
+ * Descrição: Divide um arquivo em chunks semânticos. Tenta tree-sitter (AST real)
+ * primeiro; cai para regex heurístico se não disponível.
+ * @param filePath - Caminho absoluto do arquivo a chunkar
+ * @param options - Opções de chunking (maxChunkLines, minChunkLines)
+ * @returns Resultado com os chunks extraídos
  */
 export async function chunkFile(
   filePath: string,
@@ -87,9 +109,13 @@ export async function chunkFile(
   return chunkFileWithRegex(filePath, maxChunkLines, minChunkLines)
 }
 
-/**
- * Fallback: divide um arquivo usando heurística regex.
- * Usado quando tree-sitter não está disponível ou falha.
+/** chunkFileWithRegex
+ * Descrição: Divide um arquivo usando heurística regex. Usado quando tree-sitter
+ * não está disponível ou falha para a linguagem do arquivo.
+ * @param filePath - Caminho absoluto do arquivo
+ * @param maxChunkLines - Máximo de linhas por chunk
+ * @param minChunkLines - Mínimo de linhas por chunk
+ * @returns Resultado com os chunks extraídos via regex
  */
 async function chunkFileWithRegex(
   filePath: string,
@@ -136,7 +162,17 @@ async function chunkFileWithRegex(
   return { chunks: chunks.length > 0 ? chunks : [fileFallbackChunk(filePath, language, lines)] }
 }
 
-/** Chunking semântico: quebra nas linhas de declaração. */
+/** semanticChunk
+ * Descrição: Chunking semântico — quebra o arquivo nas linhas de declaração
+ * (function, class, const, etc.) detectadas pelo regex da linguagem.
+ * @param lines - Linhas do arquivo
+ * @param filePath - Caminho absoluto do arquivo
+ * @param language - Linguagem detectada
+ * @param pattern - Regex de declarações da linguagem
+ * @param maxChunkLines - Máximo de linhas por chunk
+ * @param minChunkLines - Mínimo de linhas por chunk
+ * @returns Array de chunks semânticos
+ */
 function semanticChunk(
   lines: string[],
   filePath: string,
@@ -207,7 +243,15 @@ function semanticChunk(
   return chunks
 }
 
-/** Chunking por janela deslizante com sobreposição de 10 linhas. */
+/** slidingWindowChunk
+ * Descrição: Chunking por janela deslizante com sobreposição de 15%.
+ * Usado para linguagens sem padrão de declarações definido.
+ * @param lines - Linhas do arquivo
+ * @param filePath - Caminho absoluto do arquivo
+ * @param language - Linguagem detectada
+ * @param maxChunkLines - Máximo de linhas por chunk
+ * @returns Array de chunks por janela deslizante
+ */
 function slidingWindowChunk(
   lines: string[],
   filePath: string,
@@ -235,6 +279,13 @@ function slidingWindowChunk(
   return chunks
 }
 
+/** fileFallbackChunk
+ * Descrição: Cria um chunk único representando o arquivo inteiro (fallback)
+ * @param filePath - Caminho absoluto do arquivo
+ * @param language - Linguagem detectada
+ * @param lines - Linhas do arquivo
+ * @returns Chunk único do arquivo inteiro
+ */
 function fileFallbackChunk(
   filePath: string,
   language: string,
@@ -250,14 +301,25 @@ function fileFallbackChunk(
   }
 }
 
-/** Trunca conteúdo para máximo de 2K chars (preserva início e fim). */
+/** truncateContent
+ * Descrição: Trunca conteúdo para máximo de chars, preservando início e fim
+ * @param content - Conteúdo a truncar
+ * @param maxChars - Máximo de caracteres (default: 2048)
+ * @returns Conteúdo truncado ou original se menor que maxChars
+ */
 function truncateContent(content: string, maxChars = 2048): string {
   if (content.length <= maxChars) return content
   const half = Math.floor(maxChars / 2) - 20
   return `${content.slice(0, half)}\n...(truncated)...\n${content.slice(-half)}`
 }
 
-/** Gera ID único para um chunk (sha256 de filePath:startLine:endLine). */
+/** generateChunkId
+ * Descrição: Gera ID único para um chunk usando sha256 de filePath:startLine:endLine
+ * @param filePath - Caminho absoluto do arquivo
+ * @param startLine - Linha de início do chunk
+ * @param endLine - Linha de fim do chunk
+ * @returns Hash SHA256 truncado em 16 caracteres
+ */
 export function generateChunkId(filePath: string, startLine: number, endLine: number): string {
   return createHash('sha256')
     .update(`${filePath}:${startLine}:${endLine}`)

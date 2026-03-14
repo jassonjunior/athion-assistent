@@ -1,13 +1,25 @@
 /**
- * ToolCallCard — Card de tool call com status (running/success/error).
+ * ToolCallCard
+ * Descrição: Componente de card para exibir uma tool call com status visual (running/success/error).
  */
 
 import type { ToolCallInfo } from '../hooks/useChat.js'
 
+/**
+ * ToolCallCardProps
+ * Descrição: Props do componente ToolCallCard.
+ */
 interface ToolCallCardProps {
+  /** Informações da tool call a ser exibida */
   toolCall: ToolCallInfo
 }
 
+/**
+ * ToolCallCard
+ * Descrição: Renderiza um card com o nome da ferramenta, ícone de status e preview do resultado.
+ * @param toolCall - Objeto com informações da tool call (nome, status, resultado)
+ * @returns Elemento JSX do card de tool call
+ */
 export function ToolCallCard({ toolCall }: ToolCallCardProps) {
   const statusIcon =
     toolCall.status === 'running' ? '...' : toolCall.status === 'success' ? '✓' : '✗'

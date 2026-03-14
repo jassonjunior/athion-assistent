@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 /**
- * Athion CLI — Entry point.
+ * Athion CLI — Ponto de entrada principal.
+ * Descrição: Configura e executa o CLI do Athion usando yargs para roteamento de comandos.
  *
  * Comandos:
  *   athion              → chat interativo (default)

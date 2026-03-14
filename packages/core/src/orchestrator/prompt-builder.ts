@@ -3,32 +3,35 @@ import type { ToolDefinition } from '../tools/types'
 import { isOrchestratorTool } from '../tools/types'
 import type { AgentDefinition, Session } from './types'
 
-/**
- * Interface do PromptBuilder.
- * Constroi o system prompt completo para o LLM.
- * @param session - Sessao atual
- * @param tools - Tools disponiveis
- * @param agents - Agentes disponiveis
- * @returns System prompt completo
+/** PromptBuilder
+ * Descrição: Interface do PromptBuilder.
+ * Constrói o system prompt completo para o LLM.
  */
 export interface PromptBuilder {
-  /**
-   * Monta system prompt com contexto da sessao, tools e skills
-   * @param session - Sessao atual
-   * @param tools - Tools disponiveis
-   * @param agents - Agentes disponiveis
-   * @returns System prompt completo
+  /** build
+   * Descrição: Monta system prompt com contexto da sessão, tools e skills
+   * @param session - Sessão atual
+   * @param tools - Tools disponíveis
+   * @param agents - Agentes disponíveis
+   * @returns System prompt completo como string
    */
   build(session: Session, tools: ToolDefinition[], agents: AgentDefinition[]): string
 }
 
-/**
- * Cria uma instancia do PromptBuilder.
- * Combina identidade do assistente, tools disponiveis, agentes e skills ativas.
+/** createPromptBuilder
+ * Descrição: Cria uma instância do PromptBuilder.
+ * Combina identidade do assistente, tools disponíveis, agentes e skills ativas.
  * @param skills - SkillManager para buscar skills relevantes
- * @returns Instancia do PromptBuilder
+ * @returns Instância do PromptBuilder
  */
 export function createPromptBuilder(skills: SkillManager): PromptBuilder {
+  /** build
+   * Descrição: Constrói o system prompt concatenando seções de identidade, tools, agentes e contexto
+   * @param session - Sessão atual
+   * @param tools - Tools disponíveis
+   * @param agents - Agentes disponíveis
+   * @returns System prompt completo
+   */
   function build(session: Session, tools: ToolDefinition[], agents: AgentDefinition[]): string {
     const sections: string[] = []
 
@@ -53,9 +56,10 @@ export function createPromptBuilder(skills: SkillManager): PromptBuilder {
 
   return { build }
 }
-/**
- * Identidade base do assistente.
- * @returns Identidade base do assistente
+
+/** buildIdentity
+ * Descrição: Gera a seção de identidade base do assistente Athion
+ * @returns String com as instruções de identidade
  */
 function buildIdentity(): string {
   return `You are Athion, an AI coding assistant.
@@ -64,13 +68,11 @@ Always be concise and direct. Prefer code over explanation.
 IMPORTANT: You MUST ALWAYS respond in Brazilian Portuguese (pt-BR), regardless of the language the user writes in.`
 }
 
-/**
- * Lista de tools disponiveis para o LLM.
- *
+/** buildToolsSection
+ * Descrição: Lista de tools disponíveis para o LLM no system prompt.
  * Usa o campo `level` de cada tool para decidir visibilidade:
- * - level='orchestrator' → aparece no prompt (task, plugin tools)
- * - level='agent' → NÃO aparece (core tools como read_file, write_file)
- *
+ * - level='orchestrator' aparece no prompt (task, plugin tools)
+ * - level='agent' NÃO aparece (core tools como read_file, write_file)
  * @param tools - Todas as tools registradas no registry
  * @returns Seção do prompt listando tools acessíveis
  */
@@ -97,10 +99,10 @@ Do NOT try to call task again for the same work — trust the agent's result.`
   return instructions
 }
 
-/**
- * Lista de subagentes disponiveis via task tool.
- * @param agents - Agentes disponiveis
- * @returns Lista de subagentes disponiveis via task tool
+/** buildAgentsSection
+ * Descrição: Gera a seção do prompt que lista os subagentes disponíveis via task tool
+ * @param agents - Agentes disponíveis
+ * @returns Seção do prompt com lista e regras de uso dos agentes
  */
 function buildAgentsSection(agents: AgentDefinition[]): string {
   const agentList = agents.map((a) => `- "${a.name}": ${a.description}`).join('\n')
@@ -117,8 +119,10 @@ Rules:
 - After an agent completes, use its result to answer the user. Do not re-run the same task.`
 }
 
-/**
- * Skill explicitamente ativada pelo usuário — injetada com destaque máximo.
+/** buildActiveSkillSection
+ * Descrição: Gera a seção do prompt para a skill explicitamente ativada pelo usuário
+ * @param skill - Skill ativa com nome, descrição e instruções
+ * @returns Seção do prompt com instruções da skill ativa
  */
 function buildActiveSkillSection(skill: {
   name: string
@@ -134,10 +138,10 @@ ${skill.instructions}
 This is your primary directive for this conversation. Apply it to every response.`
 }
 
-/**
- * Contexto da sessao atual.
- * @param session - Sessao atual
- * @returns Contexto da sessao atual
+/** buildSessionContext
+ * Descrição: Gera a seção de contexto da sessão atual no system prompt
+ * @param session - Sessão atual
+ * @returns Seção do prompt com ID do projeto e da sessão
  */
 function buildSessionContext(session: Session): string {
   return `# Session\nProject: ${session.projectId}\nSession: ${session.id}`

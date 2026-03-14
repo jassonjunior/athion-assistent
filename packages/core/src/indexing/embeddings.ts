@@ -1,35 +1,65 @@
-/**
- * EmbeddingService — gera vetores de texto via API OpenAI-compatible.
- *
+/** EmbeddingService
+ * Descrição: Gera vetores de texto via API OpenAI-compatible.
  * Chama POST /v1/embeddings com os textos e retorna float[] por texto.
- * Compatível com LM Studio, Ollama (with embeddings) e OpenAI.
- *
+ * Compatível com LM Studio, Ollama (com embeddings) e OpenAI.
  * Se o endpoint não estiver disponível, retorna null e o indexador
  * funciona em modo FTS-only (sem busca por similaridade semântica).
  */
 
+/** EmbeddingConfig
+ * Descrição: Configuração do serviço de embeddings
+ */
 export interface EmbeddingConfig {
-  /** URL base da API (ex: 'http://localhost:1234') */
+  /** baseUrl
+   * Descrição: URL base da API de embeddings (ex: 'http://localhost:1234')
+   */
   baseUrl: string
-  /** Modelo de embeddings (ex: 'text-embedding-ada-002', 'nomic-embed-text') */
+  /** model
+   * Descrição: Modelo de embeddings a usar (ex: 'text-embedding-ada-002', 'nomic-embed-text')
+   */
   model: string
-  /** Dimensões esperadas (para validação, opcional) */
+  /** dimensions
+   * Descrição: Dimensões esperadas dos vetores (para validação, opcional)
+   */
   dimensions?: number
 }
 
+/** EmbeddingService
+ * Descrição: Interface do serviço de embeddings para geração de vetores
+ */
 export interface EmbeddingService {
-  /** Gera embedding para um único texto. Retorna null se falhar. */
+  /** embed
+   * Descrição: Gera embedding para um único texto
+   * @param text - Texto para gerar embedding
+   * @returns Vetor de números ou null se falhar
+   */
   embed(text: string): Promise<number[] | null>
-  /** Gera embeddings em batch (mais eficiente). Retorna null se falhar. */
+  /** embedBatch
+   * Descrição: Gera embeddings em batch (mais eficiente que chamar embed individualmente)
+   * @param texts - Array de textos para gerar embeddings
+   * @returns Array de vetores ou null se falhar
+   */
   embedBatch(texts: string[]): Promise<number[][] | null>
-  /** Retorna dimensão dos vetores (0 se desconhecida). */
+  /** getDimensions
+   * Descrição: Retorna a dimensão dos vetores gerados
+   * @returns Número de dimensões (0 se desconhecida/não inicializada)
+   */
   getDimensions(): number
 }
 
-/** Cria uma instância do serviço de embeddings. */
+/** createEmbeddingService
+ * Descrição: Cria uma instância do serviço de embeddings que chama API OpenAI-compatible
+ * @param config - Configuração com URL base, modelo e dimensões opcionais
+ * @returns Instância do EmbeddingService
+ */
 export function createEmbeddingService(config: EmbeddingConfig): EmbeddingService {
   let dimensions = config.dimensions ?? 0
 
+  /** embedBatch
+   * Descrição: Gera embeddings para múltiplos textos em uma única chamada à API
+   * @param texts - Array de textos para gerar embeddings
+   * @returns Array de vetores ordenados por índice original ou null se falhar
+   */
   async function embedBatch(texts: string[]): Promise<number[][] | null> {
     if (texts.length === 0) return []
     try {
@@ -60,11 +90,20 @@ export function createEmbeddingService(config: EmbeddingConfig): EmbeddingServic
     }
   }
 
+  /** embed
+   * Descrição: Gera embedding para um único texto (wrapper sobre embedBatch)
+   * @param text - Texto para gerar embedding
+   * @returns Vetor de números ou null se falhar
+   */
   async function embed(text: string): Promise<number[] | null> {
     const result = await embedBatch([text])
     return result?.[0] ?? null
   }
 
+  /** getDimensions
+   * Descrição: Retorna a dimensão dos vetores (inferida na primeira chamada)
+   * @returns Número de dimensões
+   */
   function getDimensions(): number {
     return dimensions
   }
@@ -72,9 +111,12 @@ export function createEmbeddingService(config: EmbeddingConfig): EmbeddingServic
   return { embed, embedBatch, getDimensions }
 }
 
-/**
- * Calcula cosine similarity entre dois vetores.
+/** cosineSimilarity
+ * Descrição: Calcula a similaridade de cosseno entre dois vetores.
  * Retorna valor entre -1 e 1 (1 = idêntico, 0 = ortogonal, -1 = oposto).
+ * @param a - Primeiro vetor
+ * @param b - Segundo vetor
+ * @returns Valor de similaridade entre -1 e 1
  */
 export function cosineSimilarity(a: number[], b: number[]): number {
   if (a.length !== b.length || a.length === 0) return 0
@@ -96,7 +138,11 @@ export function cosineSimilarity(a: number[], b: number[]): number {
   return dotProduct / denominator
 }
 
-/** Serializa vetor float[] para Buffer (little-endian float32). */
+/** serializeVector
+ * Descrição: Serializa vetor float[] para Buffer em formato little-endian float32
+ * @param vec - Vetor de números a serializar
+ * @returns Buffer com os floats serializados
+ */
 export function serializeVector(vec: number[]): Buffer {
   const buf = Buffer.allocUnsafe(vec.length * 4)
   for (let i = 0; i < vec.length; i++) {
@@ -105,7 +151,11 @@ export function serializeVector(vec: number[]): Buffer {
   return buf
 }
 
-/** Desserializa Buffer/Uint8Array de volta para float[]. */
+/** deserializeVector
+ * Descrição: Desserializa Buffer/Uint8Array de volta para array de floats
+ * @param buf - Buffer contendo floats serializados em little-endian
+ * @returns Array de números reconstruído
+ */
 export function deserializeVector(buf: Buffer | Uint8Array): number[] {
   const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength)
   const len = Math.floor(buf.byteLength / 4)

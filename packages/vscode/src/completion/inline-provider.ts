@@ -1,11 +1,9 @@
 /**
- * InlineProvider — VS Code InlineCompletionItemProvider.
- *
- * Pipeline: User digita → debounce 150ms → pre-filter → context build →
- *   CoreBridge completion.complete → ghost text
- *
+ * InlineProvider
+ * Descrição: VS Code InlineCompletionItemProvider para sugestões de código inline (ghost text).
+ * Pipeline: Usuário digita -> pre-filter -> context build -> CoreBridge completion.complete -> ghost text.
  * O CancellationToken do VS Code funciona como debounce natural:
- * se o user digita outra tecla, o token anterior é cancelado.
+ * se o usuário digita outra tecla, o token anterior é cancelado.
  */
 
 import * as vscode from 'vscode'
@@ -13,9 +11,28 @@ import type { CoreBridge } from '../bridge/core-bridge.js'
 import type { CompletionResult } from '../bridge/protocol.js'
 import { buildCompletionContext } from './context-builder.js'
 
+/**
+ * InlineProvider
+ * Descrição: Provedor de inline completion que consulta o CoreBridge para obter sugestões de código.
+ */
 export class InlineProvider implements vscode.InlineCompletionItemProvider {
+  /**
+   * constructor
+   * Descrição: Cria o InlineProvider com a bridge para comunicação com o core.
+   * @param bridge - Instância do CoreBridge para requisições de completion
+   */
   constructor(private bridge: CoreBridge) {}
 
+  /**
+   * provideInlineCompletionItems
+   * Descrição: Fornece itens de inline completion para o VS Code. Realiza pre-filter,
+   * constrói contexto FIM e consulta o core para obter sugestões.
+   * @param document - Documento de texto ativo
+   * @param position - Posição do cursor
+   * @param _context - Contexto de inline completion do VS Code
+   * @param token - Token de cancelamento
+   * @returns Lista de InlineCompletionItem ou array vazio
+   */
   async provideInlineCompletionItems(
     document: vscode.TextDocument,
     position: vscode.Position,

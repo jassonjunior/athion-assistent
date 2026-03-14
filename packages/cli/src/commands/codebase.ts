@@ -1,5 +1,6 @@
 /**
  * Comando `athion codebase` — Indexação e busca semântica do codebase.
+ * Descrição: Gerencia o índice de busca semântica para navegação inteligente no código-fonte.
  *
  * Subcomandos:
  *   index [path]      — Indexa o workspace (ou um path específico)
@@ -16,6 +17,11 @@
 import { resolve } from 'node:path'
 import type { ArgumentsCamelCase, Argv } from 'yargs'
 
+/** codebaseCommand
+ * Descrição: Configura os subcomandos de indexação e busca do codebase no yargs.
+ * @param yargs - Instância do yargs para configuração dos subcomandos
+ * @returns Instância do yargs com subcomandos index, search, status e clear registrados
+ */
 export function codebaseCommand(yargs: Argv) {
   return yargs
     .command(
@@ -61,6 +67,11 @@ export function codebaseCommand(yargs: Argv) {
 
 // ─── Handlers ────────────────────────────────────────────────────────────────
 
+/** codebaseIndexHandler
+ * Descrição: Indexa o workspace ou diretório específico, exibindo progresso no terminal.
+ * @param args - Argumentos contendo o path do diretório e caminho opcional do banco de dados
+ * @returns Promise que resolve quando a indexação é concluída
+ */
 async function codebaseIndexHandler(
   args: ArgumentsCamelCase<{ path: string; db?: string }>,
 ): Promise<void> {
@@ -101,6 +112,11 @@ async function codebaseIndexHandler(
   )
 }
 
+/** codebaseSearchHandler
+ * Descrição: Busca semanticamente no índice do codebase e exibe os resultados.
+ * @param args - Argumentos contendo a query de busca, limite de resultados e caminho do banco
+ * @returns Promise que resolve quando a busca é concluída
+ */
 async function codebaseSearchHandler(
   args: ArgumentsCamelCase<{ query: string; limit: number; db?: string }>,
 ): Promise<void> {
@@ -138,6 +154,11 @@ async function codebaseSearchHandler(
   }
 }
 
+/** codebaseStatusHandler
+ * Descrição: Exibe estatísticas do índice de busca do codebase.
+ * @param args - Argumentos contendo o caminho opcional do banco de dados
+ * @returns Promise que resolve quando as estatísticas são exibidas
+ */
 async function codebaseStatusHandler(args: ArgumentsCamelCase<{ db?: string }>): Promise<void> {
   const { createCodebaseIndexer } = await import('@athion/core')
   const { homedir } = await import('node:os')
@@ -163,6 +184,11 @@ async function codebaseStatusHandler(args: ArgumentsCamelCase<{ db?: string }>):
   )
 }
 
+/** codebaseClearHandler
+ * Descrição: Remove todos os dados do índice de busca do codebase.
+ * @param args - Argumentos contendo o caminho opcional do banco de dados
+ * @returns Promise que resolve quando o índice é limpo
+ */
 async function codebaseClearHandler(args: ArgumentsCamelCase<{ db?: string }>): Promise<void> {
   const { createCodebaseIndexer } = await import('@athion/core')
   const { homedir } = await import('node:os')

@@ -1,5 +1,7 @@
 /**
  * useFeedbackPhrase — Cicla frases humorísticas enquanto o modelo processa (CLI).
+ * Descrição: Hook que exibe frases de feedback rotativas durante o processamento do LLM,
+ * com anti-repetição e intervalo configurável.
  *
  * - Ativo quando `isActive=true`
  * - Troca frase a cada `intervalMs` ms (padrão 15s)
@@ -10,6 +12,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { ta } from '@athion/shared'
 
+/** useFeedbackPhrase
+ * Descrição: Hook React que seleciona e cicla frases de feedback internacionalizadas
+ * durante o processamento do modelo, evitando repetições consecutivas.
+ * @param isActive - Indica se o hook deve estar ativo (geralmente true durante streaming)
+ * @param intervalMs - Intervalo em milissegundos entre trocas de frase (padrão: 15000)
+ * @returns Frase de feedback atual, ou string vazia quando inativo
+ */
 export function useFeedbackPhrase(isActive: boolean, intervalMs = 15000): string {
   const [phrase, setPhrase] = useState('')
   const prevIndexRef = useRef<number>(-1)

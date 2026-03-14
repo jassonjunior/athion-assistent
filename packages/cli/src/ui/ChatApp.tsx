@@ -1,12 +1,11 @@
 /**
  * ChatApp — Componente raiz do chat interativo.
+ * Descrição: Orquestra todos os hooks e componentes filhos para compor a interface completa do chat.
  *
  * Layout:
  *   ┌─ StatusBar ─────────────────┐
  *   │ MessageList (flex grow)     │
  *   └─ UserInput ─────────────────┘
- *
- * Orquestra hooks e passa props para componentes filhos.
  */
 
 import { Box } from 'ink'
@@ -24,11 +23,22 @@ import { useKeyboard } from '../hooks/useKeyboard.js'
 import { usePermission } from '../hooks/usePermission.js'
 import { useSession } from '../hooks/useSession.js'
 
+/** ChatAppProps
+ * Descrição: Props do componente ChatApp.
+ */
 interface ChatAppProps {
+  /** Instância do core do Athion para comunicação com o backend */
   core: AthionCore
+  /** Sessão inicial de conversa */
   session: Session
 }
 
+/** ChatApp
+ * Descrição: Componente React raiz que monta a interface completa do chat interativo,
+ * conectando hooks de tema, sessão, permissão, chat e teclado com os componentes visuais.
+ * @param props - Props contendo a instância do core e a sessão inicial
+ * @returns Elemento React com a aplicação de chat completa
+ */
 export function ChatApp({ core, session: initialSession }: ChatAppProps) {
   const theme = useTheme(core)
   const model = core.config.get('model')

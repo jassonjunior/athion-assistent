@@ -1,7 +1,7 @@
 /**
- * InputArea — Campo de entrada com autocomplete de /use-skill e @arquivo.
- *
- * Dropdown com Tailwind (tema dark nativo do desktop).
+ * InputArea
+ * Descrição: Campo de entrada de texto com autocomplete de /use-skill e @arquivo.
+ * Dropdown estilizado com Tailwind (tema dark nativo do desktop).
  * Sem LLM: prefix matching puro via bridge.skillList() e bridge.filesList().
  */
 
@@ -9,15 +9,31 @@ import { useCallback, useRef, useState } from 'react'
 import { useInputAutocomplete } from '../hooks/useInputAutocomplete.js'
 import type { AutocompleteItem } from '../hooks/useInputAutocomplete.js'
 
+/** InputAreaProps
+ * Descrição: Propriedades do componente InputArea
+ */
 interface InputAreaProps {
+  /** Callback disparado ao enviar uma mensagem */
   onSubmit: (content: string) => void
+  /** Callback para abortar a geração em andamento */
   onAbort: () => void
+  /** Indica se o assistente está gerando uma resposta */
   isStreaming: boolean
+  /** Indica se o campo de entrada está desabilitado (ex: sidecar não conectado) */
   isDisabled: boolean
-  /** Valor inicial do campo (ex: mensagem injetada via deep link). */
+  /** Valor inicial do campo (ex: mensagem injetada via deep link) */
   initialValue?: string
 }
 
+/** InputArea
+ * Descrição: Componente de entrada de texto com textarea expansível, autocomplete de skills/arquivos e botão de abort
+ * @param onSubmit - Callback para enviar mensagem
+ * @param onAbort - Callback para abortar geração
+ * @param isStreaming - Estado de streaming do assistente
+ * @param isDisabled - Estado de desabilitação do campo
+ * @param initialValue - Valor inicial opcional
+ * @returns Elemento JSX do campo de entrada com autocomplete
+ */
 export function InputArea({
   onSubmit,
   onAbort,
@@ -29,6 +45,10 @@ export function InputArea({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const autocomplete = useInputAutocomplete()
 
+  /** submit
+   * Descrição: Submete o texto do campo, limpa o valor e fecha o autocomplete
+   * @param text - Texto a ser submetido
+   */
   const submit = useCallback(
     (text: string) => {
       if (!text.trim() || isStreaming || isDisabled) return
@@ -40,6 +60,10 @@ export function InputArea({
     [isStreaming, isDisabled, onSubmit, autocomplete],
   )
 
+  /** handleKeyDown
+   * Descrição: Processa teclas pressionadas, delegando ao autocomplete ou submetendo com Enter
+   * @param e - Evento de teclado do textarea
+   */
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
       const textarea = textareaRef.current
@@ -68,6 +92,10 @@ export function InputArea({
     [autocomplete, value, submit],
   )
 
+  /** handleInput
+   * Descrição: Processa mudanças no campo de texto, atualizando valor, autocomplete e altura do textarea
+   * @param e - Evento de mudança do textarea
+   */
   const handleInput = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       const newValue = e.target.value
@@ -82,6 +110,10 @@ export function InputArea({
     [autocomplete],
   )
 
+  /** selectItem
+   * Descrição: Seleciona um item do dropdown de autocomplete e insere no campo de texto
+   * @param _item - Item de autocomplete selecionado
+   */
   function selectItem(_item: AutocompleteItem) {
     const textarea = textareaRef.current
     const cursorPos = textarea?.selectionStart ?? value.length
@@ -90,6 +122,9 @@ export function InputArea({
     textarea?.focus()
   }
 
+  /** header
+   * Descrição: Título do dropdown de autocomplete baseado no modo atual (skill ou file)
+   */
   const header = autocomplete.mode === 'skill' ? 'Skills disponíveis' : 'Arquivos'
 
   return (

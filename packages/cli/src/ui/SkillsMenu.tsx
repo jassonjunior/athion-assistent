@@ -1,8 +1,9 @@
 /**
  * SkillsMenu — Submenu interativo de skills.
+ * Descrição: Componente que exibe um menu navegável para gerenciar skills instaladas.
  *
  * Fluxo:
- *   'list'    → lista skills com ↑↓ + Enter para selecionar
+ *   'list'    → lista skills com setas + Enter para selecionar
  *   'actions' → mostra Ver / Editar / Excluir para a skill selecionada
  *
  * Esc volta ao modo anterior ou fecha o menu.
@@ -15,20 +16,42 @@ import { execSync } from 'node:child_process'
 import type { SkillDefinition } from '@athion/core'
 import type { Theme } from '../types.js'
 
+/** SkillsMenuProps
+ * Descrição: Props do componente SkillsMenu.
+ */
 interface SkillsMenuProps {
+  /** Lista de skills disponíveis para exibição */
   skills: SkillDefinition[]
+  /** Nome da skill ativa atualmente, se houver */
   activeSkillName: string | undefined
+  /** Callback para fechar o menu */
   onClose: () => void
+  /** Callback para exibir uma mensagem no chat */
   onMessage: (msg: string) => void
+  /** Callback chamado quando uma skill é excluída */
   onSkillDeleted: (name: string) => void
+  /** Callback chamado quando uma skill é ativada ou desativada */
   onSkillActivated: (name: string | undefined) => void
+  /** Tema visual com as cores a serem aplicadas */
   theme: Theme
 }
 
+/** Mode
+ * Descrição: Modo de exibição do menu: lista de skills ou ações para uma skill.
+ */
 type Mode = 'list' | 'actions'
 
+/** ACTIONS
+ * Descrição: Lista de ações disponíveis para uma skill selecionada.
+ */
 const ACTIONS = ['Usar skill', 'Ver conteúdo', 'Editar arquivo', 'Excluir skill'] as const
 
+/** SkillsMenu
+ * Descrição: Componente interativo que permite navegar, visualizar, ativar, editar e excluir skills
+ * usando setas do teclado e Enter para seleção.
+ * @param props - Props contendo skills, callbacks e tema visual
+ * @returns Elemento React com o menu de skills
+ */
 export function SkillsMenu({
   skills,
   activeSkillName,
@@ -96,6 +119,11 @@ export function SkillsMenu({
     void input // suppress unused warning
   })
 
+  /** executeAction
+   * Descrição: Executa a ação selecionada sobre a skill (usar, ver, editar ou excluir).
+   * @param ai - Índice da ação selecionada
+   * @param skill - Definição da skill alvo da ação
+   */
   function executeAction(ai: number, skill: SkillDefinition) {
     if (ai === 0) {
       // Usar skill — ativa explicitamente

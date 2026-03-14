@@ -1,11 +1,7 @@
 /**
- * InputArea — Campo de entrada com command picker, submenus e autocomplete.
- *
- * Fluxo:
- *  - Digitar `/`          → abre command picker
- *  - Selecionar /skills   → abre submenu de skills instaladas
- *  - Selecionar uma skill → ativa a skill (submete /use-skill <nome>)
- *  - Digitar `@`          → abre autocomplete de arquivos
+ * InputArea
+ * Descrição: Campo de entrada do chat com command picker, submenus e autocomplete.
+ * Fluxo: `/` abre command picker, `/skills` abre submenu, `@` abre autocomplete de arquivos.
  */
 
 import { useCallback, useRef, useState } from 'react'
@@ -15,13 +11,31 @@ import { MentionDropdown } from './MentionDropdown.js'
 import { AutocompleteDropdown } from './AutocompleteDropdown.js'
 import { t } from '@athion/shared'
 
+/**
+ * InputAreaProps
+ * Descrição: Props do componente InputArea.
+ */
 interface InputAreaProps {
+  /** Callback chamado ao submeter uma mensagem */
   onSubmit: (content: string) => void
+  /** Callback chamado ao abortar o streaming */
   onAbort: () => void
+  /** Indica se está em modo de streaming (desabilita envio) */
   isStreaming: boolean
+  /** Indica se o input está desabilitado (core não está pronto) */
   isDisabled: boolean
 }
 
+/**
+ * InputArea
+ * Descrição: Componente de área de entrada que integra textarea, command picker,
+ * autocomplete de arquivos e dropdown de menções.
+ * @param onSubmit - Callback de submissão de mensagem
+ * @param onAbort - Callback de abort do streaming
+ * @param isStreaming - Flag de streaming ativo
+ * @param isDisabled - Flag de input desabilitado
+ * @returns Elemento JSX da área de entrada
+ */
 export function InputArea({ onSubmit, onAbort, isStreaming, isDisabled }: InputAreaProps) {
   const [value, setValue] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)

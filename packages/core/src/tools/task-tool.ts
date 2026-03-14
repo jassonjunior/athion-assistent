@@ -2,6 +2,9 @@ import { z } from 'zod/v4'
 import type { SubAgentManager, SubAgentTask, TaskStep } from '../subagent/types'
 import { defineTool } from './registry'
 
+/** taskToolParams
+ * Descrição: Schema Zod de validação dos parâmetros da task tool
+ */
 const taskToolParams = z.object({
   agent: z.string().describe('Name of the sub-agent to delegate to'),
   description: z.string().describe('Detailed description of what the agent should do'),
@@ -18,18 +21,33 @@ const taskToolParams = z.object({
     }, z.array(z.string()).optional())
     .describe('Optional list of steps for the agent to follow'),
 })
+
+/** TaskToolParams
+ * Descrição: Tipo inferido dos parâmetros da task tool a partir do schema Zod
+ */
 type TaskToolParams = z.infer<typeof taskToolParams>
+
+/** TaskToolDeps
+ * Descrição: Dependências para criar a task tool
+ */
 export interface TaskToolDeps {
+  /** subagents
+   * Descrição: Gerenciador de subagentes para delegação de tasks
+   */
   subagents: SubAgentManager
 }
 
-/** Limite de continuações automáticas por task. */
+/** MAX_CONTINUATIONS
+ * Descrição: Limite de continuações automáticas por task para evitar loops infinitos
+ */
 const MAX_CONTINUATIONS = 5
 
-/**
- * Cria a task tool que permite ao LLM delegar trabalho para subagentes.
+/** createTaskTool
+ * Descrição: Cria a task tool que permite ao LLM delegar trabalho para subagentes.
  * Suporta continuation protocol: se o agente sai com status 'partial',
  * re-spawna automaticamente com resultados acumulados até completar.
+ * @param deps - Dependências com SubAgentManager
+ * @returns ToolDefinition configurada para delegação de tasks
  */
 export function createTaskTool(deps: TaskToolDeps) {
   const { subagents } = deps
@@ -43,10 +61,13 @@ export function createTaskTool(deps: TaskToolDeps) {
   })
 }
 
-/**
- * Executa uma task delegando para um subagente.
+/** executeTask
+ * Descrição: Executa uma task delegando para um subagente.
  * Implementa continuation loop: se o agente retorna 'partial',
  * re-spawna com contexto acumulado até completar ou atingir MAX_CONTINUATIONS.
+ * @param subagents - Gerenciador de subagentes
+ * @param params - Parâmetros da task (agente, descrição, steps)
+ * @returns Resultado da execução com dados do agente ou mensagem de erro
  */
 async function executeTask(subagents: SubAgentManager, params: TaskToolParams) {
   let config = subagents.getAgent(params.agent)
@@ -134,8 +155,8 @@ async function executeTask(subagents: SubAgentManager, params: TaskToolParams) {
   }
 }
 
-/**
- * Palavras-chave que o LLM frequentemente usa → agente correto.
+/** KEYWORD_AGENT_MAP
+ * Descrição: Mapa de palavras-chave que o LLM frequentemente usa para o agente correto.
  * Evita que erros como "codebase-analysis" vão para o agente errado.
  */
 const KEYWORD_AGENT_MAP: Record<string, string> = {
@@ -164,13 +185,16 @@ const KEYWORD_AGENT_MAP: Record<string, string> = {
   document: 'explainer',
 }
 
-/**
- * Fuzzy match: finds the closest agent name when LLM sends a slight variation.
- * Priority:
- *   1. Prefix/suffix containment  (e.g. "code-reviewer" → "code-review")
- *   2. Substring containment      (e.g. "review" → "code-review")
- *   3. Keyword map                 (e.g. "codebase-analysis" → "search")
- *   4. Word-level overlap (≥60% length similarity to avoid "codebase"→"code")
+/** fuzzyMatchAgent
+ * Descrição: Encontra o agente mais próximo quando o LLM envia uma variação do nome.
+ * Prioridade:
+ *   1. Contenção por prefixo/sufixo (ex: "code-reviewer" -> "code-review")
+ *   2. Contenção por substring (ex: "review" -> "code-review")
+ *   3. Mapa de palavras-chave (ex: "codebase-analysis" -> "search")
+ *   4. Sobreposição por palavras (>=60% de similaridade de comprimento)
+ * @param subagents - Gerenciador de subagentes para busca
+ * @param name - Nome enviado pelo LLM
+ * @returns SubAgentConfig do agente mais próximo ou undefined
  */
 function fuzzyMatchAgent(subagents: SubAgentManager, name: string) {
   const normalized = name.toLowerCase().replace(/[_\s]/g, '-')
@@ -220,6 +244,11 @@ function fuzzyMatchAgent(subagents: SubAgentManager, name: string) {
   return undefined
 }
 
+/** createTask
+ * Descrição: Cria uma nova SubAgentTask a partir dos parâmetros da task tool
+ * @param params - Parâmetros com agente, descrição e steps opcionais
+ * @returns SubAgentTask inicializada com status 'pending'
+ */
 function createTask(params: TaskToolParams): SubAgentTask {
   return {
     id: crypto.randomUUID(),
@@ -235,6 +264,11 @@ function createTask(params: TaskToolParams): SubAgentTask {
   }
 }
 
+/** buildSteps
+ * Descrição: Converte array de strings em array de TaskStep com status 'não completado'
+ * @param steps - Lista de descrições de steps (opcional)
+ * @returns Array de TaskStep ou array vazio se não houver steps
+ */
 function buildSteps(steps?: string[]): TaskStep[] {
   if (!steps || steps.length === 0) return []
   return steps.map((description) => ({ description, completed: false }))

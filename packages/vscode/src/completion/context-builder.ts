@@ -1,20 +1,34 @@
 /**
- * Constrói contexto FIM (Fill-in-the-Middle) para inline completion.
- *
- * Prefix: até 100 linhas antes do cursor
- * Suffix: até 50 linhas após o cursor
+ * context-builder
+ * Descrição: Constrói contexto FIM (Fill-in-the-Middle) para inline completion.
+ * Extrai prefix (até 100 linhas antes do cursor) e suffix (até 50 linhas após o cursor).
  */
 
 import * as vscode from 'vscode'
 
+/** MAX_PREFIX_LINES - Número máximo de linhas antes do cursor para incluir no prefixo */
 const MAX_PREFIX_LINES = 100
+/** MAX_SUFFIX_LINES - Número máximo de linhas após o cursor para incluir no sufixo */
 const MAX_SUFFIX_LINES = 50
 
+/**
+ * CompletionContext
+ * Descrição: Contexto FIM (Fill-in-the-Middle) para alimentar o modelo de completion.
+ */
 export interface CompletionContext {
+  /** Texto antes da posição do cursor */
   prefix: string
+  /** Texto após a posição do cursor */
   suffix: string
 }
 
+/**
+ * buildCompletionContext
+ * Descrição: Extrai o contexto de prefix e suffix ao redor da posição do cursor no documento.
+ * @param document - Documento de texto ativo no editor
+ * @param position - Posição do cursor no documento
+ * @returns Objeto CompletionContext com prefix e suffix extraídos
+ */
 export function buildCompletionContext(
   document: vscode.TextDocument,
   position: vscode.Position,

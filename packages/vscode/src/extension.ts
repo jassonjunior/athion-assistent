@@ -1,9 +1,8 @@
 /**
- * Extension entry point — activate/deactivate.
- *
+ * extension
+ * Descrição: Ponto de entrada da extensão VS Code (activate/deactivate).
  * activate(): Inicializa CoreBridge (child process Bun), registra comandos,
- * cria WebviewViewProvider para o chat lateral.
- *
+ * cria WebviewViewProvider para o chat lateral e InlineProvider para completions.
  * deactivate(): Mata o child process e limpa recursos.
  */
 
@@ -16,9 +15,18 @@ import { registerCommands } from './commands/index.js'
 import { InlineProvider } from './completion/inline-provider.js'
 import { DiffManager } from './diff/diff-manager.js'
 
+/** bridge - Instância global do CoreBridge (child process Bun) */
 let bridge: CoreBridge | null = null
+/** outputChannel - Canal de saída para logs da extensão */
 let outputChannel: vscode.OutputChannel
 
+/**
+ * activate
+ * Descrição: Ativa a extensão, inicializando o CoreBridge, registrando comandos,
+ * criando o ChatViewProvider, DiffManager e InlineProvider.
+ * @param context - Contexto da extensão VS Code com subscriptions e extensionPath
+ * @returns Promise que resolve quando a ativação está completa
+ */
 export async function activate(context: vscode.ExtensionContext) {
   outputChannel = vscode.window.createOutputChannel('Athion')
   outputChannel.appendLine('Athion Assistent activating...')
@@ -102,16 +110,24 @@ export async function activate(context: vscode.ExtensionContext) {
   outputChannel.appendLine('Athion Assistent activated')
 }
 
+/**
+ * deactivate
+ * Descrição: Desativa a extensão, parando o CoreBridge e liberando recursos.
+ * @returns void
+ */
 export function deactivate() {
   bridge?.stop()
   bridge = null
 }
 
 /**
- * Detecta o path do CLI dist/index.js procurando em:
+ * detectCliPath
+ * Descrição: Detecta o caminho do CLI dist/index.js procurando em locais comuns:
  * 1. Workspace root (monorepo aberto no VS Code)
- * 2. Dois níveis acima do extensionPath (fallback para dev)
- * Retorna undefined se não encontrado → CoreBridge usará global `athion`.
+ * 2. Diretório irmão da extensão (dev mode)
+ * 3. Dois níveis acima do extensionPath (fallback para dev)
+ * @param extensionPath - Caminho absoluto do diretório da extensão
+ * @returns Caminho do CLI encontrado ou undefined (CoreBridge usará global `athion`)
  */
 function detectCliPath(extensionPath: string): string | undefined {
   const candidates: string[] = []

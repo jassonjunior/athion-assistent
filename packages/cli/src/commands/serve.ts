@@ -1,5 +1,6 @@
 /**
  * Comando `athion serve` — Servidor IPC para extensão VS Code e app desktop.
+ * Descrição: Inicia um servidor de comunicação inter-processos para integração com editores e aplicações.
  *
  * Dois modos:
  *   --mode=stdio  → JSON-RPC 2.0 sobre stdin/stdout (usado pela extensão VS Code)
@@ -10,6 +11,11 @@
 
 import type { Argv } from 'yargs'
 
+/** serveCommand
+ * Descrição: Configura as opções do comando serve no yargs (modo e porta).
+ * @param yargs - Instância do yargs para configuração das opções
+ * @returns Instância do yargs com opções mode e port registradas
+ */
 export function serveCommand(yargs: Argv) {
   return yargs
     .option('mode', {
@@ -27,6 +33,11 @@ export function serveCommand(yargs: Argv) {
     })
 }
 
+/** serveHandler
+ * Descrição: Handler que inicializa o servidor no modo especificado (stdio ou http).
+ * @param args - Argumentos contendo o modo do servidor e a porta HTTP
+ * @returns Promise que resolve quando o servidor é iniciado
+ */
 export async function serveHandler(args: { mode: string; port: number }) {
   const { bootstrap } = await import('@athion/core')
   const { resolve } = await import('node:path')

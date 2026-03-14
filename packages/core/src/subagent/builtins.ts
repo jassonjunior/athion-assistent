@@ -1,8 +1,8 @@
 import type { SubAgentConfig } from './types'
 
-/**
- * SubAgent de busca e analise de codigo.
- * Usa a skill 'search' para investigar o codebase sem fazer alteracoes.
+/** searchAgent
+ * Descrição: SubAgent de busca e análise de código.
+ * Usa a skill 'search' para investigar o codebase sem fazer alterações.
  */
 export const searchAgent: SubAgentConfig = {
   name: 'search',
@@ -14,9 +14,9 @@ export const searchAgent: SubAgentConfig = {
   level: 'builtin',
 }
 
-/**
- * SubAgent de codificacao.
- * Usa a skill 'coder' para gerar, criar e modificar arquivos de codigo.
+/** coderAgent
+ * Descrição: SubAgent de codificação.
+ * Usa a skill 'coder' para gerar, criar e modificar arquivos de código.
  */
 export const coderAgent: SubAgentConfig = {
   name: 'coder',
@@ -28,9 +28,9 @@ export const coderAgent: SubAgentConfig = {
   level: 'builtin',
 }
 
-/**
- * SubAgent de code review.
- * Usa a skill 'code-review' para analisar codigo. Somente leitura.
+/** codeReviewAgent
+ * Descrição: SubAgent de code review.
+ * Usa a skill 'code-review' para analisar código. Somente leitura.
  */
 export const codeReviewAgent: SubAgentConfig = {
   name: 'code-review',
@@ -41,9 +41,9 @@ export const codeReviewAgent: SubAgentConfig = {
   level: 'builtin',
 }
 
-/**
- * SubAgent de refatoracao.
- * Usa a skill 'refactor' para reestruturar codigo preservando comportamento.
+/** refactorAgent
+ * Descrição: SubAgent de refatoração.
+ * Usa a skill 'refactor' para reestruturar código preservando comportamento.
  */
 export const refactorAgent: SubAgentConfig = {
   name: 'refactorer',
@@ -55,9 +55,9 @@ export const refactorAgent: SubAgentConfig = {
   level: 'builtin',
 }
 
-/**
- * SubAgent de explicacao.
- * Usa a skill 'explain' para explicar codigo e conceitos. Somente leitura.
+/** explainAgent
+ * Descrição: SubAgent de explicação.
+ * Usa a skill 'explain' para explicar código e conceitos. Somente leitura.
  */
 export const explainAgent: SubAgentConfig = {
   name: 'explainer',
@@ -68,9 +68,9 @@ export const explainAgent: SubAgentConfig = {
   level: 'builtin',
 }
 
-/**
- * SubAgent de escrita de testes.
- * Usa a skill 'test-writer' para criar testes unitarios e de integracao.
+/** testWriterAgent
+ * Descrição: SubAgent de escrita de testes.
+ * Usa a skill 'test-writer' para criar testes unitários e de integração.
  */
 export const testWriterAgent: SubAgentConfig = {
   name: 'test-writer',
@@ -81,8 +81,8 @@ export const testWriterAgent: SubAgentConfig = {
   level: 'builtin',
 }
 
-/**
- * SubAgent de debug.
+/** debugAgent
+ * Descrição: SubAgent de debug.
  * Usa a skill 'debug' para diagnosticar e corrigir bugs.
  */
 export const debugAgent: SubAgentConfig = {
@@ -102,9 +102,9 @@ export const debugAgent: SubAgentConfig = {
   level: 'builtin',
 }
 
-/**
- * Todos os subagentes built-in.
- * Usados pelo orchestrator para registrar no SubAgentManager na inicializacao.
+/** builtinAgents
+ * Descrição: Todos os subagentes built-in do Athion.
+ * Usados pelo orchestrator para registrar no SubAgentManager na inicialização.
  */
 export const builtinAgents: SubAgentConfig[] = [
   searchAgent,

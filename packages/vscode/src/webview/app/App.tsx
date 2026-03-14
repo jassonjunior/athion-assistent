@@ -1,12 +1,18 @@
 /**
- * App — Componente raiz do chat webview.
- * Layout: Header + MessageList + InputArea
+ * App
+ * Descrição: Componente raiz do chat webview. Layout composto por Header + MessageList + InputArea.
  */
 
 import { useChat } from './hooks/useChat.js'
 import { MessageList } from './components/MessageList.js'
 import { InputArea } from './components/InputArea.js'
 
+/**
+ * App
+ * Descrição: Componente principal da aplicação React do webview de chat.
+ * Gerencia o estado do chat via useChat e renderiza header, lista de mensagens e área de input.
+ * @returns Elemento JSX do componente raiz
+ */
 export function App() {
   const chat = useChat()
 

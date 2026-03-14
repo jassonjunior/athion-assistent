@@ -3,23 +3,18 @@ import { join, resolve } from 'node:path'
 import { parseSkillFile } from './parser'
 import type { SkillDefinition, SkillManager } from './types'
 
-/**
- * Cria uma instância do Skill Manager.
- * Centraliza discovery, registro e busca de skills.
- * Skills podem ser carregadas de diretórios (.md) ou registradas programaticamente.
+/** createSkillManager
+ * Descrição: Cria uma instância do Skill Manager. Centraliza discovery, registro e
+ * busca de skills. Skills podem ser carregadas de diretórios (.md) ou registradas
+ * programaticamente.
  * @returns Instância do SkillManager pronta para uso
- * @example
- * const sm = createSkillManager()
- * await sm.loadFromDirectory('~/.athion/skills')
- * const skill = sm.get('commit')
- * const matches = sm.findByTrigger('faça o commit')
  */
 export function createSkillManager(): SkillManager {
   const skills = new Map<string, SkillDefinition>()
   let activeSkillName: string | undefined
 
-  /**
-   * Carrega skills de um diretório (busca arquivos .md recursivamente).
+  /** loadFromDirectory
+   * Descrição: Carrega skills de um diretório (busca arquivos .md recursivamente).
    * Cada arquivo .md é parseado para extrair metadados da skill.
    * @param dirPath - Caminho do diretório a escanear
    * @returns Número de skills carregadas
@@ -52,10 +47,9 @@ export function createSkillManager(): SkillManager {
     return loaded
   }
 
-  /**
-   * Registra uma skill programaticamente.
+  /** register
+   * Descrição: Registra uma skill programaticamente
    * @param skill - Definição completa da skill
-   * @throws Se já existir uma skill com o mesmo nome
    */
   function register(skill: SkillDefinition): void {
     if (skills.has(skill.name)) {
@@ -64,26 +58,26 @@ export function createSkillManager(): SkillManager {
     skills.set(skill.name, skill)
   }
 
-  /**
-   * Remove uma skill pelo nome.
+  /** unregister
+   * Descrição: Remove uma skill pelo nome
    * @param name - Nome da skill a remover
    */
   function unregister(name: string): void {
     skills.delete(name)
   }
 
-  /**
-   * Busca uma skill pelo nome exato.
+  /** get
+   * Descrição: Busca uma skill pelo nome exato
    * @param name - Nome da skill
-   * @returns A definição da skill ou undefined
+   * @returns A definição da skill ou undefined se não encontrada
    */
   function get(name: string): SkillDefinition | undefined {
     return skills.get(name)
   }
 
-  /**
-   * Busca skills que batem com um trigger.
-   * Útil para ativação automática baseada no input do usuário.
+  /** findByTrigger
+   * Descrição: Busca skills que batem com um trigger. Útil para ativação
+   * automática baseada no input do usuário.
    * @param input - Texto do usuário para testar contra triggers
    * @returns Array de skills que batem com o input
    */
@@ -94,22 +88,33 @@ export function createSkillManager(): SkillManager {
     )
   }
 
-  /**
-   * Lista todas as skills registradas.
+  /** list
+   * Descrição: Lista todas as skills registradas
    * @returns Array com todas as definições de skills
    */
   function list(): SkillDefinition[] {
     return Array.from(skills.values())
   }
 
+  /** setActive
+   * Descrição: Define a skill ativa no momento
+   * @param name - Nome da skill a ativar
+   */
   function setActive(name: string): void {
     activeSkillName = name
   }
 
+  /** getActive
+   * Descrição: Retorna a skill ativa no momento
+   * @returns A definição da skill ativa ou undefined se nenhuma ativa
+   */
   function getActive(): SkillDefinition | undefined {
     return activeSkillName ? skills.get(activeSkillName) : undefined
   }
 
+  /** clearActive
+   * Descrição: Remove a skill ativa, limpando o estado
+   */
   function clearActive(): void {
     activeSkillName = undefined
   }

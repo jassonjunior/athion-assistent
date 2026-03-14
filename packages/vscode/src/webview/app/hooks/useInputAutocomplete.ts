@@ -1,12 +1,8 @@
 /**
- * useInputAutocomplete — Autocomplete com navegação em menu/submenu.
- *
- * Fluxo de navegação:
- *  1. `/prefix`           → command picker (lista todos os comandos)
- *  2. `/skills <filter>`  → skills browser (lista skills, filtra em tempo real)
- *  3. `/use-skill <pre>`  → autocomplete de skill por nome
- *  4. `@<prefix>`         → autocomplete de arquivo
- *
+ * useInputAutocomplete
+ * Descrição: Hook de autocomplete com navegação em menu e submenu para o input de chat.
+ * Fluxo: `/prefix` -> command picker, `/skills <filter>` -> skills browser,
+ * `/use-skill <pre>` -> autocomplete de skill, `@<prefix>` -> autocomplete de arquivo.
  * Seleção no skills-browser executa `/use-skill <nome>` diretamente.
  */
 
@@ -14,42 +10,93 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useMessenger } from './useMessenger.js'
 import type { SkillInfo } from '../../../bridge/messenger-types.js'
 
+/**
+ * AutocompleteItem
+ * Descrição: Item exibido no dropdown de autocomplete.
+ */
 export interface AutocompleteItem {
+  /** Texto exibido como label do item */
   label: string
+  /** Descrição auxiliar exibida abaixo do label */
   description?: string
   /** Texto completo a inserir/submeter quando selecionado */
   insertValue: string
   /** Quando true, não adiciona espaço no final ao inserir */
   noTrailingSpace?: boolean
-  /** Badge exibido à direita do label (ex: "ativar") */
+  /** Badge exibido à direita do label (ex: "ativar", "->") */
   badge?: string
 }
 
+/**
+ * AutocompleteMode
+ * Descrição: Modos possíveis do autocomplete (command, skills-browser, skill, file ou null).
+ */
 export type AutocompleteMode = 'command' | 'skills-browser' | 'skill' | 'file' | null
 
+/**
+ * UseInputAutocompleteReturn
+ * Descrição: Tipo de retorno do hook useInputAutocomplete.
+ */
 export interface UseInputAutocompleteReturn {
+  /** Indica se o dropdown está aberto */
   isOpen: boolean
+  /** Itens a exibir no dropdown */
   items: AutocompleteItem[]
+  /** Índice do item selecionado */
   selectedIndex: number
+  /** Modo atual do autocomplete */
   mode: AutocompleteMode
+  /**
+   * handleChange
+   * Descrição: Chamado quando o valor do textarea muda. Detecta padrões de autocomplete.
+   * @param value - Valor atual do textarea
+   * @param cursorPos - Posição do cursor
+   */
   handleChange: (value: string, cursorPos: number) => void
+  /**
+   * handleKeyDown
+   * Descrição: Intercepta teclas para navegação no dropdown.
+   * @param e - Evento de teclado
+   * @returns true se o evento foi consumido
+   */
   handleKeyDown: (e: React.KeyboardEvent) => boolean
+  /**
+   * insertSelected
+   * Descrição: Insere o item selecionado no texto e retorna o novo valor.
+   * @param currentValue - Valor atual do textarea
+   * @param cursorPos - Posição do cursor
+   * @returns Novo valor ou null se nada selecionado
+   */
   insertSelected: (currentValue: string, cursorPos: number) => string | null
-  /** true quando a seleção deve ser submetida imediatamente (sem outro Enter) */
+  /**
+   * shouldSubmitOnInsert
+   * Descrição: Indica se a seleção deve ser submetida imediatamente.
+   * @param newValue - Novo valor após inserção
+   * @returns true se deve submeter sem outro Enter
+   */
   shouldSubmitOnInsert: (newValue: string) => boolean
+  /** Fecha o dropdown de autocomplete */
   close: () => void
 }
 
 // ── Definição dos slash commands ────────────────────────────────────────────
 
+/**
+ * SlashCommand
+ * Descrição: Definição de um slash command disponível no command picker.
+ */
 interface SlashCommand {
+  /** Nome do comando (ex: /clear, /help) */
   name: string
+  /** Descrição do que o comando faz */
   description: string
+  /** Se true, o comando aceita argumentos */
   hasArgs?: boolean
   /** Se true, ao selecionar abre um submenu em vez de executar */
   hasSubmenu?: boolean
 }
 
+/** SLASH_COMMANDS - Lista de todos os slash commands disponíveis no command picker */
 const SLASH_COMMANDS: SlashCommand[] = [
   { name: '/clear', description: 'Limpar mensagens' },
   { name: '/help', description: 'Mostrar ajuda e comandos disponíveis' },
@@ -71,16 +118,22 @@ const SLASH_COMMANDS: SlashCommand[] = [
 
 // ── Padrões de detecção (ordem importa) ────────────────────────────────────
 
-/** /use-skill <prefix> — com espaço obrigatório */
+/** USE_SKILL_PATTERN - Regex para detectar /use-skill <prefix> com espaço obrigatório */
 const USE_SKILL_PATTERN = /^\/use-skill\s+(\S*)$/
-/** /skills <filter> — com espaço (submenu de skills) */
+/** SKILLS_BROWSE_PATTERN - Regex para detectar /skills <filter> com espaço */
 const SKILLS_BROWSE_PATTERN = /^\/skills\s(.*)$/
-/** Qualquer /comando sem espaço */
+/** SLASH_PATTERN - Regex para detectar qualquer /comando sem espaço */
 const SLASH_PATTERN = /^(\/\S*)$/
-/** @arquivo */
+/** FILE_PATTERN - Regex para detectar @arquivo */
 const FILE_PATTERN = /@(\S*)$/
 
-/** Função pura — pode ser chamada de dentro de closures/listeners sem deps de hook */
+/**
+ * buildSkillItemsFrom
+ * Descrição: Filtra e mapeia skills em items de autocomplete. Função pura sem deps de hook.
+ * @param skills - Lista de skills disponíveis
+ * @param filter - Texto de filtro para busca
+ * @returns Lista de AutocompleteItem filtrada e limitada a 12 itens
+ */
 function buildSkillItemsFrom(skills: SkillInfo[], filter: string): AutocompleteItem[] {
   const f = filter.toLowerCase()
   return skills
@@ -99,6 +152,11 @@ function buildSkillItemsFrom(skills: SkillInfo[], filter: string): AutocompleteI
     )
 }
 
+/**
+ * useInputAutocomplete
+ * Descrição: Hook que gerencia o autocomplete do input com command picker, skills browser e file autocomplete.
+ * @returns Objeto UseInputAutocompleteReturn com estado e métodos de controle do autocomplete
+ */
 export function useInputAutocomplete(): UseInputAutocompleteReturn {
   const { post, on } = useMessenger()
 
@@ -145,6 +203,11 @@ export function useInputAutocomplete(): UseInputAutocompleteReturn {
 
   // ── Helpers ─────────────────────────────────────────────────────────────
 
+  /**
+   * loadSkills
+   * Descrição: Solicita a lista de skills ao core se ainda não foi carregada.
+   * @returns void
+   */
   function loadSkills() {
     if (!skillsLoadedRef.current) {
       post({ type: 'skill:list' })
@@ -161,6 +224,12 @@ export function useInputAutocomplete(): UseInputAutocompleteReturn {
     skillsBrowserFilterRef.current = null
   }, [])
 
+  /**
+   * buildSkillItems
+   * Descrição: Constrói lista de items de autocomplete de skills a partir do cache local.
+   * @param filter - Texto de filtro para busca
+   * @returns Lista de AutocompleteItem filtrada
+   */
   function buildSkillItems(filter: string): AutocompleteItem[] {
     return buildSkillItemsFrom(skillsRef.current, filter)
   }

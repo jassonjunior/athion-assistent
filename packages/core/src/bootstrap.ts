@@ -39,65 +39,67 @@ import { BUILTIN_TOOLS, createSearchCodebaseTool, createToolRegistry } from './t
 import { createTaskTool } from './tools/task-tool'
 import type { ToolDefinition } from './tools/types'
 
-/** Opcoes para o bootstrap.
- * @typedef {Object} BootstrapOptions
- * @property {string} dbPath - Caminho do banco de dados
- * @property {string} skillsDir - Diretorio de skills
- * @property {Partial<Config>} cliArgs - Argumentos de linha de comando
- * @example
- * const options: BootstrapOptions = { dbPath: '~/.athion/data.db', skillsDir: '~/.athion/skills', cliArgs: { provider: 'vllm-mlx', model: 'Qwen3-Coder-Next-REAP-40B-A3B-mlx-mxfp4' } }
+/** BootstrapOptions
+ * Descrição: Opções de configuração para inicialização do core do Athion.
+ * Permite customizar caminhos de banco de dados, diretórios de skills/plugins,
+ * e comportamento de auto-start dos servidores LLM.
  */
 export interface BootstrapOptions {
+  /** dbPath - Caminho do arquivo SQLite principal (default: '~/.athion/data.db') */
   dbPath?: string
+  /** skillsDir - Diretório adicional para carregar skills customizadas */
   skillsDir?: string
+  /** pluginsDir - Diretório de plugins (default: '~/.athion/plugins') */
   pluginsDir?: string
-  /** Caminho do workspace para indexação do codebase (opcional) */
+  /** workspacePath - Caminho do workspace para indexação do codebase (opcional) */
   workspacePath?: string
-  /** Caminho do banco SQLite do índice (default: ~/.athion/index.db) */
+  /** indexDbPath - Caminho do banco SQLite do índice (default: ~/.athion/index.db) */
   indexDbPath?: string
-  /** Desabilita auto-start do vllm e proxy (útil quando rodando como sidecar) */
+  /** skipVllm - Desabilita auto-start do vllm e proxy (útil quando rodando como sidecar) */
   skipVllm?: boolean
+  /** cliArgs - Argumentos de linha de comando que sobrescrevem todas as outras fontes de config */
   cliArgs?: Partial<Config>
 }
 
-/** Core do Athion.
- * @typedef {Object} AthionCore
- * @property {Bus} bus - Bus de eventos
- * @property {ConfigManager} config - Configuracao do sistema
- * @property {ProviderLayer} provider - Provider do LLM
- * @property {SkillManager} skills - Gerenciador de skills
- * @property {ToolRegistry} tools - Registro de ferramentas
- * @property {SubAgentManager} subagents - Gerenciador de subagentes
- * @property {Orchestrator} orchestrator - Orquestrador
- * @property {VllmManager} vllm - Gerenciador do vllm-mlx
- * @property {ProxyServer | null} proxy - Proxy do sistema
- * @example
- * const core: AthionCore = { bus: createBus(), config: createConfigManager(), provider: createProviderLayer(), skills: createSkillManager(), tools: createToolRegistry(), subagents: createSubAgentManager(), orchestrator: createOrchestrator(), vllm: createVllmManager(), proxy: createProxy() }
+/** AthionCore
+ * Descrição: Objeto principal retornado pelo bootstrap, contendo todos os serviços
+ * inicializados e prontos para uso. Representa a instância completa do Athion.
  */
 export interface AthionCore {
+  /** bus - Bus de eventos pub/sub tipado com validação Zod */
   bus: Bus
+  /** config - Gerenciador de configurações unificado (5 fontes) */
   config: ConfigManager
+  /** provider - Camada de abstração para chamadas ao LLM */
   provider: ProviderLayer
+  /** skills - Gerenciador de skills (carregamento e execução) */
   skills: SkillManager
+  /** tools - Registro de ferramentas disponíveis para o LLM */
   tools: ToolRegistry
+  /** plugins - Gerenciador de plugins (carregamento dinâmico) */
   plugins: PluginManager
+  /** subagents - Gerenciador de subagentes especializados */
   subagents: SubAgentManager
+  /** orchestrator - Orquestrador principal de conversas */
   orchestrator: Orchestrator
+  /** permissions - Gerenciador de permissões (session + persistidas) */
   permissions: PermissionManager
+  /** vllm - Gerenciador do servidor LLM (vllm-mlx, mlx-omni, llama-cpp ou lm-studio) */
   vllm: VllmManager
+  /** proxy - Proxy reverso para o backend LLM (null se desabilitado) */
   proxy: ProxyServer | null
-  /** Indexador de codebase — disponível quando workspacePath foi configurado */
+  /** indexer - Indexador de codebase para busca semântica (null se workspacePath não configurado) */
   indexer: CodebaseIndexer | null
-  /** Registry de skills — busca e instalação de skills do catálogo */
+  /** skillRegistry - Registry de skills para busca e instalação do catálogo */
   skillRegistry: SkillRegistry
 }
 
-/** Inicializa o core do Athion.
- * @param options - Opcoes para o bootstrap.
- * @returns {Promise<AthionCore>} Core do Athion
- * @example
- * const core = await bootstrap({ dbPath: '~/.athion/data.db', skillsDir: '~/.athion/skills', cliArgs: { provider: 'vllm-mlx', model: 'Qwen3-Coder-Next-REAP-40B-A3B-mlx-mxfp4' } })
- * console.log(core) // { bus: createBus(), config: createConfigManager(), provider: createProviderLayer(), skills: createSkillManager(), tools: createToolRegistry(), subagents: createSubAgentManager(), orchestrator: createOrchestrator(), vllm: createVllmManager(), proxy: createProxy() }
+/** bootstrap
+ * Descrição: Inicializa todos os serviços do core do Athion e retorna a instância completa.
+ * Configura bus, config, provider, skills, tools, plugins, subagentes, orquestrador,
+ * permissões, servidor LLM e proxy.
+ * @param options - Opções de configuração para o bootstrap
+ * @returns Instância completa do AthionCore com todos os serviços prontos
  */
 export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionCore> {
   const log = createLogger('bootstrap')
@@ -247,12 +249,11 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
   }
 }
 
-/** Cria os servicos base do Athion.
- * @param cliArgs - Argumentos de linha de comando
- * @returns {Object} Servicos base do Athion
- * @example
- * const services = createBaseServices({ provider: 'vllm-mlx', model: 'Qwen3-Coder-Next-REAP-40B-A3B-mlx-mxfp4' })
- * console.log(services) // { bus: createBus(), config: createConfigManager(), tokens: createTokenManager(), provider: createProviderLayer(), skills: createSkillManager(), tools: createToolRegistry() }
+/** createBaseServices
+ * Descrição: Cria os serviços base do Athion (bus, config, tokens, provider, skills, tools).
+ * Estes serviços são independentes e não precisam de servidor LLM rodando.
+ * @param cliArgs - Argumentos de linha de comando que sobrescrevem a configuração
+ * @returns Objeto com os serviços base inicializados
  */
 function createBaseServices(cliArgs: Partial<Config>) {
   const bus = createBus()
@@ -280,6 +281,14 @@ function createBaseServices(cliArgs: Partial<Config>) {
   return { bus, config, tokens, provider, skills, tools }
 }
 
+/** setupIndexer
+ * Descrição: Configura o indexador de codebase para busca semântica.
+ * Cria o indexador e registra a ferramenta de busca no ToolRegistry.
+ * @param workspacePath - Caminho do workspace a ser indexado (undefined para pular)
+ * @param indexDbPath - Caminho do banco de índice (default: ~/.athion/index.db)
+ * @param tools - Registry de ferramentas onde a busca será registrada
+ * @returns Instância do CodebaseIndexer ou null se workspacePath não informado
+ */
 async function setupIndexer(
   workspacePath: string | undefined,
   indexDbPath: string | undefined,
@@ -297,6 +306,12 @@ async function setupIndexer(
   return indexer
 }
 
+/** setupLmStudio
+ * Descrição: Configura o gerenciador do LM Studio para swap de modelos via lms CLI.
+ * Define as variáveis de ambiente necessárias para o provider.
+ * @param config - Gerenciador de configurações do Athion
+ * @returns Instância do VllmManager configurada para LM Studio
+ */
 function setupLmStudio(config: ConfigManager): VllmManager {
   const log = createLogger('bootstrap')
   const port = (config.get('lmStudioPort') as number | undefined) ?? 1234
@@ -315,6 +330,12 @@ function setupLmStudio(config: ConfigManager): VllmManager {
   return createLmStudioManager({ port, host, ...(apiKey ? { apiKey } : {}) })
 }
 
+/** setupLlamaCpp
+ * Descrição: Configura o gerenciador do llama-cpp para swap de modelos via keep_alive.
+ * Define as variáveis de ambiente e opções de auto-start.
+ * @param config - Gerenciador de configurações do Athion
+ * @returns Instância do VllmManager configurada para llama-cpp
+ */
 function setupLlamaCpp(config: ConfigManager): VllmManager {
   const log = createLogger('bootstrap')
   const port = (config.get('llamaCppPort') as number | undefined) ?? 8080
@@ -332,6 +353,12 @@ function setupLlamaCpp(config: ConfigManager): VllmManager {
   return createLlamaCppManager({ port, host, autoStart, extraArgs })
 }
 
+/** setupMlxOmni
+ * Descrição: Configura o gerenciador do mlx-omni-server com hotload LRU+TTL.
+ * Verifica saúde do servidor e faz auto-start se configurado.
+ * @param config - Gerenciador de configurações do Athion
+ * @returns Instância do VllmManager configurada para mlx-omni
+ */
 async function setupMlxOmni(config: ConfigManager): Promise<VllmManager> {
   const log = createLogger('bootstrap')
   const port = (config.get('mlxOmniPort') as number | undefined) ?? 10240
@@ -360,6 +387,12 @@ async function setupMlxOmni(config: ConfigManager): Promise<VllmManager> {
   return mlxOmni
 }
 
+/** setupVllmAndProxy
+ * Descrição: Configura o gerenciador vllm-mlx e o proxy reverso.
+ * Reutiliza proxy existente se já houver outra instância rodando na porta.
+ * @param config - Gerenciador de configurações do Athion
+ * @returns Objeto com o VllmManager e o ProxyServer (ou null se proxy desabilitado)
+ */
 async function setupVllmAndProxy(
   config: ConfigManager,
 ): Promise<{ vllm: VllmManager; proxy: ProxyServer | null }> {

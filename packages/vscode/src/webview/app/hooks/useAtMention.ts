@@ -1,12 +1,8 @@
 /**
- * useAtMention — Detecta `@` no input e busca arquivos/símbolos via codebase indexer.
- *
- * Fluxo:
- *  1. Usuário digita `@` → detecta padrão /@(\w*)$/
- *  2. Posta `mention:search` para a extensão com a query
- *  3. Extensão responde com `mention:results`
- *  4. MentionDropdown renderiza resultados
- *  5. Seleção insere `@file:line` no textarea
+ * useAtMention
+ * Descrição: Hook que detecta `@` no input e busca arquivos/simbolos via codebase indexer.
+ * Fluxo: Usuário digita `@` -> detecta padrão -> posta `mention:search` -> recebe resultados ->
+ * MentionDropdown renderiza -> seleção insere `@file:line` no textarea.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -15,22 +11,54 @@ import type { MentionResult } from '../../../bridge/messenger-types.js'
 
 export type { MentionResult }
 
+/** AT_PATTERN - Regex para detectar padrão de @mention no texto antes do cursor */
 const AT_PATTERN = /@(\w[\w./\\-]*)$/
 
+/**
+ * UseAtMentionReturn
+ * Descrição: Tipo de retorno do hook useAtMention com estado e métodos de controle.
+ */
 export interface UseAtMentionReturn {
+  /** Indica se o dropdown de menções está aberto */
   isOpen: boolean
+  /** Resultados de busca de menção */
   results: MentionResult[]
+  /** Query atual de busca (texto após @) */
   query: string
+  /** Índice do item selecionado no dropdown */
   selectedIndex: number
-  /** Chama quando o valor do textarea muda. Detecta padrão @. */
+  /**
+   * handleChange
+   * Descrição: Chamado quando o valor do textarea muda. Detecta padrão @.
+   * @param value - Valor atual do textarea
+   * @param cursorPos - Posição do cursor
+   */
   handleChange: (value: string, cursorPos: number) => void
-  /** Intercepta teclas no textarea. Retorna true se o evento foi consumido. */
+  /**
+   * handleKeyDown
+   * Descrição: Intercepta teclas no textarea para navegação no dropdown.
+   * @param e - Evento de teclado
+   * @returns true se o evento foi consumido
+   */
   handleKeyDown: (e: React.KeyboardEvent) => boolean
-  /** Insere a menção no texto e retorna o novo valor. */
+  /**
+   * insertMention
+   * Descrição: Insere a menção selecionada no texto e retorna o novo valor.
+   * @param result - Resultado selecionado
+   * @param currentValue - Valor atual do textarea
+   * @param cursorPos - Posição do cursor
+   * @returns Novo valor do textarea com a menção inserida
+   */
   insertMention: (result: MentionResult, currentValue: string, cursorPos: number) => string
+  /** Fecha o dropdown de menções */
   close: () => void
 }
 
+/**
+ * useAtMention
+ * Descrição: Hook que gerencia a detecção de @mentions, busca de resultados e inserção no textarea.
+ * @returns Objeto UseAtMentionReturn com estado e métodos de controle do dropdown de menções
+ */
 export function useAtMention(): UseAtMentionReturn {
   const { post, on } = useMessenger()
   const [isOpen, setIsOpen] = useState(false)

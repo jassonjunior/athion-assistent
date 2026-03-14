@@ -1,13 +1,15 @@
-/**
- * Catálogo embutido de skills disponíveis para instalação.
+/** registryData
+ * Descrição: Catálogo embutido de skills disponíveis para instalação.
  * Cada skill inclui o conteúdo .md completo no campo `content`.
- *
  * Para adicionar novas skills, basta inserir uma nova entrada no array.
  * O formato do content segue o padrão Athion (seções ## Triggers e ## Instructions).
  */
 
 import type { SkillRegistryData } from './types'
 
+/** registryData
+ * Descrição: Dados estáticos do catálogo de skills bundled com o Athion
+ */
 export const registryData: SkillRegistryData = {
   version: 1,
   skills: [

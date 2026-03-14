@@ -1,7 +1,7 @@
 /**
- * useChat — Gerencia estado do chat no desktop app.
- *
- * Usa Tauri Bridge (invoke/listen) em vez de Messenger (postMessage).
+ * useChat
+ * Descrição: Hook que gerencia o estado completo do chat no desktop app.
+ * Usa Tauri Bridge (invoke/listen) em vez de Messenger (postMessage) para comunicação com o sidecar.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -10,21 +10,40 @@ import type { SkillSearchResult } from '../bridge/tauri-bridge.js'
 import { createChatEventHandler, flushAssistant, type ChatRefs } from './chat-events.js'
 import type { SidecarStatus } from '../bridge/types.js'
 
+/** ChatMessage
+ * Descrição: Representa uma mensagem individual no chat (do usuário ou do assistente)
+ */
 export interface ChatMessage {
+  /** Identificador único da mensagem */
   id: string
+  /** Papel do remetente da mensagem */
   role: 'user' | 'assistant'
+  /** Conteúdo textual da mensagem */
   content: string
+  /** Lista opcional de chamadas de ferramentas associadas à mensagem */
   toolCalls?: ToolCallInfo[] | undefined
 }
 
+/** ToolCallInfo
+ * Descrição: Informações sobre uma chamada de ferramenta (tool call) feita pelo assistente
+ */
 export interface ToolCallInfo {
+  /** Identificador único da chamada de ferramenta */
   id: string
+  /** Nome da ferramenta invocada */
   name: string
+  /** Argumentos passados para a ferramenta */
   args: unknown
+  /** Estado atual da execução da ferramenta */
   status: 'running' | 'success' | 'error'
+  /** Preview textual do resultado da ferramenta */
   result?: string | undefined
 }
 
+/** useChat
+ * Descrição: Hook React que gerencia mensagens, streaming, sessões e comandos especiais (/use-skill, /find-skills, /install-skill, /clear-skill)
+ * @returns Objeto com estado do chat (messages, isStreaming, sessionId, status, activeSkill) e ações (sendMessage, abort, newSession)
+ */
 export function useChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
@@ -50,6 +69,9 @@ export function useChat() {
     }
   }, [])
 
+  /** initSession
+   * Descrição: Inicializa a sessão de chat, tentando conectar ao sidecar com até 10 tentativas
+   */
   const initSession = useCallback(async () => {
     // Retry ping up to 10 times (sidecar may still be bootstrapping)
     for (let attempt = 0; attempt < 10; attempt++) {
@@ -68,6 +90,10 @@ export function useChat() {
     setStatus('error')
   }, [])
 
+  /** addSystemMsg
+   * Descrição: Adiciona uma mensagem do sistema (exibida como assistente) ao chat
+   * @param content - Conteúdo textual da mensagem do sistema
+   */
   function addSystemMsg(content: string) {
     setMessages((prev) => [
       ...prev,
@@ -75,6 +101,10 @@ export function useChat() {
     ])
   }
 
+  /** sendMessage
+   * Descrição: Envia uma mensagem do usuário, processando comandos especiais (/use-skill, /clear-skill, /find-skills, /install-skill) ou enviando ao sidecar via bridge
+   * @param content - Conteúdo da mensagem a ser enviada
+   */
   const sendMessage = useCallback(
     async (content: string) => {
       if (!content.trim() || isStreaming || !sessionId) return
@@ -189,11 +219,17 @@ export function useChat() {
     [isStreaming, sessionId, refs],
   )
 
+  /** abort
+   * Descrição: Aborta a geração de resposta em andamento para a sessão atual
+   */
   const abort = useCallback(async () => {
     if (sessionId) await bridge.chatAbort(sessionId)
     setIsStreaming(false)
   }, [sessionId])
 
+  /** newSession
+   * Descrição: Cria uma nova sessão de chat, limpando mensagens e estado acumulado
+   */
   const newSession = useCallback(async () => {
     setMessages([])
     refs.content.current = ''

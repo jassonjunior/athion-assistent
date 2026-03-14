@@ -1,3 +1,6 @@
+/** VERSION
+ * Descrição: Versão atual do pacote compartilhado (shared)
+ */
 export const VERSION = '0.0.2'
 
 // i18n

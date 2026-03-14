@@ -1,7 +1,9 @@
 /**
- * PermissionPrompt — Dialogo interativo de aprovacao de permissao.
+ * PermissionPrompt — Diálogo interativo de aprovação de permissão.
+ * Descrição: Componente que exibe um prompt para o usuário aprovar ou negar
+ * a execução de uma ferramenta que requer permissão.
  *
- * Renderizado acima do UserInput quando uma tool requer aprovacao.
+ * Renderizado acima do UserInput quando uma tool requer aprovação.
  * Teclas:
  *   y / Enter  → allow + once
  *   s          → allow + session
@@ -13,13 +15,26 @@ import { Box, Text, useInput } from 'ink'
 import type { PermissionDecision, PermissionScope } from '@athion/core'
 import type { Theme } from '../types.js'
 
+/** PermissionPromptProps
+ * Descrição: Props do componente PermissionPrompt.
+ */
 interface PermissionPromptProps {
+  /** Nome da ferramenta que requer permissão */
   toolName: string
+  /** Alvo da operação (arquivo, diretório, etc.) */
   target: string
+  /** Callback chamado quando o usuário toma uma decisão */
   onDecide: (decision: PermissionDecision, scope: PermissionScope) => void
+  /** Tema visual com as cores a serem aplicadas */
   theme: Theme
 }
 
+/** PermissionPrompt
+ * Descrição: Componente que renderiza um diálogo de permissão com opções de allow/deny
+ * e diferentes escopos (once, session, remember).
+ * @param props - Props contendo nome da tool, alvo, callback de decisão e tema
+ * @returns Elemento React com o diálogo de permissão
+ */
 export function PermissionPrompt({ toolName, target, onDecide, theme }: PermissionPromptProps) {
   useInput((input, key) => {
     if (input === 'y' || key.return) {

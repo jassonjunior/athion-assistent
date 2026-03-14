@@ -3,19 +3,21 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { Config } from './schema'
 
-/**
- * Carrega a configuração global do usuário
- * @returns {Partial<Config>} A configuração global do usuário
+/** loadGlobalConfig
+ * Descrição: Carrega a configuração global do usuário a partir de ~/.athion/config.json.
+ * Retorna objeto vazio se o arquivo não existir ou for inválido.
+ * @returns Configuração parcial carregada do arquivo global
  */
 export function loadGlobalConfig(): Partial<Config> {
   const configPath = join(homedir(), '.athion', 'config.json')
   return loadJsonFile(configPath)
 }
 
-/**
- * Carrega a configuração do projeto
- * @param {string} projectDir - O diretório do projeto
- * @returns {Partial<Config>} A configuração do projeto
+/** loadProjectConfig
+ * Descrição: Carrega a configuração do projeto a partir de .athion/config.json ou athion.json
+ * no diretório do projeto. Retorna o primeiro arquivo encontrado com conteúdo.
+ * @param projectDir - Diretório raiz do projeto (default: process.cwd())
+ * @returns Configuração parcial carregada do arquivo de projeto
  */
 export function loadProjectConfig(projectDir: string = process.cwd()): Partial<Config> {
   const paths = [join(projectDir, '.athion', 'config.json'), join(projectDir, 'athion.json')]
@@ -28,9 +30,9 @@ export function loadProjectConfig(projectDir: string = process.cwd()): Partial<C
   return {}
 }
 
-/**
- * Mapeia as variáveis de ambiente para as chaves da configuração
- * @returns {Record<string, keyof Config>} Mapeia as variáveis de ambiente para as chaves da configuração
+/** ENV_MAP
+ * Descrição: Mapeamento de variáveis de ambiente ATHION_* para chaves da configuração.
+ * Usado pelo loadEnvConfig para converter variáveis de ambiente em configurações tipadas.
  */
 const ENV_MAP: Record<string, keyof Config> = {
   ATHION_PROVIDER: 'provider',
@@ -44,9 +46,10 @@ const ENV_MAP: Record<string, keyof Config> = {
   ATHION_DEFAULT_PERMISSION: 'defaultPermission',
 }
 
-/**
- * Carrega a configuração das variáveis de ambiente
- * @returns {Partial<Config>} A configuração das variáveis de ambiente
+/** loadEnvConfig
+ * Descrição: Carrega configurações a partir de variáveis de ambiente ATHION_*.
+ * Converte valores numéricos e booleanos automaticamente.
+ * @returns Configuração parcial carregada das variáveis de ambiente
  */
 export function loadEnvConfig(): Partial<Config> {
   const config: Record<string, unknown> = {}
@@ -67,10 +70,11 @@ export function loadEnvConfig(): Partial<Config> {
   return config as Partial<Config>
 }
 
-/**
- * Carrega a configuração de um arquivo JSON
- * @param {string} filePath - O caminho do arquivo JSON
- * @returns {Partial<Config>} A configuração do arquivo JSON
+/** loadJsonFile
+ * Descrição: Carrega e faz parse de um arquivo JSON de configuração.
+ * Retorna objeto vazio se o arquivo não existir ou tiver JSON inválido.
+ * @param filePath - Caminho absoluto do arquivo JSON
+ * @returns Configuração parcial carregada do arquivo
  */
 function loadJsonFile(filePath: string): Partial<Config> {
   if (!existsSync(filePath)) return {}
