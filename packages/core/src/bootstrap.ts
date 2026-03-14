@@ -7,6 +7,8 @@ import type { Config, ConfigManager } from './config'
 import { createConfigManager } from './config'
 import type { CodebaseIndexer } from './indexing'
 import { createCodebaseIndexer } from './indexing'
+import { SqliteVectorStore } from './indexing/adapters/sqlite-vector-store'
+import { SqliteTextSearch } from './indexing/adapters/sqlite-text-search'
 import { createOrchestrator } from './orchestrator/orchestrator'
 import { createPromptBuilder } from './orchestrator/prompt-builder'
 import { createSessionManager } from './orchestrator/session'
@@ -296,12 +298,22 @@ async function setupIndexer(
 ): Promise<CodebaseIndexer | null> {
   if (!workspacePath) return null
   const resolvedIndexDb = indexDbPath ?? join(homedir(), '.athion', 'index.db')
-  const indexer = createCodebaseIndexer({
-    workspacePath,
-    dbPath: resolvedIndexDb,
-    embeddingBaseUrl: process.env['ATHION_EMBEDDING_URL'] ?? '',
-    embeddingModel: process.env['ATHION_EMBEDDING_MODEL'] ?? 'nomic-embed-text',
-  })
+
+  // Cria adapters SQLite e injeta via DI
+  const vectorStore = new SqliteVectorStore(resolvedIndexDb)
+  const textSearch = new SqliteTextSearch(resolvedIndexDb)
+  await vectorStore.initialize()
+  await textSearch.initialize()
+
+  const indexer = createCodebaseIndexer(
+    {
+      workspacePath,
+      dbPath: resolvedIndexDb,
+      embeddingBaseUrl: process.env['ATHION_EMBEDDING_URL'] ?? '',
+      embeddingModel: process.env['ATHION_EMBEDDING_MODEL'] ?? 'nomic-embed-text',
+    },
+    { vectorStore, textSearch },
+  )
   tools.register(createSearchCodebaseTool(indexer) as ToolDefinition)
   return indexer
 }

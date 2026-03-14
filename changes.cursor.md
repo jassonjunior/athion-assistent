@@ -1,5 +1,52 @@
 # Changes Log - Athion Assistent
 
+## Fase 0 — Refatoração Pré-requisitos (Codebase Intelligence) (2026-03-13)
+
+**Status**: Concluído ✅
+**Branch**: `feat/codebase-intelligence-fase-0`
+**Issues**: #29 (parent), #30-#35 (sub-issues)
+
+### O que foi feito
+
+Refatoração estrutural do módulo de indexação para desacoplamento via Hexagonal Architecture (ports/adapters) e Dependency Injection. Nenhuma feature nova — apenas preparação para as Fases 1-5.
+
+### Tarefas (R1-R6)
+
+- **R1** (#30): `VectorStorePort` interface + `SqliteVectorStore` adapter (brute-force cosine similarity)
+- **R2** (#31): `TextSearchPort` interface + `SqliteTextSearch` adapter (FTS5 trigram)
+- **R3** (#32): `Result<T, E>` type com helpers (Ok, Err, unwrapOr, mapResult, flatMapResult, tryCatch, tryCatchAsync)
+- **R4** (#33): Índice SQLite em `messages.session_id` para performance
+- **R5** (#34): `CodebaseIndexer` refatorado para receber ports via constructor DI (backward-compatible)
+- **R6** (#35): 4 eventos de indexação no Event Bus (`FileChanged`, `IndexingStarted`, `IndexingCompleted`, `IndexingFailed`)
+
+### Arquivos criados
+
+- `packages/core/src/indexing/ports/vector-store.port.ts` — interface VectorStorePort + tipos
+- `packages/core/src/indexing/ports/text-search.port.ts` — interface TextSearchPort + tipos
+- `packages/core/src/indexing/ports/index.ts` — barrel exports
+- `packages/core/src/indexing/adapters/sqlite-vector-store.ts` — SqliteVectorStore
+- `packages/core/src/indexing/adapters/sqlite-text-search.ts` — SqliteTextSearch
+- `packages/core/src/indexing/adapters/index.ts` — barrel exports
+- `packages/core/src/indexing/result.ts` — Result<T, E> + helpers
+
+### Arquivos modificados
+
+- `packages/core/src/indexing/manager.ts` — DI via constructor, suporte a ports
+- `packages/core/src/indexing/index.ts` — novos exports (ports, adapters, result)
+- `packages/core/src/bootstrap.ts` — cria SqliteVectorStore/SqliteTextSearch e injeta
+- `packages/core/src/bus/events.ts` — 4 novos eventos codebase.\*
+- `packages/core/src/bus/index.ts` — re-exporta novos eventos
+- `packages/core/src/storage/db.ts` — índice idx_messages_session_id
+
+### Testes
+
+- 61 testes unitários novos (todos passando ✅)
+- 7 testes e2e novos (todos passando ✅)
+- 231 testes existentes continuam passando ✅
+- Arquivos: `result.test.ts`, `sqlite-vector-store.test.ts`, `sqlite-text-search.test.ts`, `manager.test.ts`, `events.test.ts`, `indexing-e2e.test.ts`
+
+---
+
 ## Fix: maxTokens + Orchestrator Final Synthesis (2026-03-13)
 
 **Status**: Concluído ✅

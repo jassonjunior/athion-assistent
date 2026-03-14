@@ -8,9 +8,13 @@
 export { createBus, defineBusEvent } from './bus'
 /** Bus, BusEventDef - Tipos do sistema de eventos */
 export type { Bus, BusEventDef } from './bus'
-/** Eventos builtin do sistema (stream, subagent, system, plugin) */
+/** Eventos builtin do sistema (stream, subagent, system, plugin, codebase) */
 export {
   ConfigChanged,
+  FileChanged,
+  IndexingCompleted,
+  IndexingFailed,
+  IndexingStarted,
   PermissionRequest,
   PluginError,
   PluginLoaded,

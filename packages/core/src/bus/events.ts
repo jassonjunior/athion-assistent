@@ -188,3 +188,69 @@ export const PluginError = defineBusEvent(
     error: z.string(),
   }),
 )
+
+// ─── Codebase Indexing Events ───────────────────────────────────────────
+
+/** FileChanged
+ * Descrição: Evento emitido quando um arquivo do workspace é adicionado, modificado ou removido.
+ * Usado pelo FileWatcher (Fase 5) para disparar re-indexação incremental.
+ */
+export const FileChanged = defineBusEvent(
+  'codebase.file_changed',
+  z.object({
+    /** filePath - Caminho absoluto do arquivo alterado */
+    filePath: z.string(),
+    /** event - Tipo de alteração detectada */
+    event: z.enum(['add', 'change', 'unlink']),
+    /** timestamp - Timestamp Unix da alteração */
+    timestamp: z.number(),
+  }),
+)
+
+/** IndexingStarted
+ * Descrição: Evento emitido quando a indexação de um arquivo inicia.
+ * Permite tracking de progresso e priorização de recursos (LlmPriorityQueue).
+ */
+export const IndexingStarted = defineBusEvent(
+  'codebase.indexing_started',
+  z.object({
+    /** filePath - Caminho absoluto do arquivo sendo indexado */
+    filePath: z.string(),
+    /** level - Nível hierárquico do índice sendo processado */
+    level: z.enum(['L0', 'L1', 'L2', 'L3', 'L4']),
+  }),
+)
+
+/** IndexingCompleted
+ * Descrição: Evento emitido quando a indexação de um arquivo é concluída com sucesso.
+ * Contém métricas de performance e status de enriquecimento.
+ */
+export const IndexingCompleted = defineBusEvent(
+  'codebase.indexing_completed',
+  z.object({
+    /** filePath - Caminho absoluto do arquivo indexado */
+    filePath: z.string(),
+    /** chunksIndexed - Número de chunks gerados para o arquivo */
+    chunksIndexed: z.number(),
+    /** durationMs - Tempo total de indexação em milissegundos */
+    durationMs: z.number(),
+    /** enriched - Se o arquivo passou por enriquecimento LLM */
+    enriched: z.boolean(),
+  }),
+)
+
+/** IndexingFailed
+ * Descrição: Evento emitido quando a indexação de um arquivo falha.
+ * Permite retry automático e alertas de observabilidade.
+ */
+export const IndexingFailed = defineBusEvent(
+  'codebase.indexing_failed',
+  z.object({
+    /** filePath - Caminho absoluto do arquivo que falhou */
+    filePath: z.string(),
+    /** error - Mensagem de erro descrevendo a falha */
+    error: z.string(),
+    /** stage - Estágio da pipeline onde a falha ocorreu (ex: 'chunk', 'embed', 'enrich') */
+    stage: z.string(),
+  }),
+)
