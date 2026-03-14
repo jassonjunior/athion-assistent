@@ -9,6 +9,7 @@ import * as vscode from 'vscode'
 import type { CoreBridge } from '../bridge/core-bridge.js'
 import type { ChatViewProvider } from '../webview/chat-view-provider.js'
 import type { DiffManager } from '../diff/diff-manager.js'
+import { DependencyGraphPanel } from '../panels/dependency-graph-panel.js'
 import { getSelectionContext } from '../context/selection-context.js'
 
 /**
@@ -39,6 +40,7 @@ export function registerCommands(
     ...diffCommands(diffManager),
     ...settingsCommands(),
     ...codebaseCommands(bridge, chatProvider),
+    ...graphCommands(context, bridge),
   ]
 
   for (const [id, handler] of commands) {
@@ -265,6 +267,33 @@ function codebaseCommands(bridge: CoreBridge, chatProvider: ChatViewProvider): C
             `Athion: Erro na busca: ${err instanceof Error ? err.message : String(err)}`,
           )
         }
+      },
+    ],
+  ]
+}
+
+// ─── Graph Commands ──────────────────────────────────────────────────
+
+/**
+ * graphCommands
+ * Descrição: Retorna o comando para abrir o painel de visualização do DependencyGraph.
+ * @param context - Contexto da extensão com extensionUri
+ * @param bridge - Instância do CoreBridge para obter dados do grafo
+ * @returns Lista de CommandEntry para comandos do grafo
+ */
+function graphCommands(context: vscode.ExtensionContext, bridge: CoreBridge): CommandEntry[] {
+  return [
+    [
+      'athion.showDependencyGraph',
+      () => {
+        const editor = vscode.window.activeTextEditor
+        const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+        let focusFile: string | undefined
+        if (editor && wsRoot) {
+          const abs = editor.document.uri.fsPath
+          focusFile = abs.startsWith(wsRoot) ? abs.slice(wsRoot.length + 1) : abs
+        }
+        DependencyGraphPanel.createOrShow(context.extensionUri, bridge, focusFile)
       },
     ],
   ]

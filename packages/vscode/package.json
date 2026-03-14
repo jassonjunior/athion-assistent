@@ -29,9 +29,10 @@
   ],
   "main": "./dist/extension.js",
   "scripts": {
-    "build": "bun esbuild.config.mjs && bun esbuild.webview.mjs",
+    "build": "bun esbuild.config.mjs && bun esbuild.webview.mjs && bun esbuild.graph.mjs",
     "build:ext": "bun esbuild.config.mjs",
     "build:webview": "bun esbuild.webview.mjs",
+    "build:graph": "bun esbuild.graph.mjs",
     "dev": "bun esbuild.config.mjs --watch",
     "test": "vitest run",
     "lint": "eslint src/",
@@ -124,6 +125,10 @@
       {
         "command": "athion.searchCodebase",
         "title": "Athion: Search Codebase"
+      },
+      {
+        "command": "athion.showDependencyGraph",
+        "title": "Athion: Show Dependency Graph"
       }
     ],
     "keybindings": [
@@ -190,6 +195,7 @@
     "@athion/shared": "workspace:*"
   },
   "devDependencies": {
+    "@types/dagre": "^0.7.54",
     "@types/node": "^25.3.5",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
@@ -199,6 +205,8 @@
     "@wdio/local-runner": "^9.0.0",
     "@wdio/mocha-framework": "^9.0.0",
     "@wdio/spec-reporter": "^9.0.0",
+    "@xyflow/react": "^12.10.1",
+    "dagre": "^0.8.5",
     "esbuild": "^0.27.3",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
