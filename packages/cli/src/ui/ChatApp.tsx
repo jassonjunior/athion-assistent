@@ -69,7 +69,7 @@ export function ChatApp({ core, session: initialSession }: ChatAppProps) {
       />
 
       {chat.messages.length === 0 && !chat.isStreaming ? (
-        <WelcomeScreen model={model} theme={theme} />
+        <WelcomeScreen model={model} indexing={indexing} theme={theme} />
       ) : (
         <MessageList
           messages={chat.messages}
