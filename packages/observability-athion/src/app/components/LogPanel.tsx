@@ -1,5 +1,7 @@
-import { useEffect, useRef } from 'react'
+import { useMemo } from 'react'
 import type { WsServerMessage } from '../../server/protocol'
+import type { LogEntry } from './LogPanelBase'
+import { LogPanelBase } from './LogPanelBase'
 
 interface LogPanelProps {
   messages: WsServerMessage[]
@@ -34,7 +36,7 @@ function formatMessage(msg: WsServerMessage): string {
     case 'test:started':
       return `Test started: ${msg.testName}`
     case 'test:finished':
-      return `Test ${msg.passed ? 'PASSED ✓' : 'FAILED ✗'} (${(msg.duration / 1000).toFixed(1)}s)`
+      return `Test ${msg.passed ? 'PASSED \u2713' : 'FAILED \u2717'} (${(msg.duration / 1000).toFixed(1)}s)`
     case 'setup:step':
       return `[${msg.step}] ${msg.detail}`
     case 'setup:tools':
@@ -50,72 +52,52 @@ function formatMessage(msg: WsServerMessage): string {
     case 'orch:tool_call':
       return `Tool call: ${msg.name}(${JSON.stringify(msg.args).slice(0, 120)})`
     case 'orch:tool_result':
-      return `Tool result: ${msg.name} → ${msg.success ? '✓' : '✗'} ${msg.preview.slice(0, 100)}`
+      return `Tool result: ${msg.name} \u2192 ${msg.success ? '\u2713' : '\u2717'} ${msg.preview.slice(0, 100)}`
     case 'orch:subagent_start':
-      return `▸ SubAgent started: ${msg.agentName}`
+      return `\u25B8 SubAgent started: ${msg.agentName}`
     case 'orch:subagent_complete':
-      return `▸ SubAgent complete: ${msg.agentName}`
+      return `\u25B8 SubAgent complete: ${msg.agentName}`
     case 'orch:finish':
       return `Finish: ${msg.promptTokens} in / ${msg.completionTokens} out / ${msg.totalTokens} total`
     case 'orch:error':
       return `ERROR: ${msg.message}`
     case 'sub:start':
-      return `  ↳ Agent ${msg.agentName}: ${msg.description.slice(0, 100)}`
+      return `  \u21B3 Agent ${msg.agentName}: ${msg.description.slice(0, 100)}`
     case 'sub:content':
-      return `  ↳ Agent response: ${msg.content.slice(0, 120)}`
+      return `  \u21B3 Agent response: ${msg.content.slice(0, 120)}`
     case 'sub:tool_call':
-      return `  ↳ Tool: ${msg.toolName}(${JSON.stringify(msg.args).slice(0, 100)})`
+      return `  \u21B3 Tool: ${msg.toolName}(${JSON.stringify(msg.args).slice(0, 100)})`
     case 'sub:tool_result':
-      return `  ↳ Result: ${msg.toolName} → ${msg.success ? '✓' : '✗'} ${msg.preview.slice(0, 80)}`
+      return `  \u21B3 Result: ${msg.toolName} \u2192 ${msg.success ? '\u2713' : '\u2717'} ${msg.preview.slice(0, 80)}`
     case 'sub:continuation':
-      return `  ↳ Continuation #${msg.continuationIndex + 1} (${msg.accumulatedCount} accumulated)`
+      return `  \u21B3 Continuation #${msg.continuationIndex + 1} (${msg.accumulatedCount} accumulated)`
     case 'sub:complete':
-      return `  ↳ Agent complete: ${msg.resultPreview.slice(0, 100)}`
+      return `  \u21B3 Agent complete: ${msg.resultPreview.slice(0, 100)}`
     case 'sub:error':
-      return `  ↳ Agent ERROR: ${msg.message}`
+      return `  \u21B3 Agent ERROR: ${msg.message}`
     default:
       return JSON.stringify(msg)
   }
 }
 
-function formatTokens(msg: WsServerMessage): string | null {
-  if (!('tokens' in msg) || !msg.tokens) return null
-  const t = msg.tokens
-  return `[${t.totalUsed.toLocaleString()}/${t.contextLimit.toLocaleString()} ${t.percentUsed}%]`
-}
-
 export function LogPanel({ messages }: LogPanelProps) {
-  const containerRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (containerRef.current) {
-      containerRef.current.scrollTop = containerRef.current.scrollHeight
-    }
-  }, [messages])
-
-  return (
-    <div className="log-panel" ref={containerRef}>
-      {messages.map((msg, i) => {
-        const color = typeColors[msg.type] ?? '#6b7280'
-        const tokenStr = formatTokens(msg)
-
-        return (
-          <div key={i} className="log-line">
-            <span className="log-type" style={{ color }}>
-              {msg.type.padEnd(22)}
-            </span>
-            <span className="log-content">{formatMessage(msg)}</span>
-            {tokenStr && (
-              <span className="log-tokens" style={{ color }}>
-                {tokenStr}
-              </span>
-            )}
-          </div>
-        )
-      })}
-      {messages.length === 0 && (
-        <div className="log-empty">Select a test and click Run to begin</div>
-      )}
-    </div>
+  const entries = useMemo<LogEntry[]>(
+    () =>
+      messages.map((msg, i) => {
+        const tokens =
+          'tokens' in msg && msg.tokens
+            ? `[${msg.tokens.totalUsed.toLocaleString()}/${msg.tokens.contextLimit.toLocaleString()} ${msg.tokens.percentUsed}%]`
+            : undefined
+        return {
+          key: i,
+          type: msg.type,
+          color: typeColors[msg.type] ?? '#6b7280',
+          content: formatMessage(msg),
+          tokens,
+        }
+      }),
+    [messages],
   )
+
+  return <LogPanelBase entries={entries} emptyMessage="Select a test and click Run to begin" />
 }

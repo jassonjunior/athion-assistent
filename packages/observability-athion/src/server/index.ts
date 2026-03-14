@@ -7,6 +7,7 @@
 import { resolve } from 'node:path'
 import type { ServerWebSocket } from 'bun'
 import type { WsClientMessage, WsServerMessage } from './protocol'
+import { PROTOCOL_VERSION } from './protocol'
 import { listTests, runTest, stopTest } from './test-runner'
 import { createCodebaseIndexer } from '@athion/core'
 import { homedir } from 'node:os'
@@ -94,6 +95,14 @@ const server = Bun.serve<WsData>({
     open(ws) {
       clients.add(ws)
       console.log(`[ws] Client connected (${clients.size} total)`)
+
+      // Enviar versão do protocolo ao conectar
+      ws.send(
+        JSON.stringify({
+          type: 'protocol:version',
+          version: PROTOCOL_VERSION,
+        } satisfies WsServerMessage),
+      )
 
       // Enviar lista de testes ao conectar
       ws.send(JSON.stringify({ type: 'test:list', tests: listTests() } satisfies WsServerMessage))

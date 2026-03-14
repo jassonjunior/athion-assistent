@@ -1,5 +1,7 @@
-import { useEffect, useRef } from 'react'
+import { useMemo } from 'react'
 import type { FlowEventMessage } from '../../server/protocol'
+import type { LogEntry } from './LogPanelBase'
+import { LogPanelBase } from './LogPanelBase'
 
 interface LogPanelLiveProps {
   messages: FlowEventMessage[]
@@ -23,11 +25,6 @@ const typeColors: Record<string, string> = {
   error: '#ef4444',
 }
 
-function formatRelativeTime(ts: number, startTs: number): string {
-  const diff = (ts - startTs) / 1000
-  return `+${diff.toFixed(1)}s`
-}
-
 function formatFlowEvent(msg: FlowEventMessage): string {
   const d = msg.data
   switch (msg.type) {
@@ -40,19 +37,19 @@ function formatFlowEvent(msg: FlowEventMessage): string {
     case 'tool_call':
       return `Tool call: ${d.name}(${JSON.stringify(d.args).slice(0, 120)})`
     case 'tool_result':
-      return `Tool result: ${d.name} → ${d.success ? '✓' : '✗'}`
+      return `Tool result: ${d.name} \u2192 ${d.success ? '\u2713' : '\u2717'}`
     case 'subagent_start':
-      return `▸ SubAgent started: ${d.agentName}`
+      return `\u25B8 SubAgent started: ${d.agentName}`
     case 'subagent_content':
-      return `  ↳ Agent: ${String(d.content ?? d.text ?? '').slice(0, 120)}`
+      return `  \u21B3 Agent: ${String(d.content ?? d.text ?? '').slice(0, 120)}`
     case 'subagent_tool_call':
-      return `  ↳ Tool: ${d.toolName ?? d.name}(${JSON.stringify(d.args ?? d.input).slice(0, 100)})`
+      return `  \u21B3 Tool: ${d.toolName ?? d.name}(${JSON.stringify(d.args ?? d.input).slice(0, 100)})`
     case 'subagent_tool_result':
-      return `  ↳ Result: ${d.toolName ?? d.name} → ${d.success !== false ? '✓' : '✗'}`
+      return `  \u21B3 Result: ${d.toolName ?? d.name} \u2192 ${d.success !== false ? '\u2713' : '\u2717'}`
     case 'subagent_continuation':
-      return `  ↳ Continuation #${Number(d.continuationIndex) + 1}`
+      return `  \u21B3 Continuation #${Number(d.continuationIndex) + 1}`
     case 'subagent_complete':
-      return `▸ SubAgent complete: ${d.agentName}`
+      return `\u25B8 SubAgent complete: ${d.agentName}`
     case 'model_loading':
       return `Loading model: ${d.modelName}`
     case 'model_ready':
@@ -67,36 +64,20 @@ function formatFlowEvent(msg: FlowEventMessage): string {
 }
 
 export function LogPanelLive({ messages }: LogPanelLiveProps) {
-  const containerRef = useRef<HTMLDivElement>(null)
   const startTs = messages[0]?.timestamp ?? Date.now()
 
-  useEffect(() => {
-    if (containerRef.current) {
-      containerRef.current.scrollTop = containerRef.current.scrollHeight
-    }
-  }, [messages])
-
-  return (
-    <div className="log-panel" ref={containerRef}>
-      {messages.map((msg, i) => {
-        const color = typeColors[msg.type] ?? '#6b7280'
-        const relTime = formatRelativeTime(msg.timestamp, startTs)
-
-        return (
-          <div key={msg.id ?? i} className={`log-line ${msg.type === 'error' ? 'log-error' : ''}`}>
-            <span className="log-time" style={{ color: '#6b7280', minWidth: 60 }}>
-              {relTime}
-            </span>
-            <span className="log-type" style={{ color }}>
-              {msg.type.padEnd(22)}
-            </span>
-            <span className="log-content">{formatFlowEvent(msg)}</span>
-          </div>
-        )
-      })}
-      {messages.length === 0 && (
-        <div className="log-empty">Waiting for flow events from CLI...</div>
-      )}
-    </div>
+  const entries = useMemo<LogEntry[]>(
+    () =>
+      messages.map((msg, i) => ({
+        key: msg.id ?? i,
+        type: msg.type,
+        color: typeColors[msg.type] ?? '#6b7280',
+        content: formatFlowEvent(msg),
+        time: `+${((msg.timestamp - startTs) / 1000).toFixed(1)}s`,
+        isError: msg.type === 'error',
+      })),
+    [messages, startTs],
   )
+
+  return <LogPanelBase entries={entries} emptyMessage="Waiting for flow events from CLI..." />
 }
