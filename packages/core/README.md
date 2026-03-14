@@ -80,18 +80,74 @@ Estratégias de compactação ativadas automaticamente ao atingir 90% da janela 
 
 **Mensagens fixadas** (pinned): prefixar o conteúdo com `[PINNED]\n` garante que a mensagem nunca seja removida nem resumida durante a compactação.
 
-## Codebase Indexer
+## Codebase Intelligence
 
-O indexador opera em modo híbrido FTS5 + vetorial:
+Sistema de indexação hierárquica 5 níveis com busca semântica, enriquecimento LLM e re-indexação reativa.
 
-- **FileWalker**: percorre o workspace respeitando `.gitignore` (parser próprio, sem dependências externas).
-- **Chunker**: chunking heurístico por linguagem com suporte a tree-sitter (TypeScript, Python, Rust, Go, JavaScript).
-- **EmbeddingService**: chama qualquer endpoint OpenAI-compatible (`ATHION_EMBEDDING_URL`) para gerar embeddings.
-- **Busca híbrida**: FTS5 (40%) + cosine similarity vetorial (60%) com re-ranking por score médio.
+### Arquitetura
+
+```
+FileWatcher ──► IndexQueue ──► CodebaseIndexer ──► VectorStorePort (Qdrant/SQLite)
+                    │                  │                    │
+                    │            TextSearchPort         DualWriteManager
+                    │                  │                    │
+                Event Bus ◄──── IndexMetrics         Reconciliation
+```
+
+### Índice Hierárquico (L0-L4)
+
+| Nível | Nome             | Descrição                             | Geração     |
+| ----- | ---------------- | ------------------------------------- | ----------- |
+| L0    | `repo_meta`      | Linguagem, framework, arquitetura     | LLM (1x)    |
+| L1    | `modules`        | Propósito e API pública por diretório | LLM         |
+| L2    | `file_summaries` | Propósito, exports por arquivo        | LLM         |
+| L3    | `symbols`        | Chunks de código (funções, classes)   | Tree-sitter |
+| L4    | `patterns`       | Convenções, naming, anti-patterns     | LLM         |
+
+### Context Builder
+
+O `ContextAssembler` monta prompts hierárquicos com budget de tokens:
+
+1. **L0** (repo_meta) — sempre incluído (~200 tokens)
+2. **L4** (patterns) — sempre incluído (~300 tokens)
+3. **Impact Analysis** — se DependencyGraph disponível
+4. **L2** (file summaries) — arquivos relevantes
+5. **L3** (symbols) — chunks de código
+6. **Task** — instrução do usuário
+
+### Busca Multi-Nível
+
+- **FTS5**: trigram tokenizer para busca por palavras-chave
+- **Vector Search**: cosine similarity via Qdrant (HNSW) ou SQLite (brute-force)
+- **Hybrid**: FTS(40%) + Vector(60%) com re-ranking
+- `search_codebase` retorna `contextBundle` com L0+L4+L2
+
+### File Watcher
+
+Re-indexação reativa via `CodebaseWatcher`:
+
+- Debounce 1.5s por arquivo (editores fazem múltiplos writes)
+- `IndexQueue` com concorrência limitada (default: 2)
+- Eventos via Bus: `file_changed`, `indexing_started/completed/failed`
+- `IndexMetrics` agrega estatísticas (filesProcessed, avgDurationMs, failureRate)
+
+### Configurações
+
+| Config                             | Default                 | Descrição                    |
+| ---------------------------------- | ----------------------- | ---------------------------- |
+| `codebaseVectorStoreType`          | `sqlite`                | `sqlite` ou `qdrant`         |
+| `codebaseQdrantUrl`                | `http://localhost:6333` | URL do Qdrant                |
+| `codebaseEnrichmentEnabled`        | `true`                  | Enriquecimento LLM (L0-L4)   |
+| `codebaseEnrichmentMaxConcurrency` | `1`                     | Concorrência de enrichment   |
+| `codebaseWatcherEnabled`           | `true`                  | File watcher reativo         |
+| `codebaseWatcherDebounceMs`        | `1500`                  | Debounce do watcher          |
+| `codebaseContextBudgetTokens`      | `8000`                  | Budget de tokens do contexto |
+
+### Variáveis de Ambiente
 
 ```bash
-# Habilitar embeddings semânticos
-ATHION_EMBEDDING_URL=http://localhost:1234 athion codebase index .
+ATHION_EMBEDDING_URL=http://localhost:1234  # Endpoint OpenAI-compatible para embeddings
+ATHION_EMBEDDING_MODEL=nomic-embed-text     # Modelo de embeddings (default)
 ```
 
 ## Instalação

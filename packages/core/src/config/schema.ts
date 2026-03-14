@@ -93,6 +93,12 @@ export const ConfigSchema = z.object({
   codebaseVectorStoreType: z.enum(['sqlite', 'qdrant']).default('sqlite'),
   /** codebaseQdrantUrl - URL do Qdrant (para Fase 3) */
   codebaseQdrantUrl: z.string().default('http://localhost:6333'),
+  /** codebaseWatcherEnabled - Habilita file watcher para re-indexação reativa */
+  codebaseWatcherEnabled: z.boolean().default(true),
+  /** codebaseWatcherDebounceMs - Debounce do watcher em ms (default: 1500) */
+  codebaseWatcherDebounceMs: z.number().default(1500),
+  /** codebaseContextBudgetTokens - Budget de tokens para contexto hierárquico (default: 8000) */
+  codebaseContextBudgetTokens: z.number().default(8000),
 
   // ─── lm-studio ──────────────────────────────────────────────
   /** lmStudioPort - Porta da API do LM Studio (default: 1234) */

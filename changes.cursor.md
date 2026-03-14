@@ -1,5 +1,44 @@
 # Changes Log - Athion Assistent
 
+## Fase 5 — File Watcher + Finalização (Codebase Intelligence) (2026-03-14)
+
+**Status**: Concluído ✅
+**Branch**: `feat/codebase-intelligence-fase-5`
+**Issues**: #67 (parent), #68-#73 (sub-issues)
+
+### O que foi feito
+
+File Watcher reativo com debounce, IndexQueue com concorrência limitada, IndexMetrics via Event Bus, integração no bootstrap, 7 testes E2E e documentação completa do sistema.
+
+### Tarefas (5.1-5.6)
+
+- **5.1** (#68): CodebaseWatcher com fs.watch recursivo + debounce 1.5s por arquivo
+- **5.2** (#69): IndexQueue com concorrência limitada (default: 2) e deduplicação
+- **5.3** (#70): Integração watcher+queue+metrics no bootstrap via Event Bus
+- **5.4** (#71): IndexMetrics (filesProcessed, failureRate, avgDurationMs) via Bus
+- **5.5** (#72): 7 testes E2E do pipeline completo (indexação, busca, context builder, impact)
+- **5.6** (#73): Documentação completa no README.md do core
+
+### Arquivos criados
+
+- `packages/core/src/indexing/events.ts` — Definições de eventos do Bus (5 eventos)
+- `packages/core/src/indexing/watcher.ts` — CodebaseWatcher com fs.watch + debounce
+- `packages/core/src/indexing/index-queue.ts` — IndexQueue com concorrência limitada
+- `packages/core/src/indexing/index-metrics.ts` — IndexMetrics com emissão periódica
+- `packages/core/src/indexing/watcher.test.ts` — 6 testes
+- `packages/core/src/indexing/index-queue.test.ts` — 6 testes
+- `packages/core/src/indexing/index-metrics.test.ts` — 7 testes
+- `packages/core/src/indexing/e2e-pipeline.test.ts` — 7 testes E2E
+
+### Arquivos modificados
+
+- `packages/core/src/config/schema.ts` — 3 novas configs (watcher, debounce, contextBudget)
+- `packages/core/src/bootstrap.ts` — Integração watcher+queue+metrics
+- `packages/core/src/indexing/index.ts` — Exports dos novos módulos + eventos
+- `packages/core/README.md` — Documentação completa do Codebase Intelligence
+
+---
+
 ## Fase 4 — Context Builder + Retriever (Codebase Intelligence) (2026-03-14)
 
 **Status**: Concluído ✅
