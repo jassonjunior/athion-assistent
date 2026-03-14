@@ -15,7 +15,7 @@ pub fn setup(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>
     handle.plugin(
         tauri_plugin_global_shortcut::Builder::new()
             .with_handler(move |_app, _shortcut, event| {
-                if event == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
                     if let Some(window) = app_handle.get_webview_window("main") {
                         let _ = window.show();
                         let _ = window.unminimize();
