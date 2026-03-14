@@ -134,13 +134,17 @@ export interface VectorStorePort {
   retrieve(collection: string, ids: string[]): Promise<VectorPoint[]>
 
   /** scroll
-   * Descrição: Percorre todos os pontos de uma collection com filtro opcional
+   * Descrição: Percorre pontos de uma collection com paginação
    * @param collection - Nome da collection
-   * @param filter - Filtro opcional para restringir resultados
-   * @param limit - Número máximo de pontos a retornar
-   * @returns Array de pontos vetoriais
+   * @param limit - Número máximo de pontos por página
+   * @param offset - Offset de paginação (opcional)
+   * @returns Pontos e próximo offset (undefined se última página)
    */
-  scroll(collection: string, filter?: VectorFilter, limit?: number): Promise<VectorPoint[]>
+  scroll(
+    collection: string,
+    limit: number,
+    offset?: string | number,
+  ): Promise<{ points: VectorPoint[]; nextOffset?: string | number }>
 
   /** close
    * Descrição: Fecha a conexão e libera recursos do store

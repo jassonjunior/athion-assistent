@@ -671,6 +671,56 @@ export class DbStore {
     return (changedRow?.count ?? 0) / total
   }
 
+  /** getSchemaVersion
+   * Descrição: Retorna a versão do schema atual do índice
+   */
+  getSchemaVersion(): {
+    version: number
+    embeddingModel: string
+    embeddingDimensions: number
+  } | null {
+    const version = this.db
+      .query<{ value: string }, [string]>(`SELECT value FROM index_meta WHERE key = ?`)
+      .get('schema_version')
+    if (!version) return null
+    const model = this.db
+      .query<{ value: string }, [string]>(`SELECT value FROM index_meta WHERE key = ?`)
+      .get('embedding_model')
+    const dims = this.db
+      .query<{ value: string }, [string]>(`SELECT value FROM index_meta WHERE key = ?`)
+      .get('embedding_dimensions')
+    return {
+      version: Number(version.value),
+      embeddingModel: model?.value ?? 'unknown',
+      embeddingDimensions: Number(dims?.value ?? 768),
+    }
+  }
+
+  /** setSchemaVersion
+   * Descrição: Salva versão do schema e metadata do embedding
+   */
+  setSchemaVersion(version: number, embeddingModel: string, embeddingDimensions: number): void {
+    this.db.run(`INSERT OR REPLACE INTO index_meta (key, value) VALUES ('schema_version', ?)`, [
+      String(version),
+    ])
+    this.db.run(`INSERT OR REPLACE INTO index_meta (key, value) VALUES ('embedding_model', ?)`, [
+      embeddingModel,
+    ])
+    this.db.run(
+      `INSERT OR REPLACE INTO index_meta (key, value) VALUES ('embedding_dimensions', ?)`,
+      [String(embeddingDimensions)],
+    )
+  }
+
+  /** needsReindexForSchema
+   * Descrição: Verifica se é necessário re-indexar por mudança de schema ou modelo
+   */
+  needsReindexForSchema(currentVersion: number, currentModel: string): boolean {
+    const stored = this.getSchemaVersion()
+    if (!stored) return false
+    return stored.version !== currentVersion || stored.embeddingModel !== currentModel
+  }
+
   /** close
    * Descrição: Fecha a conexão com o banco de dados SQLite
    */

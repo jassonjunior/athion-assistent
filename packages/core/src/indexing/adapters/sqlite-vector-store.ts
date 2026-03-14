@@ -184,35 +184,34 @@ export class SqliteVectorStore implements VectorStorePort {
   }
 
   /** scroll
-   * Descrição: Percorre todos os pontos da tabela com filtro opcional
+   * Descrição: Percorre pontos com paginação baseada em OFFSET/LIMIT
    * @param _collection - Nome da collection (ignorado no SQLite)
-   * @param filter - Filtro opcional sobre campos do payload
-   * @param limit - Número máximo de pontos a retornar (default: 1000)
-   * @returns Array de pontos vetoriais
+   * @param limit - Número máximo de pontos por página
+   * @param offset - Offset numérico (default: 0)
+   * @returns Pontos e próximo offset
    */
-  async scroll(_collection: string, filter?: VectorFilter, limit = 1000): Promise<VectorPoint[]> {
+  async scroll(
+    _collection: string,
+    limit: number,
+    offset?: string | number,
+  ): Promise<{ points: VectorPoint[]; nextOffset?: string | number }> {
+    const numOffset = typeof offset === 'number' ? offset : Number(offset ?? 0)
+
     const rows = this.db
       .query<
         { chunk_id: string; vector: Buffer; payload: string },
-        []
-      >(`SELECT chunk_id, vector, payload FROM vectors`)
-      .all()
+        [number, number]
+      >(`SELECT chunk_id, vector, payload FROM vectors LIMIT ? OFFSET ?`)
+      .all(limit, numOffset)
 
-    const results: VectorPoint[] = []
-    for (const row of rows) {
-      const payload = JSON.parse(row.payload) as Record<string, unknown>
-      if (filter && !matchesFilter(payload, filter)) continue
+    const points: VectorPoint[] = rows.map((row) => ({
+      id: row.chunk_id,
+      vector: deserializeVector(row.vector),
+      payload: JSON.parse(row.payload) as Record<string, unknown>,
+    }))
 
-      results.push({
-        id: row.chunk_id,
-        vector: deserializeVector(row.vector),
-        payload,
-      })
-
-      if (results.length >= limit) break
-    }
-
-    return results
+    const nextOffset = rows.length === limit ? numOffset + limit : undefined
+    return { points, nextOffset }
   }
 
   /** close
