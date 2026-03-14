@@ -102,6 +102,8 @@ export interface AthionCore {
   indexMetrics: IndexMetrics | null
   /** skillRegistry - Registry de skills para busca e instalação do catálogo */
   skillRegistry: SkillRegistry
+  /** indexingProgress - Último estado de progresso da indexação (lido pelo CLI no mount) */
+  indexingProgress: { percent: number; done: boolean } | null
 }
 
 /** bootstrap
@@ -171,6 +173,11 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
   const indexer = await setupIndexer(workspacePath, indexDbPath, tools)
   if (indexer) log.info({ workspacePath }, 'codebase indexer ready')
 
+  // Estado de progresso compartilhado — lido pelo hook do CLI no mount
+  const indexingProgress: { percent: number; done: boolean } = indexer
+    ? { percent: 0, done: false }
+    : { percent: -1, done: true }
+
   // Auto-indexação: se nunca indexou, indexa em background no primeiro startup
   if (indexer && workspacePath && indexer.needsReindex()) {
     log.info({ workspacePath }, 'codebase never indexed — starting background indexation')
@@ -184,6 +191,8 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
     indexer
       .indexWorkspace((indexed, total, currentFile) => {
         const percent = Math.floor((indexed / Math.max(total, 1)) * 100)
+        indexingProgress.percent = percent
+        indexingProgress.done = indexed === total
         bus.publish(indexingProgressEvent, {
           indexed,
           total,
@@ -196,6 +205,8 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
         }
       })
       .then((stats) => {
+        indexingProgress.percent = 100
+        indexingProgress.done = true
         bus.publish(indexingProgressEvent, {
           indexed: stats.totalFiles,
           total: stats.totalFiles,
@@ -215,7 +226,9 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
         )
       })
   } else if (indexer) {
-    // Já indexado — emite 100% imediatamente
+    // Já indexado — marca estado e emite 100% imediatamente
+    indexingProgress.percent = 100
+    indexingProgress.done = true
     bus.publish(indexingProgressEvent, {
       indexed: 0,
       total: 0,
@@ -260,7 +273,7 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
     : providerName === 'mlx-omni'
       ? { vllm: await setupMlxOmni(config), proxy: null }
       : providerName === 'lm-studio'
-        ? { vllm: setupLmStudio(config), proxy: null }
+        ? { vllm: await setupLmStudio(config), proxy: null }
         : providerName === 'llama-cpp'
           ? { vllm: setupLlamaCpp(config), proxy: null }
           : await setupVllmAndProxy(config)
@@ -337,6 +350,7 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
     watcher,
     indexMetrics,
     skillRegistry,
+    indexingProgress: indexer ? indexingProgress : null,
   }
 }
 
@@ -413,7 +427,7 @@ async function setupIndexer(
  * @param config - Gerenciador de configurações do Athion
  * @returns Instância do VllmManager configurada para LM Studio
  */
-function setupLmStudio(config: ConfigManager): VllmManager {
+async function setupLmStudio(config: ConfigManager): Promise<VllmManager> {
   const log = createLogger('bootstrap')
   const port = (config.get('lmStudioPort') as number | undefined) ?? 1234
   const host = (config.get('lmStudioHost') as string | undefined) ?? '127.0.0.1'
@@ -423,12 +437,19 @@ function setupLmStudio(config: ConfigManager): VllmManager {
   process.env['ATHION_LM_STUDIO_URL'] = `http://${host}:${port}/v1`
   if (apiKey) process.env['ATHION_LM_STUDIO_API_KEY'] = apiKey
 
-  log.info(
-    { provider: 'lm-studio', host, port },
-    'lm-studio manager configured — swap via lms CLI (unload → load)',
-  )
+  const manager = createLmStudioManager({ port, host, ...(apiKey ? { apiKey } : {}) })
 
-  return createLmStudioManager({ port, host, ...(apiKey ? { apiKey } : {}) })
+  // Verifica se o LM Studio já está no ar antes de prosseguir
+  log.info({ provider: 'lm-studio', host, port }, 'checking LM Studio server health')
+  await manager.ensureRunning()
+
+  if (await manager.isRunning()) {
+    log.info({ host, port }, 'LM Studio is ready')
+  } else {
+    log.warn({ host, port }, 'LM Studio is not running — please start the LM Studio app')
+  }
+
+  return manager
 }
 
 /** setupLlamaCpp

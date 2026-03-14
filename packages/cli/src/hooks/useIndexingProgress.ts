@@ -27,6 +27,11 @@ export interface IndexingProgress {
  */
 export function useIndexingProgress(core: AthionCore): IndexingProgress {
   const [progress, setProgress] = useState<IndexingProgress>(() => {
+    // Lê estado inicial do core (preenchido durante bootstrap, antes do mount)
+    if (core.indexingProgress) {
+      const p = core.indexingProgress
+      return { percent: p.percent, done: p.done, indexing: !p.done && p.percent < 100 }
+    }
     // Se não tem indexer, mostra como done sem indicador
     if (!core.indexer) return { percent: -1, done: true, indexing: false }
     return { percent: 0, done: false, indexing: false }
