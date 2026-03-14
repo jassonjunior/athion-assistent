@@ -114,6 +114,8 @@ export { createTaskTool } from './tools/task-tool'
 // ─── Indexing ───────────────────────────────────────────────────
 /** createCodebaseIndexer - Fábrica do indexador de codebase para busca semântica */
 export { createCodebaseIndexer } from './indexing'
+/** indexingProgressEvent - Evento de progresso da indexação do codebase */
+export { indexingProgressEvent } from './indexing'
 /** CodebaseIndexer, CodeChunk, SearchResult, IndexerConfig, IndexStats - Tipos de indexação */
 export type {
   CodebaseIndexer,
