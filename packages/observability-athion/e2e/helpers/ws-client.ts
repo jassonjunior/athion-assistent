@@ -1,5 +1,5 @@
 /**
- * WsTestClient — cliente WebSocket para testes E2E do chat app (test-ui).
+ * WsTestClient — cliente WebSocket para testes E2E do chat app (observability-athion).
  *
  * Expõe:
  *   - connect() para criar a conexão

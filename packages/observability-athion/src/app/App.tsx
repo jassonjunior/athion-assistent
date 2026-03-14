@@ -31,7 +31,10 @@ function getWsUrl(mode: AppMode): string {
 export function App() {
   const [appMode, setAppMode] = useState<AppMode>(() => {
     const params = new URLSearchParams(window.location.search)
-    return params.get('mode') === 'live' ? 'live' : 'test'
+    if (params.get('mode') === 'live') return 'live'
+    const saved = localStorage.getItem('athion:appMode')
+    if (saved === 'live' || saved === 'test') return saved
+    return 'test'
   })
   const wsUrl = getWsUrl(appMode)
   const { connected, messages, send, clearMessages } = useWebSocket(wsUrl)
@@ -59,7 +62,11 @@ export function App() {
 
   const toggleMode = useCallback(() => {
     clearMessages()
-    setAppMode((prev) => (prev === 'test' ? 'live' : 'test'))
+    setAppMode((prev) => {
+      const next = prev === 'test' ? 'live' : 'test'
+      localStorage.setItem('athion:appMode', next)
+      return next
+    })
   }, [clearMessages])
 
   // Detect test:finished to update running state (test mode only)

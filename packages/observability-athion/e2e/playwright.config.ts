@@ -1,7 +1,7 @@
 /**
- * Playwright config para testes E2E do Chat App (test-ui).
+ * Playwright config para testes E2E do Chat App (observability-athion).
  *
- * O servidor do test-ui é subido automaticamente antes dos testes
+ * O servidor do observability-athion é subido automaticamente antes dos testes
  * via `webServer` (apenas se não estiver rodando já).
  *
  * Instalar:

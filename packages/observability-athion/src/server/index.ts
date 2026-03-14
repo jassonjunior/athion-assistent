@@ -1,6 +1,6 @@
 /* eslint-disable no-console */
 /**
- * Servidor WebSocket do test-ui.
+ * Servidor WebSocket do observability-athion.
  * Serve a API de testes, faz streaming de eventos, e serve o frontend estático.
  */
 
@@ -218,5 +218,5 @@ const server = Bun.serve<WsData>({
   },
 })
 
-console.log(`[test-ui] Server running on http://localhost:${server.port}`)
-console.log(`[test-ui] WebSocket: ws://localhost:${server.port}/api/ws`)
+console.log(`[observability-athion] Server running on http://localhost:${server.port}`)
+console.log(`[observability-athion] WebSocket: ws://localhost:${server.port}/api/ws`)

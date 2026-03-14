@@ -1,5 +1,5 @@
 /**
- * Testes E2E do Chat App (test-ui) — Playwright.
+ * Testes E2E do Chat App (observability-athion) — Playwright.
  *
  * Testa o dashboard de debug do Athion com modelo real:
  *   - Página carrega com título e layout corretos

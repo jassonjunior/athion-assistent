@@ -18,7 +18,7 @@
     "test:e2e:cli:model": "ATHION_E2E_MODEL=1 bun run packages/cli/node_modules/.bin/vitest run --root packages/cli --testPathPattern=e2e",
     "test:e2e:vscode": "cd packages/vscode && bunx wdio run e2e/wdio.conf.ts",
     "test:e2e:desktop": "cd packages/desktop && bunx wdio run e2e/wdio.conf.ts",
-    "test:e2e:chatapp": "cd packages/test-ui && bunx playwright test e2e/",
+    "test:e2e:chatapp": "cd packages/observability-athion && bunx playwright test e2e/",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "format": "prettier --write \"**/*.{ts,tsx,json,md,yml}\"",

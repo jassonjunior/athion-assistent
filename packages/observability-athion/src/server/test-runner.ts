@@ -1,5 +1,5 @@
 /**
- * Test Runner instrumentado para o test-ui.
+ * Test Runner instrumentado para o observability-athion.
  * Faz bootstrap do core com SubAgentManager instrumentado
  * para capturar eventos granulares do subagente.
  */
@@ -193,7 +193,7 @@ async function ensureCore(emit: Emitter): Promise<AthionCore> {
   const coreDir = resolve(import.meta.dir, '../../../core')
 
   core = await bootstrap({
-    dbPath: '/tmp/athion-test-ui.db',
+    dbPath: '/tmp/athion-observability-athion.db',
     skillsDir: resolve(coreDir, 'skills'),
   })
 
@@ -247,7 +247,7 @@ export async function runTest(testName: string, emit: Emitter): Promise<void> {
     emit({ type: 'test:started', testName, ts: Date.now() })
 
     // Criar sessão
-    const session = await c.orchestrator.createSession('test-ui', testName)
+    const session = await c.orchestrator.createSession('observability-athion', testName)
 
     // Emitir mensagem do usuário
     emit({
