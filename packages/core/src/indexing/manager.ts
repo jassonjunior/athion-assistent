@@ -6,7 +6,7 @@
  * Recebe dependências via constructor (Dependency Injection) para desacoplamento.
  */
 
-import { statSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
 import { DbStore } from './db-store'
 import { chunkFile, generateChunkId } from './chunker'
 import {
@@ -132,11 +132,25 @@ export class CodebaseIndexer {
   }
 
   /** indexFile
-   * Descrição: Indexa (ou re-indexa) um único arquivo. Remove chunks antigos antes
-   * de inserir os novos. Gera embeddings se o serviço estiver configurado.
+   * Descrição: Indexa (ou re-indexa) um único arquivo. Verifica file hash para
+   * skip incremental. Remove chunks antigos antes de inserir os novos.
+   * Gera embeddings se o serviço estiver configurado.
    * @param filePath - Caminho absoluto do arquivo a indexar
+   * @param forceReindex - Se true, ignora o check de hash e re-indexa
    */
-  async indexFile(filePath: string): Promise<void> {
+  async indexFile(filePath: string, forceReindex = false): Promise<void> {
+    // Check de hash para indexação incremental (skip se não mudou)
+    if (!forceReindex) {
+      try {
+        const content = readFileSync(filePath, 'utf-8')
+        const hash = computeFileHash(content)
+        const storedHash = this.store.getFileHash(filePath)
+        if (storedHash === hash) return // Arquivo não mudou — skip
+      } catch {
+        // Erro ao ler arquivo — prossegue com indexação normal
+      }
+    }
+
     // Remove chunks antigos do arquivo antes de re-indexar
     this.store.deleteByFile(filePath)
 
@@ -220,6 +234,15 @@ export class CodebaseIndexer {
         }
       }
     }
+
+    // Atualiza file hash após indexação bem-sucedida
+    try {
+      const content = readFileSync(filePath, 'utf-8')
+      const hash = computeFileHash(content)
+      this.store.setFileHash(filePath, hash, fullChunks.length)
+    } catch {
+      // Arquivo pode ter sido deletado entre leitura e hash
+    }
   }
 
   /** deleteFile
@@ -228,6 +251,7 @@ export class CodebaseIndexer {
    */
   async deleteFile(filePath: string): Promise<void> {
     this.store.deleteByFile(filePath)
+    this.store.deleteFileHash(filePath)
 
     if (this.textSearch) {
       await this.textSearch.removeDocuments({ filePath })
@@ -386,17 +410,29 @@ export function createCodebaseIndexer(
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
+/** computeFileHash
+ * Descrição: Calcula hash MD5 do conteúdo de um arquivo para indexação incremental
+ * @param content - Conteúdo do arquivo em texto
+ * @returns Hash MD5 hexadecimal
+ */
+function computeFileHash(content: string): string {
+  const hasher = new Bun.CryptoHasher('md5')
+  hasher.update(content)
+  return hasher.digest('hex')
+}
+
 /** buildEmbeddingText
  * Descrição: Monta o texto para embedding a partir de um chunk, incluindo
- * nome do símbolo, linguagem e conteúdo (limitado a 512 chars)
+ * path do arquivo, nome do símbolo, linguagem e conteúdo (até 800 chars)
  * @param chunk - Chunk de código fonte
  * @returns Texto formatado para geração de embedding
  */
 function buildEmbeddingText(chunk: CodeChunk): string {
   const parts: string[] = []
-  if (chunk.symbolName) parts.push(`${chunk.chunkType}: ${chunk.symbolName}`)
-  parts.push(`language: ${chunk.language}`)
-  parts.push(chunk.content.slice(0, 512))
+  parts.push(`File: ${chunk.filePath}`)
+  if (chunk.symbolName) parts.push(`Symbol: ${chunk.symbolName} (${chunk.chunkType})`)
+  parts.push(`Language: ${chunk.language}`)
+  parts.push(chunk.content.slice(0, 800))
   return parts.join('\n')
 }
 

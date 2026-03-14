@@ -1,5 +1,42 @@
 # Changes Log - Athion Assistent
 
+## Fase 1 — Fundação (Codebase Intelligence) (2026-03-13)
+
+**Status**: Concluído ✅
+**Branch**: `feat/codebase-intelligence-fase-1`
+**Issues**: #36 (parent), #37-#41 (sub-issues)
+
+### O que foi feito
+
+Fundação do sistema de indexação inteligente: hash incremental, índice hierárquico 5 níveis, extração de imports via tree-sitter, grafo de dependências e embedding enriquecido.
+
+### Tarefas (1.1-1.5)
+
+- **1.1** (#37): File hash MD5 para indexação incremental — `computeFileHash()` com `Bun.CryptoHasher`, skip de arquivos não modificados
+- **1.2** (#38): Tabelas SQLite para índice hierárquico — `file_hashes`, `repo_meta` (L0), `modules` (L1), `file_summaries` (L2), `patterns` (L4) + colunas extras em chunks
+- **1.3** (#39): Extração de imports do tree-sitter — `extractImports()` + `extractImportPath()` com suporte a TS/JS, Python, Rust, Go
+- **1.4** (#40): DependencyGraph — grafo dirigido com BFS, impact analysis, risco low/medium/high
+- **1.5** (#41): buildEmbeddingText enriquecido — inclui File, Symbol, Language, content até 800 chars
+
+### Arquivos criados
+
+- `packages/core/src/indexing/dependency-graph.ts` — DependencyGraph com forward/reverse maps
+- `packages/core/src/indexing/dependency-graph.test.ts` — 20 testes unitários
+
+### Arquivos modificados
+
+- `packages/core/src/indexing/db-store.ts` — 5 novas tabelas, ALTER TABLE, getFileHash/setFileHash/deleteFileHash
+- `packages/core/src/indexing/manager.ts` — hash incremental em indexFile, computeFileHash, buildEmbeddingText melhorado
+- `packages/core/src/indexing/tree-sitter-chunker.ts` — extractImports, extractImportPath, IMPORT_TYPES mapping
+- `packages/core/src/indexing/index.ts` — exports de DependencyGraph, ImpactResult, GraphStats
+
+### Testes
+
+- 81 testes de indexação passando (20 novos do DependencyGraph)
+- 0 falhas nos testes de indexação
+
+---
+
 ## Fase 0 — Refatoração Pré-requisitos (Codebase Intelligence) (2026-03-13)
 
 **Status**: Concluído ✅
