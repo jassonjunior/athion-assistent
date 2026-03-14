@@ -157,6 +157,30 @@ export type WsClientMessage =
   | { type: 'codebase:index'; workspacePath?: string }
   | { type: 'codebase:search'; query: string; limit?: number }
 
+/** Evento unificado do Flow Observer (modo live — vem direto do flow-ws) */
+export interface FlowEventMessage {
+  id: string
+  type: string
+  timestamp: number
+  data: Record<string, unknown>
+  parentId?: string
+}
+
+/** Tipo unificado: WsServerMessage (test mode) ou FlowEventMessage (live mode) */
+export type AnyMessage = WsServerMessage | FlowEventMessage
+
+/** Verifica se uma mensagem é FlowEventMessage (live mode) */
+export function isFlowEvent(msg: unknown): msg is FlowEventMessage {
+  return (
+    typeof msg === 'object' &&
+    msg !== null &&
+    'id' in msg &&
+    'timestamp' in msg &&
+    'data' in msg &&
+    !('tokens' in msg)
+  )
+}
+
 /** Trunca texto para preview */
 export function truncatePreview(text: string, maxLen = 200): string {
   if (text.length <= maxLen) return text

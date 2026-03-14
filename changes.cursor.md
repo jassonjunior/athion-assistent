@@ -1,5 +1,41 @@
 # Changes Log - Athion Assistent
 
+## Fase 3 — Flow Observer: test-ui live mode + UX (2026-03-14)
+
+**Status**: Concluído ✅
+**Branch**: `feat/flow-observer-fase-3`
+**Issue**: #86
+
+### O que foi feito
+
+1. **Protocolo** (`protocol.ts`):
+   - `FlowEventMessage` — tipo para eventos do flow-ws (live mode)
+   - `isFlowEvent()` — helper para discriminar live vs test messages
+   - `AnyMessage` — tipo unificado
+
+2. **Hook useFlowGraphLive** (novo):
+   - Mapeia `flowEvent.type` direto para nodeTypes (sem prefixo `orch:`/`sub:`)
+   - Usa `flowEvent.parentId` para linking de subagentes
+   - Usa `flowEvent.id` como nodeId (UUID do core)
+   - Timestamps relativos (+0.0s, +1.2s, etc.) em cada nó
+
+3. **App.tsx** — Toggle Test/Live mode:
+   - Botão toggle 🧪 Test Mode / 🔴 Live Mode
+   - Indicador de conexão (● Connected / ○ Disconnected)
+   - URL do WebSocket visível no header
+   - URL configurável via query params: `?mode=live&livePort=4200`
+   - Em live mode: esconde TestSelector, mostra FlowPanelLive + LogPanelLive
+   - Botão Clear global
+
+4. **FlowPanelLive** e **LogPanelLive** (novos):
+   - FlowPanelLive usa useFlowGraphLive + React Flow (mesma aparência do test mode)
+   - LogPanelLive com timestamps relativos, cores por tipo, destaque de erros
+   - Empty state com instrução para habilitar flowObserverEnabled
+
+5. **CSS** — Estilos para header-controls, connection-dot, btn-live/btn-test, log-error, log-time
+
+---
+
 ## Fase 2 — Flow Observer: Servidor WebSocket para live mode (2026-03-14)
 
 **Status**: Concluído ✅
