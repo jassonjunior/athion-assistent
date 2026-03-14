@@ -15,11 +15,9 @@ export function FlowPanelLive({ messages }: FlowPanelLiveProps) {
     return (
       <div className="flow-panel flow-empty">
         <div className="flow-empty-text">
-          <span style={{ fontSize: 48, opacity: 0.3 }}>🔴</span>
-          <p>Waiting for flow events from CLI...</p>
-          <p style={{ fontSize: 12, opacity: 0.5 }}>
-            Make sure flowObserverEnabled is true in config
-          </p>
+          <span style={{ fontSize: 48, opacity: 0.3 }}>📡</span>
+          <p>Aguardando eventos do CLI, extensão ou app...</p>
+          <p style={{ fontSize: 12, opacity: 0.5 }}>Os fluxos aparecerão aqui em tempo real</p>
         </div>
       </div>
     )

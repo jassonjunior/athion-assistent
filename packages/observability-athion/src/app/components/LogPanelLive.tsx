@@ -79,5 +79,7 @@ export function LogPanelLive({ messages }: LogPanelLiveProps) {
     [messages, startTs],
   )
 
-  return <LogPanelBase entries={entries} emptyMessage="Waiting for flow events from CLI..." />
+  return (
+    <LogPanelBase entries={entries} emptyMessage="Aguardando eventos do CLI, extensão ou app..." />
+  )
 }
