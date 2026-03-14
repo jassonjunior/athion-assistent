@@ -160,6 +160,17 @@ async function loadLanguage(lang: string, mod: WebTreeSitterModule): Promise<Lan
   }
 }
 
+/** IMPORT_TYPES
+ * Descrição: Tipos de nó AST que representam declarações de import por linguagem
+ */
+const IMPORT_TYPES: Record<string, string[]> = {
+  typescript: ['import_statement'],
+  javascript: ['import_statement'],
+  python: ['import_statement', 'import_from_statement'],
+  rust: ['use_declaration'],
+  go: ['import_declaration'],
+}
+
 /** TreeSitterChunkerResult
  * Descrição: Resultado do chunker tree-sitter com flag indicando uso de AST real
  */
@@ -172,6 +183,10 @@ export interface TreeSitterChunkerResult {
    * Descrição: Se o tree-sitter foi efetivamente utilizado (sempre true neste resultado)
    */
   usedTreeSitter: boolean
+  /** imports
+   * Descrição: Array de paths importados extraídos da AST
+   */
+  imports: string[]
 }
 
 /** chunkFileWithTreeSitter
@@ -211,11 +226,12 @@ export async function chunkFileWithTreeSitter(
     const lines = content.split('\n')
 
     const chunks = extractChunks(tree.rootNode, lines, filePath, lang, maxChunkLines, minChunkLines)
+    const imports = extractImports(tree.rootNode, content, lang)
     parser.delete()
     tree.delete()
 
     if (chunks.length === 0) return null
-    return { chunks, usedTreeSitter: true }
+    return { chunks, usedTreeSitter: true, imports }
   } catch {
     return null
   }
@@ -420,6 +436,76 @@ function extractSymbolFromNode(node: SyntaxNode, lang: string): string | undefin
   }
 
   return undefined
+}
+
+/** extractImports
+ * Descrição: Extrai paths de import do nó raiz da AST para construção do DependencyGraph.
+ * Suporta TypeScript/JavaScript, Python, Rust e Go.
+ * @param root - Nó raiz da árvore AST
+ * @param code - Código fonte completo do arquivo
+ * @param lang - Linguagem detectada
+ * @returns Array de strings com os paths/módulos importados
+ */
+function extractImports(root: SyntaxNode, code: string, lang: string): string[] {
+  const importTypes = IMPORT_TYPES[lang]
+  if (!importTypes) return []
+
+  const imports: string[] = []
+  const lines = code.split('\n')
+
+  for (const child of root.children) {
+    if (!importTypes.includes(child.type)) continue
+
+    const importText = lines.slice(child.startPosition.row, child.endPosition.row + 1).join('\n')
+
+    const path = extractImportPath(importText, lang)
+    if (path) imports.push(path)
+  }
+
+  return imports
+}
+
+/** extractImportPath
+ * Descrição: Extrai o path/módulo de uma string de import por linguagem
+ * @param importText - Texto completo da declaração de import
+ * @param lang - Linguagem para lógica de extração
+ * @returns Path/módulo importado ou null se não detectado
+ */
+function extractImportPath(importText: string, lang: string): string | null {
+  if (lang === 'typescript' || lang === 'javascript') {
+    // import { X } from './path' ou import X from 'module'
+    const match = importText.match(/from\s+['"]([^'"]+)['"]/)
+    if (match) return match[1] ?? null
+    // import './style.css'
+    const directMatch = importText.match(/import\s+['"]([^'"]+)['"]/)
+    if (directMatch) return directMatch[1] ?? null
+    return null
+  }
+
+  if (lang === 'python') {
+    // from module import X ou import module
+    const fromMatch = importText.match(/from\s+(\S+)\s+import/)
+    if (fromMatch) return fromMatch[1] ?? null
+    const importMatch = importText.match(/import\s+(\S+)/)
+    if (importMatch) return importMatch[1] ?? null
+    return null
+  }
+
+  if (lang === 'rust') {
+    // use crate::module ou use std::path
+    const match = importText.match(/use\s+(\S+?)(?:::|\s*;)/)
+    if (match) return match[1] ?? null
+    return null
+  }
+
+  if (lang === 'go') {
+    // import "module" ou import ( "module" )
+    const match = importText.match(/["']([^"']+)["']/)
+    if (match) return match[1] ?? null
+    return null
+  }
+
+  return null
 }
 
 /** truncateContent

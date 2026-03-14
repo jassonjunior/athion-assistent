@@ -107,6 +107,101 @@ export class DbStore {
         value TEXT NOT NULL
       )
     `)
+
+    // Tabela de hashes de arquivo para indexação incremental (1.1)
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS file_hashes (
+        file_path TEXT PRIMARY KEY,
+        content_hash TEXT NOT NULL,
+        indexed_at INTEGER NOT NULL,
+        chunk_count INTEGER NOT NULL DEFAULT 0
+      )
+    `)
+
+    // L0: Metadata do repositório (1.2)
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS repo_meta (
+        id INTEGER PRIMARY KEY DEFAULT 1,
+        language TEXT,
+        framework TEXT,
+        test_framework TEXT,
+        entry_points TEXT,
+        build_system TEXT,
+        architecture_style TEXT,
+        database_tech TEXT,
+        package_manager TEXT,
+        generated_at INTEGER,
+        schema_version INTEGER DEFAULT 1
+      )
+    `)
+
+    // L1: Módulos / pacotes (1.2)
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS modules (
+        id TEXT PRIMARY KEY,
+        module_path TEXT NOT NULL,
+        purpose TEXT,
+        public_api TEXT,
+        depends_on TEXT,
+        depended_by TEXT,
+        file_count INTEGER DEFAULT 0,
+        complexity TEXT DEFAULT 'medium',
+        generated_at INTEGER
+      )
+    `)
+
+    // L2: Sumários de arquivo (1.2)
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS file_summaries (
+        id TEXT PRIMARY KEY,
+        file_path TEXT NOT NULL UNIQUE,
+        purpose TEXT,
+        exports TEXT,
+        patterns TEXT,
+        imports_external TEXT,
+        imports_internal TEXT,
+        complexity TEXT DEFAULT 'medium',
+        file_hash TEXT,
+        generated_at INTEGER
+      )
+    `)
+
+    // L4: Padrões do codebase (1.2)
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS patterns (
+        id INTEGER PRIMARY KEY DEFAULT 1,
+        naming_functions TEXT,
+        naming_classes TEXT,
+        naming_constants TEXT,
+        naming_files TEXT,
+        naming_variables TEXT,
+        error_handling TEXT,
+        import_style TEXT,
+        testing_patterns TEXT,
+        architecture_patterns TEXT,
+        anti_patterns TEXT,
+        generated_at INTEGER,
+        schema_version INTEGER DEFAULT 1
+      )
+    `)
+
+    // Colunas opcionais em chunks (1.2) — try/catch pois ALTER TABLE falha se já existe
+    this.tryAlterTable('ALTER TABLE chunks ADD COLUMN docstring TEXT')
+    this.tryAlterTable('ALTER TABLE chunks ADD COLUMN throws TEXT')
+    this.tryAlterTable('ALTER TABLE chunks ADD COLUMN signature TEXT')
+    this.tryAlterTable('ALTER TABLE chunks ADD COLUMN imports TEXT')
+  }
+
+  /** tryAlterTable
+   * Descrição: Executa ALTER TABLE ignorando erro se coluna já existe
+   * @param sql - SQL do ALTER TABLE a executar
+   */
+  private tryAlterTable(sql: string): void {
+    try {
+      this.db.run(sql)
+    } catch {
+      // Coluna já existe — ignorar
+    }
   }
 
   /** upsertChunk
@@ -294,6 +389,43 @@ export class DbStore {
       .query<{ file_path: string }, []>(`SELECT DISTINCT file_path FROM chunks`)
       .all()
       .map((r) => r.file_path)
+  }
+
+  /** getFileHash
+   * Descrição: Retorna o hash armazenado para um arquivo
+   * @param filePath - Caminho absoluto do arquivo
+   * @returns Hash do conteúdo ou null se arquivo não indexado
+   */
+  getFileHash(filePath: string): string | null {
+    const row = this.db
+      .query<
+        { content_hash: string },
+        [string]
+      >(`SELECT content_hash FROM file_hashes WHERE file_path = ?`)
+      .get(filePath)
+    return row?.content_hash ?? null
+  }
+
+  /** setFileHash
+   * Descrição: Salva ou atualiza o hash de um arquivo após indexação
+   * @param filePath - Caminho absoluto do arquivo
+   * @param hash - Hash MD5 do conteúdo
+   * @param chunkCount - Número de chunks gerados para o arquivo
+   */
+  setFileHash(filePath: string, hash: string, chunkCount: number): void {
+    this.db.run(
+      `INSERT OR REPLACE INTO file_hashes (file_path, content_hash, indexed_at, chunk_count)
+       VALUES (?, ?, ?, ?)`,
+      [filePath, hash, Date.now(), chunkCount],
+    )
+  }
+
+  /** deleteFileHash
+   * Descrição: Remove o hash de um arquivo do banco
+   * @param filePath - Caminho absoluto do arquivo
+   */
+  deleteFileHash(filePath: string): void {
+    this.db.run(`DELETE FROM file_hashes WHERE file_path = ?`, [filePath])
   }
 
   /** close

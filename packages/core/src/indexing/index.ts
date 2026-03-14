@@ -30,6 +30,10 @@ export type { TextSearchPort, TextDocument, TextSearchResult } from './ports'
 export { SqliteVectorStore } from './adapters'
 export { SqliteTextSearch } from './adapters'
 
+// Dependency Graph
+export { DependencyGraph } from './dependency-graph'
+export type { ImpactResult, GraphStats } from './dependency-graph'
+
 // Result type
 export { Ok, Err, unwrapOr, mapResult, flatMapResult, tryCatch, tryCatchAsync } from './result'
 export type { Result } from './result'
