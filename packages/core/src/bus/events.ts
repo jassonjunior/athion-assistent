@@ -254,3 +254,108 @@ export const IndexingFailed = defineBusEvent(
     stage: z.string(),
   }),
 )
+
+// ─── MCP Events (Phase 2) ──────────────────────────────────────────
+
+/** McpClientConnected
+ * Descrição: Evento emitido quando um cliente MCP se conecta ao servidor.
+ */
+export const McpClientConnected = defineBusEvent(
+  'mcp.client.connected',
+  z.object({
+    /** clientId - Identificador único do cliente MCP */
+    clientId: z.string(),
+    /** transport - Tipo de transporte usado (stdio ou sse) */
+    transport: z.enum(['stdio', 'sse']),
+  }),
+)
+
+/** McpToolCalled
+ * Descrição: Evento emitido quando uma tool MCP é invocada.
+ */
+export const McpToolCalled = defineBusEvent(
+  'mcp.tool.called',
+  z.object({
+    /** clientId - Identificador do cliente que invocou */
+    clientId: z.string(),
+    /** toolName - Nome da tool invocada */
+    toolName: z.string(),
+    /** durationMs - Tempo de execução em milissegundos */
+    durationMs: z.number(),
+    /** success - Se a tool executou com sucesso */
+    success: z.boolean(),
+  }),
+)
+
+/** McpClientDisconnected
+ * Descrição: Evento emitido quando um cliente MCP se desconecta.
+ */
+export const McpClientDisconnected = defineBusEvent(
+  'mcp.client.disconnected',
+  z.object({
+    /** clientId - Identificador do cliente desconectado */
+    clientId: z.string(),
+  }),
+)
+
+// ─── Workspace Events (Phase 2) ────────────────────────────────────
+
+/** WorkspaceRegistered
+ * Descrição: Evento emitido quando um workspace é registrado.
+ */
+export const WorkspaceRegistered = defineBusEvent(
+  'workspace.registered',
+  z.object({
+    /** workspaceId - ID do workspace registrado */
+    workspaceId: z.string(),
+    /** path - Caminho absoluto do workspace */
+    path: z.string(),
+  }),
+)
+
+/** CrossSearchCompleted
+ * Descrição: Evento emitido quando uma busca cross-workspace é concluída.
+ */
+export const CrossSearchCompleted = defineBusEvent(
+  'workspace.cross_search.completed',
+  z.object({
+    /** query - Texto da busca */
+    query: z.string(),
+    /** workspaceCount - Número de workspaces consultados */
+    workspaceCount: z.number(),
+    /** totalResults - Total de resultados retornados */
+    totalResults: z.number(),
+    /** durationMs - Tempo total em milissegundos */
+    durationMs: z.number(),
+  }),
+)
+
+// ─── Remote Events (Phase 2) ───────────────────────────────────────
+
+/** RemoteCloned
+ * Descrição: Evento emitido quando um repositório remoto é clonado.
+ */
+export const RemoteCloned = defineBusEvent(
+  'remote.cloned',
+  z.object({
+    /** url - URL do repositório clonado */
+    url: z.string(),
+    /** localPath - Caminho local do clone */
+    localPath: z.string(),
+    /** durationMs - Tempo de clone em milissegundos */
+    durationMs: z.number(),
+  }),
+)
+
+/** RemoteCleanedUp
+ * Descrição: Evento emitido quando um repositório remoto é removido por cleanup.
+ */
+export const RemoteCleanedUp = defineBusEvent(
+  'remote.cleaned_up',
+  z.object({
+    /** url - URL do repositório removido */
+    url: z.string(),
+    /** reason - Motivo da remoção */
+    reason: z.string(),
+  }),
+)

@@ -103,8 +103,8 @@ export const ConfigSchema = z.object({
   // ─── Flow Observer ─────────────────────────────────────────
   /** flowObserverEnabled - Habilita servidor WebSocket do Flow Observer (default: false) */
   flowObserverEnabled: z.boolean().default(false),
-  /** flowObserverPort - Porta do servidor WebSocket do Flow Observer (default: 4200) */
-  flowObserverPort: z.number().default(4200),
+  /** flowObserverPort - Porta do servidor WebSocket do Flow Observer (default: 0 = dinâmica) */
+  flowObserverPort: z.number().default(0),
 
   // ─── lm-studio ──────────────────────────────────────────────
   /** lmStudioPort - Porta da API do LM Studio (default: 1234) */
@@ -113,6 +113,28 @@ export const ConfigSchema = z.object({
   lmStudioHost: z.string().default('127.0.0.1').optional(),
   /** lmStudioApiKey - Token da API do LM Studio (Settings > API > API Key) */
   lmStudioApiKey: z.string().optional(),
+
+  // ─── MCP Server (Phase 2) ─────────────────────────────────
+  /** mcpEnabled - Habilita servidor MCP para exposição de tools/resources (default: false) */
+  mcpEnabled: z.boolean().default(false),
+  /** mcpTransport - Transporte do MCP server: stdio ou sse (default: 'stdio') */
+  mcpTransport: z.enum(['stdio', 'sse']).default('stdio'),
+  /** mcpSsePort - Porta do servidor MCP SSE (default: 3100) */
+  mcpSsePort: z.number().default(3100),
+
+  // ─── Workspace Manager (Phase 2) ──────────────────────────
+  /** workspaceMaxCount - Número máximo de workspaces em cross-search (default: 5) */
+  workspaceMaxCount: z.number().default(5),
+  /** workspaceCrossSearchTimeout - Timeout por workspace em cross-search ms (default: 5000) */
+  workspaceCrossSearchTimeout: z.number().default(5000),
+
+  // ─── Remote Repos (Phase 2) ───────────────────────────────
+  /** remoteBasePath - Diretório base para repos remotos clonados (default: ~/.athion/repos) */
+  remoteBasePath: z.string().default('~/.athion/repos'),
+  /** remoteAutoCleanupDays - Dias de inatividade antes de cleanup (default: 30) */
+  remoteAutoCleanupDays: z.number().default(30),
+  /** remoteCloneTimeout - Timeout de clone em ms (default: 60000) */
+  remoteCloneTimeout: z.number().default(60000),
 })
 
 /** Config

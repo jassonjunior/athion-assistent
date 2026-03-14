@@ -125,17 +125,28 @@ export { createTaskTool } from './tools/task-tool'
 export { createCodebaseIndexer } from './indexing'
 /** indexingProgressEvent - Evento de progresso da indexação do codebase */
 export { indexingProgressEvent } from './indexing'
-/** CodebaseIndexer, CodeChunk, SearchResult, IndexerConfig, IndexStats - Tipos de indexação */
+/** DependencyGraph - Grafo de dependências entre arquivos */
+export { DependencyGraph } from './indexing'
+/** CodebaseIndexer, CodeChunk, SearchResult, IndexerConfig, IndexStats, SerializedGraph - Tipos de indexação */
 export type {
   CodebaseIndexer,
   CodeChunk,
   SearchResult,
   IndexerConfig,
   IndexStats,
+  SerializedGraph,
 } from './indexing'
+
+// ─── MCP ────────────────────────────────────────────────────
+/** createMcpServer - Fábrica do servidor MCP */
+export { createMcpServer } from './mcp'
+/** AthionMcpServer, McpServerConfig - Tipos do servidor MCP */
+export type { AthionMcpServer, McpServerConfig } from './mcp'
 
 // ─── Flow Observer ──────────────────────────────────────────
 /** createFlowServer - Fábrica do servidor WebSocket do Flow Observer */
 export { createFlowServer } from './server/flow-ws'
 /** FlowServer - Tipo do servidor WebSocket do Flow Observer */
 export type { FlowServer } from './server/flow-ws'
+/** findFlowPort, listFlowPorts - Descoberta de porta dinâmica do Flow Observer */
+export { findFlowPort, listFlowPorts } from './server/flow-port-file'

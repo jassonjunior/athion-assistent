@@ -46,6 +46,10 @@ import { createTaskTool } from './tools/task-tool'
 import type { ToolDefinition } from './tools/types'
 import type { FlowServer } from './server/flow-ws'
 import { createFlowServer } from './server/flow-ws'
+import { removeFlowPortFile, writeFlowPortFile } from './server/flow-port-file'
+import type { AthionMcpServer } from './mcp'
+import { createMcpServer } from './mcp'
+import { DependencyGraph } from './indexing/dependency-graph'
 
 /** BootstrapOptions
  * Descrição: Opções de configuração para inicialização do core do Athion.
@@ -108,6 +112,10 @@ export interface AthionCore {
   indexingProgress: { percent: number; done: boolean } | null
   /** flowServer - Servidor WebSocket do Flow Observer (null se desabilitado) */
   flowServer: FlowServer | null
+  /** mcpServer - Servidor MCP para exposição de tools/resources (null se desabilitado) */
+  mcpServer: AthionMcpServer | null
+  /** dependencyGraph - Grafo de dependências do workspace (null se indexer não configurado) */
+  dependencyGraph: DependencyGraph | null
 }
 
 /** bootstrap
@@ -175,6 +183,7 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
   const toolDispatcher = createToolDispatcher(tools, permissions)
 
   const indexer = await setupIndexer(workspacePath, indexDbPath, tools)
+  const dependencyGraph = indexer ? new DependencyGraph() : null
   if (indexer) log.info({ workspacePath }, 'codebase indexer ready')
 
   // Estado de progresso compartilhado — lido pelo hook do CLI no mount
@@ -315,6 +324,7 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
     tools,
     skills,
     summarizer,
+    indexer: indexer ?? undefined,
   })
   for (const agent of builtinAgents) subagents.registerAgent(agent)
   tools.register(createTaskTool({ subagents, bus }) as ToolDefinition)
@@ -338,6 +348,39 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
   const skillRegistry = createSkillRegistry(skills)
   log.info({ provider: config.get('provider'), model: config.get('model') }, 'bootstrap complete')
 
+  // MCP Server — cria servidor MCP para exposição de tools/resources
+  let mcpServer: AthionMcpServer | null = null
+  if (config.get('mcpEnabled') && indexer && dependencyGraph) {
+    mcpServer = createMcpServer({
+      indexer,
+      graph: dependencyGraph,
+      bus,
+      transport: config.get('mcpTransport') as 'stdio' | 'sse',
+      ssePort: config.get('mcpSsePort') as number,
+    })
+    log.info({ transport: config.get('mcpTransport') }, 'MCP server created')
+  }
+
+  // Flow Observer — cria servidor WebSocket e escreve port file para descoberta
+  let flowServer: FlowServer | null = null
+  if (config.get('flowObserverEnabled')) {
+    flowServer = createFlowServer(bus, config.get('flowObserverPort'))
+    if (flowServer) {
+      writeFlowPortFile(flowServer.port, workspacePath ?? process.cwd())
+      // Cleanup do port file no encerramento do processo
+      const cleanup = () => removeFlowPortFile()
+      process.on('exit', cleanup)
+      process.on('SIGINT', () => {
+        cleanup()
+        process.exit(0)
+      })
+      process.on('SIGTERM', () => {
+        cleanup()
+        process.exit(0)
+      })
+    }
+  }
+
   return {
     bus,
     config,
@@ -355,9 +398,9 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
     indexMetrics,
     skillRegistry,
     indexingProgress: indexer ? indexingProgress : null,
-    flowServer: config.get('flowObserverEnabled')
-      ? createFlowServer(bus, config.get('flowObserverPort'))
-      : null,
+    flowServer,
+    mcpServer,
+    dependencyGraph,
   }
 }
 
@@ -407,7 +450,18 @@ async function setupIndexer(
   tools: ToolRegistry,
 ): Promise<CodebaseIndexer | null> {
   if (!workspacePath) return null
-  const resolvedIndexDb = indexDbPath ?? join(homedir(), '.athion', 'index.db')
+
+  // Cada workspace tem seu próprio banco de índice para evitar poluição cruzada.
+  // Gera hash curto do workspacePath como sufixo: ~/.athion/index-{hash8}.db
+  let resolvedIndexDb: string
+  if (indexDbPath) {
+    resolvedIndexDb = indexDbPath
+  } else {
+    const hasher = new Bun.CryptoHasher('sha256')
+    hasher.update(workspacePath)
+    const hash = hasher.digest('hex').slice(0, 8)
+    resolvedIndexDb = join(homedir(), '.athion', `index-${hash}.db`)
+  }
 
   // Cria adapters SQLite e injeta via DI
   const vectorStore = new SqliteVectorStore(resolvedIndexDb)
