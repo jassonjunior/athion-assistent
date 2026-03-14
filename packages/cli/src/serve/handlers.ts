@@ -60,6 +60,7 @@ export function createHandlers(core: AthionCore, notify: NotifyFn): RpcHandlers 
     'codebase.search': (params: unknown) => handleCodebaseSearch(core, params),
     'codebase.status': async () => handleCodebaseStatus(core),
     'codebase.clear': async () => handleCodebaseClear(core),
+    'codebase.getDependencyGraph': (params: unknown) => handleGetDependencyGraph(core, params),
     // Plugin/Skills discovery
     'plugin.search': (params: unknown) => handlePluginSearch(core, params),
     'plugin.install': (params: unknown) => handlePluginInstall(core, params),
@@ -435,6 +436,39 @@ function handleCodebaseClear(core: AthionCore): unknown {
   }
   core.indexer.clear()
   return { ok: true }
+}
+
+// ─── Dependency Graph Handler ───────────────────────────────────────
+
+/** handleGetDependencyGraph
+ * Descrição: Retorna o grafo de dependências serializado, opcionalmente focado em um arquivo.
+ * @param core - Instância do core do Athion
+ * @param params - Parâmetros contendo focus (arquivo) e depth opcionais
+ * @returns Promise com o grafo serializado (JSON) e opcionalmente Mermaid
+ */
+async function handleGetDependencyGraph(core: AthionCore, params: unknown): Promise<unknown> {
+  if (!core.dependencyGraph) {
+    return {
+      available: false,
+      reason: 'DependencyGraph não disponível. Indexe o workspace primeiro.',
+    }
+  }
+
+  const { focus, depth, format } =
+    (params as { focus?: string; depth?: number; format?: 'json' | 'mermaid' | 'both' }) ?? {}
+  const options = focus ? { focus, depth: depth ?? 3 } : undefined
+
+  const json = core.dependencyGraph.toJSON(options)
+
+  if (format === 'mermaid') {
+    return { mermaid: core.dependencyGraph.toMermaid(options) }
+  }
+
+  if (format === 'both') {
+    return { graph: json, mermaid: core.dependencyGraph.toMermaid(options) }
+  }
+
+  return { graph: json }
 }
 
 // ─── Plugin/Skills Handlers ─────────────────────────────────────────

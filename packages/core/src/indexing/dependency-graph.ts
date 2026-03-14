@@ -216,6 +216,186 @@ export class DependencyGraph {
     }
   }
 
+  /** toJSON
+   * Descrição: Serializa o grafo para JSON persistível/exportável.
+   * Opcionalmente foca em um subgrafo a partir de um arquivo específico.
+   * @param options - Opções de foco (arquivo raiz + profundidade máxima)
+   * @returns Objeto SerializedGraph pronto para JSON.stringify
+   */
+  toJSON(options?: { focus?: string; depth?: number }): SerializedGraph {
+    if (options?.focus) {
+      return this.subgraphToJSON(options.focus, options.depth ?? 3)
+    }
+
+    const files: string[] = []
+    const fileSet = new Set<string>()
+
+    // Coleta todos os arquivos (de dependencies e dependents)
+    for (const f of this.dependencies.keys()) {
+      if (!fileSet.has(f)) {
+        fileSet.add(f)
+        files.push(f)
+      }
+    }
+    for (const f of this.dependents.keys()) {
+      if (!fileSet.has(f)) {
+        fileSet.add(f)
+        files.push(f)
+      }
+    }
+    files.sort()
+
+    const edges: Array<{ from: string; to: string }> = []
+    for (const [file, deps] of this.dependencies) {
+      for (const dep of deps) {
+        edges.push({ from: file, to: dep })
+      }
+    }
+
+    return {
+      version: 1,
+      files,
+      edges,
+      stats: this.getStats(),
+      exportedAt: new Date().toISOString(),
+    }
+  }
+
+  /** subgraphToJSON
+   * Descrição: Extrai subgrafo focado em um arquivo com profundidade limitada (BFS bidirecional).
+   * @param focus - Arquivo raiz do subgrafo
+   * @param depth - Profundidade máxima do BFS
+   * @returns SerializedGraph do subgrafo
+   */
+  private subgraphToJSON(focus: string, depth: number): SerializedGraph {
+    const visited = new Set<string>()
+    const queue: Array<{ path: string; d: number }> = [{ path: focus, d: 0 }]
+    visited.add(focus)
+
+    while (queue.length > 0) {
+      const current = queue.shift()
+      if (!current || current.d >= depth) continue
+
+      // Forward: quem este arquivo importa
+      const fwd = this.dependencies.get(current.path)
+      if (fwd) {
+        for (const dep of fwd) {
+          if (!visited.has(dep)) {
+            visited.add(dep)
+            queue.push({ path: dep, d: current.d + 1 })
+          }
+        }
+      }
+
+      // Reverse: quem importa este arquivo
+      const rev = this.dependents.get(current.path)
+      if (rev) {
+        for (const dep of rev) {
+          if (!visited.has(dep)) {
+            visited.add(dep)
+            queue.push({ path: dep, d: current.d + 1 })
+          }
+        }
+      }
+    }
+
+    const files = Array.from(visited).sort()
+    const edges: Array<{ from: string; to: string }> = []
+    for (const file of files) {
+      const deps = this.dependencies.get(file)
+      if (deps) {
+        for (const dep of deps) {
+          if (visited.has(dep)) {
+            edges.push({ from: file, to: dep })
+          }
+        }
+      }
+    }
+
+    const totalEdges = edges.length
+    const totalFiles = files.length
+
+    return {
+      version: 1,
+      files,
+      edges,
+      stats: {
+        totalFiles,
+        totalEdges,
+        avgDependencies: totalFiles > 0 ? totalEdges / totalFiles : 0,
+        maxDependents: 0,
+      },
+      exportedAt: new Date().toISOString(),
+    }
+  }
+
+  /** fromJSON
+   * Descrição: Reconstrói um DependencyGraph a partir de JSON serializado.
+   * @param data - Objeto SerializedGraph (resultado de toJSON)
+   * @returns Nova instância de DependencyGraph populada
+   */
+  static fromJSON(data: SerializedGraph): DependencyGraph {
+    const graph = new DependencyGraph()
+    // Agrupa edges por source file
+    const edgesByFile = new Map<string, string[]>()
+    for (const file of data.files) {
+      edgesByFile.set(file, [])
+    }
+    for (const edge of data.edges) {
+      let arr = edgesByFile.get(edge.from)
+      if (!arr) {
+        arr = []
+        edgesByFile.set(edge.from, arr)
+      }
+      arr.push(edge.to)
+    }
+    for (const [file, imports] of edgesByFile) {
+      graph.addFile(file, imports)
+    }
+    return graph
+  }
+
+  /** toMermaid
+   * Descrição: Gera diagrama Mermaid do grafo (ou subgrafo focado).
+   * @param options - Opções de foco e profundidade
+   * @returns String com código Mermaid válido
+   */
+  toMermaid(options?: { focus?: string; depth?: number }): string {
+    const data = this.toJSON(options)
+    const lines: string[] = ['graph LR']
+
+    // Cria IDs curtos para nomes de arquivo
+    const idMap = new Map<string, string>()
+    for (let i = 0; i < data.files.length; i++) {
+      const f = data.files[i]
+      if (f) idMap.set(f, `N${i}`)
+    }
+
+    // Declara nodes com labels curtos (apenas nome do arquivo)
+    for (const file of data.files) {
+      const id = idMap.get(file)
+      if (!id) continue
+      const shortName = file.split('/').pop() ?? file
+      const isFocus = options?.focus && file === options.focus
+      if (isFocus) {
+        lines.push(`  ${id}[["${shortName}"]]`)
+      } else {
+        lines.push(`  ${id}["${shortName}"]`)
+      }
+    }
+
+    // Declara edges
+    for (const edge of data.edges) {
+      const fromId = idMap.get(edge.from)
+      const toId = idMap.get(edge.to)
+      if (fromId && toId) {
+        lines.push(`  ${fromId} --> ${toId}`)
+      }
+    }
+
+    return lines.join('\n')
+  }
+
   /** clear
    * Descrição: Limpa o grafo completamente
    */
@@ -223,4 +403,15 @@ export class DependencyGraph {
     this.dependencies.clear()
     this.dependents.clear()
   }
+}
+
+/** SerializedGraph
+ * Descrição: Formato JSON versionado para persistência/export do DependencyGraph
+ */
+export interface SerializedGraph {
+  version: number
+  files: string[]
+  edges: Array<{ from: string; to: string }>
+  stats: GraphStats
+  exportedAt: string
 }

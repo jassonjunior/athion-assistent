@@ -59,7 +59,7 @@ export { LlmPriorityQueue } from './llm-priority-queue'
 
 // Dependency Graph
 export { DependencyGraph } from './dependency-graph'
-export type { ImpactResult, GraphStats } from './dependency-graph'
+export type { ImpactResult, GraphStats, SerializedGraph } from './dependency-graph'
 
 // Context Builder + Formatters
 export { ContextAssembler, estimateTokens, truncateBlock } from './context-builder'

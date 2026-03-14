@@ -199,4 +199,88 @@ describe('DependencyGraph', () => {
       expect(graph.getDirectDependents('/c.ts')).toEqual(['/a.ts'])
     })
   })
+
+  describe('toJSON / fromJSON (serialização)', () => {
+    it('round-trip preserva o grafo completo', () => {
+      const graph = new DependencyGraph()
+      graph.addFile('/a.ts', ['/b.ts', '/c.ts'])
+      graph.addFile('/b.ts', ['/c.ts'])
+
+      const json = graph.toJSON()
+      const restored = DependencyGraph.fromJSON(json)
+
+      expect(restored.getDirectDependencies('/a.ts').sort()).toEqual(['/b.ts', '/c.ts'])
+      expect(restored.getDirectDependencies('/b.ts')).toEqual(['/c.ts'])
+      expect(restored.getDirectDependents('/c.ts').sort()).toEqual(['/a.ts', '/b.ts'])
+    })
+
+    it('toJSON retorna formato versionado correto', () => {
+      const graph = new DependencyGraph()
+      graph.addFile('/a.ts', ['/b.ts'])
+
+      const json = graph.toJSON()
+
+      expect(json.version).toBe(1)
+      expect(json.files.sort()).toEqual(['/a.ts', '/b.ts'])
+      expect(json.edges).toEqual([{ from: '/a.ts', to: '/b.ts' }])
+      expect(json.stats.totalFiles).toBe(1)
+      expect(json.stats.totalEdges).toBe(1)
+      expect(json.exportedAt).toBeTruthy()
+    })
+
+    it('fromJSON com grafo vazio', () => {
+      const graph = new DependencyGraph()
+      const json = graph.toJSON()
+      const restored = DependencyGraph.fromJSON(json)
+
+      expect(restored.getStats().totalFiles).toBe(0)
+      expect(restored.getStats().totalEdges).toBe(0)
+    })
+
+    it('subgraph com focus retorna apenas vizinhança', () => {
+      const graph = new DependencyGraph()
+      graph.addFile('/a.ts', ['/b.ts'])
+      graph.addFile('/b.ts', ['/c.ts'])
+      graph.addFile('/c.ts', ['/d.ts'])
+      graph.addFile('/d.ts', ['/e.ts'])
+
+      const sub = graph.toJSON({ focus: '/b.ts', depth: 1 })
+
+      // depth=1: b + vizinhos diretos (a importa b, b importa c)
+      expect(sub.files).toContain('/b.ts')
+      expect(sub.files).toContain('/a.ts')
+      expect(sub.files).toContain('/c.ts')
+      expect(sub.files).not.toContain('/e.ts')
+    })
+  })
+
+  describe('toMermaid', () => {
+    it('gera diagrama Mermaid válido', () => {
+      const graph = new DependencyGraph()
+      graph.addFile('/src/a.ts', ['/src/b.ts'])
+
+      const mermaid = graph.toMermaid()
+
+      expect(mermaid).toContain('graph LR')
+      expect(mermaid).toContain('"a.ts"')
+      expect(mermaid).toContain('"b.ts"')
+      expect(mermaid).toContain('-->')
+    })
+
+    it('destaca nó com foco usando double brackets', () => {
+      const graph = new DependencyGraph()
+      graph.addFile('/a.ts', ['/b.ts'])
+
+      const mermaid = graph.toMermaid({ focus: '/a.ts' })
+
+      expect(mermaid).toContain('[["a.ts"]]')
+    })
+
+    it('retorna apenas header para grafo vazio', () => {
+      const graph = new DependencyGraph()
+      const mermaid = graph.toMermaid()
+
+      expect(mermaid).toBe('graph LR')
+    })
+  })
 })

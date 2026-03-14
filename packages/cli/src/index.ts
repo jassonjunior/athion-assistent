@@ -25,6 +25,7 @@ import { sessionsCommand } from './commands/sessions.js'
 import { serveCommand, serveHandler } from './commands/serve.js'
 import { codebaseCommand } from './commands/codebase.js'
 import { observeCommand, observeHandler } from './commands/observe.js'
+import { mcpCommand, mcpHandler } from './commands/mcp.js'
 import { VERSION, initI18n } from '@athion/shared'
 
 // Inicializa i18n com locale do sistema (LANG / LC_ALL / LC_MESSAGES)
@@ -41,6 +42,7 @@ await yargs(hideBin(process.argv))
   .command('serve', 'Iniciar servidor HTTP', serveCommand, serveHandler)
   .command('codebase', 'Indexar e buscar no codebase', codebaseCommand)
   .command('observe', 'Abrir painel de observabilidade', observeCommand, observeHandler)
+  .command('mcp', 'Iniciar servidor MCP (Codebase Intelligence)', mcpCommand, mcpHandler)
   .command('$0', false as never, chatCommand, chatHandler)
   .strict()
   .help()
