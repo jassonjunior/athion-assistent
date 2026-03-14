@@ -83,6 +83,23 @@ export type {
 // Retrieval Cache
 export { RetrievalCache } from './retrieval-cache'
 
+// Watcher + Queue + Metrics
+export { CodebaseWatcher } from './watcher'
+export type { CodebaseWatcherConfig } from './watcher'
+export { IndexQueue } from './index-queue'
+export type { IndexTask, IndexQueueConfig } from './index-queue'
+export { IndexMetrics } from './index-metrics'
+export type { IndexMetricsData } from './index-metrics'
+
+// Events
+export {
+  fileChangedEvent,
+  indexingStartedEvent,
+  indexingCompletedEvent,
+  indexingFailedEvent,
+  metricsUpdatedEvent,
+} from './events'
+
 // Result type
 export { Ok, Err, unwrapOr, mapResult, flatMapResult, tryCatch, tryCatchAsync } from './result'
 export type { Result } from './result'

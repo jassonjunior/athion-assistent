@@ -7,6 +7,10 @@ import type { Config, ConfigManager } from './config'
 import { createConfigManager } from './config'
 import type { CodebaseIndexer } from './indexing'
 import { createCodebaseIndexer } from './indexing'
+import { CodebaseWatcher } from './indexing/watcher'
+import { IndexQueue } from './indexing/index-queue'
+import { IndexMetrics } from './indexing/index-metrics'
+import { fileChangedEvent } from './indexing/events'
 import { SqliteVectorStore } from './indexing/adapters/sqlite-vector-store'
 import { SqliteTextSearch } from './indexing/adapters/sqlite-text-search'
 import { createOrchestrator } from './orchestrator/orchestrator'
@@ -92,6 +96,10 @@ export interface AthionCore {
   proxy: ProxyServer | null
   /** indexer - Indexador de codebase para busca semântica (null se workspacePath não configurado) */
   indexer: CodebaseIndexer | null
+  /** watcher - File watcher para re-indexação reativa (null se desabilitado) */
+  watcher: CodebaseWatcher | null
+  /** indexMetrics - Métricas de indexação (null se indexer não configurado) */
+  indexMetrics: IndexMetrics | null
   /** skillRegistry - Registry de skills para busca e instalação do catálogo */
   skillRegistry: SkillRegistry
 }
@@ -162,6 +170,31 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
 
   const indexer = await setupIndexer(workspacePath, indexDbPath, tools)
   if (indexer) log.info({ workspacePath }, 'codebase indexer ready')
+
+  // Watcher + IndexQueue + IndexMetrics
+  let watcher: CodebaseWatcher | null = null
+  let indexMetrics: IndexMetrics | null = null
+  if (indexer && workspacePath) {
+    const watcherEnabled = config.get('codebaseWatcherEnabled') as boolean
+    const debounceMs = config.get('codebaseWatcherDebounceMs') as number
+
+    indexMetrics = new IndexMetrics(bus)
+    indexMetrics.startPeriodicEmit()
+
+    if (watcherEnabled) {
+      const queue = new IndexQueue(indexer, bus, { maxConcurrency: 2 })
+      bus.subscribe(fileChangedEvent, (data) => {
+        queue.enqueue({
+          filePath: data.filePath,
+          type: data.changeType === 'unlink' ? 'delete' : 'index',
+        })
+      })
+
+      watcher = new CodebaseWatcher({ workspacePath, bus, debounceMs })
+      watcher.start()
+      log.info({ workspacePath, debounceMs }, 'codebase watcher started')
+    }
+  }
 
   // Cria server manager ANTES dos subagentes e orquestrador para poder usar ModelSwapProvider.
   // O manager depende do provider configurado:
@@ -247,6 +280,8 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
     vllm,
     proxy,
     indexer,
+    watcher,
+    indexMetrics,
     skillRegistry,
   }
 }
