@@ -1,5 +1,53 @@
 # Changes Log - Athion Assistent
 
+## Fase 2 — Enriquecimento LLM (Codebase Intelligence) (2026-03-13)
+
+**Status**: Concluído ✅
+**Branch**: `feat/codebase-intelligence-fase-2`
+**Issues**: #42 (parent), #43-#50 (sub-issues)
+
+### O que foi feito
+
+Enriquecimento semântico do índice via LLM: port/adapters para geração de metadados L0/L1/L2/L4, pipeline de indexação com estágios nomeados, fila de prioridade LLM, e configs Zod.
+
+### Tarefas (2.1-2.8)
+
+- **2.1** (#43): LlmEnricherPort + ProviderEnricher (usa generateText) + NoopEnricher
+- **2.2** (#44): Geração de L0 (repo_meta) na primeira indexação
+- **2.3** (#45): Geração de L2 (file summaries) durante indexação de cada arquivo
+- **2.4** (#46): Geração de L4 (patterns) na primeira indexação (>30% changed → regenera)
+- **2.5** (#47): IndexPipeline com estágios nomeados, falha opcional, shouldSkip
+- **2.6** (#48): Config Zod: codebaseEnrichmentEnabled, codebaseEnrichmentModel, etc.
+- **2.7** (#49): LlmPriorityQueue — agente tem prioridade sobre enrichment
+- **2.8** (#50): Geração de L1 (modules) agrupados por diretório via LLM
+
+### Arquivos criados
+
+- `packages/core/src/indexing/ports/llm-enricher.port.ts` — LlmEnricherPort + tipos
+- `packages/core/src/indexing/adapters/provider-enricher.ts` — ProviderEnricher
+- `packages/core/src/indexing/adapters/noop-enricher.ts` — NoopEnricher
+- `packages/core/src/indexing/pipeline.ts` — IndexPipeline + helpers
+- `packages/core/src/indexing/llm-priority-queue.ts` — LlmPriorityQueue
+- `packages/core/src/indexing/enricher.test.ts` — 14 testes
+- `packages/core/src/indexing/pipeline.test.ts` — 8 testes
+- `packages/core/src/indexing/llm-priority-queue.test.ts` — 4 testes
+
+### Arquivos modificados
+
+- `packages/core/src/indexing/db-store.ts` — métodos para salvar/carregar L0, L1, L2, L4
+- `packages/core/src/indexing/manager.ts` — enricher como dep, enrichL0/L1/L2/L4
+- `packages/core/src/indexing/index.ts` — exports dos novos componentes
+- `packages/core/src/indexing/ports/index.ts` — exports LlmEnricherPort
+- `packages/core/src/indexing/adapters/index.ts` — exports ProviderEnricher, NoopEnricher
+- `packages/core/src/config/schema.ts` — 5 novas configs de codebase intelligence
+
+### Testes
+
+- 107 testes de indexação passando (26 novos)
+- 0 falhas nos testes de indexação
+
+---
+
 ## Fase 1 — Fundação (Codebase Intelligence) (2026-03-13)
 
 **Status**: Concluído ✅

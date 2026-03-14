@@ -428,6 +428,249 @@ export class DbStore {
     this.db.run(`DELETE FROM file_hashes WHERE file_path = ?`, [filePath])
   }
 
+  /** getRepoMeta
+   * Descrição: Retorna metadata L0 do repositório
+   * @returns Objeto com campos L0 ou null se não gerado
+   */
+  getRepoMeta(): Record<string, unknown> | null {
+    const row = this.db
+      .query<Record<string, unknown>, []>(`SELECT * FROM repo_meta WHERE id = 1`)
+      .get()
+    return row ?? null
+  }
+
+  /** saveRepoMeta
+   * Descrição: Salva metadata L0 do repositório
+   * @param meta - Campos de metadata a salvar
+   */
+  saveRepoMeta(meta: {
+    language: string
+    framework: string
+    testFramework: string
+    entryPoints: string[]
+    buildSystem: string
+    architectureStyle: string
+    databaseTech: string
+    packageManager: string
+  }): void {
+    this.db.run(
+      `INSERT OR REPLACE INTO repo_meta
+       (id, language, framework, test_framework, entry_points, build_system,
+        architecture_style, database_tech, package_manager, generated_at, schema_version)
+       VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+      [
+        meta.language,
+        meta.framework,
+        meta.testFramework,
+        JSON.stringify(meta.entryPoints),
+        meta.buildSystem,
+        meta.architectureStyle,
+        meta.databaseTech,
+        meta.packageManager,
+        Date.now(),
+      ],
+    )
+  }
+
+  /** saveFileSummary
+   * Descrição: Salva sumário L2 de um arquivo
+   * @param filePath - Caminho do arquivo
+   * @param summary - Dados do sumário
+   * @param fileHash - Hash do conteúdo do arquivo
+   */
+  saveFileSummary(
+    filePath: string,
+    summary: {
+      purpose: string
+      exports: string[]
+      patterns: string[]
+      importsExternal: string[]
+      importsInternal: string[]
+      complexity: string
+    },
+    fileHash: string,
+  ): void {
+    const id = `l2:${filePath}`
+    this.db.run(
+      `INSERT OR REPLACE INTO file_summaries
+       (id, file_path, purpose, exports, patterns, imports_external,
+        imports_internal, complexity, file_hash, generated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        filePath,
+        summary.purpose,
+        JSON.stringify(summary.exports),
+        JSON.stringify(summary.patterns),
+        JSON.stringify(summary.importsExternal),
+        JSON.stringify(summary.importsInternal),
+        summary.complexity,
+        fileHash,
+        Date.now(),
+      ],
+    )
+  }
+
+  /** getFileSummary
+   * Descrição: Retorna sumário L2 de um arquivo
+   * @param filePath - Caminho do arquivo
+   * @returns Sumário ou null se não existir
+   */
+  getFileSummary(filePath: string): {
+    purpose: string
+    exports: string[]
+    fileHash: string
+  } | null {
+    const row = this.db
+      .query<
+        { purpose: string; exports: string; file_hash: string },
+        [string]
+      >(`SELECT purpose, exports, file_hash FROM file_summaries WHERE file_path = ?`)
+      .get(filePath)
+    if (!row) return null
+    return {
+      purpose: row.purpose ?? '',
+      exports: JSON.parse(row.exports || '[]'),
+      fileHash: row.file_hash ?? '',
+    }
+  }
+
+  /** savePatterns
+   * Descrição: Salva análise L4 de padrões do codebase
+   * @param patterns - Dados de padrões
+   */
+  savePatterns(patterns: {
+    namingFunctions: string
+    namingClasses: string
+    namingConstants: string
+    namingFiles: string
+    namingVariables: string
+    errorHandling: string
+    importStyle: string
+    testingPatterns: string
+    architecturePatterns: string
+    antiPatterns: string
+  }): void {
+    this.db.run(
+      `INSERT OR REPLACE INTO patterns
+       (id, naming_functions, naming_classes, naming_constants, naming_files,
+        naming_variables, error_handling, import_style, testing_patterns,
+        architecture_patterns, anti_patterns, generated_at, schema_version)
+       VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+      [
+        patterns.namingFunctions,
+        patterns.namingClasses,
+        patterns.namingConstants,
+        patterns.namingFiles,
+        patterns.namingVariables,
+        patterns.errorHandling,
+        patterns.importStyle,
+        patterns.testingPatterns,
+        patterns.architecturePatterns,
+        patterns.antiPatterns,
+        Date.now(),
+      ],
+    )
+  }
+
+  /** hasPatterns
+   * Descrição: Verifica se L4 já foi gerado
+   */
+  hasPatterns(): boolean {
+    const row = this.db.query<{ count: number }, []>(`SELECT COUNT(*) as count FROM patterns`).get()
+    return (row?.count ?? 0) > 0
+  }
+
+  /** hasRepoMeta
+   * Descrição: Verifica se L0 já foi gerado
+   */
+  hasRepoMeta(): boolean {
+    const row = this.db
+      .query<{ count: number }, []>(`SELECT COUNT(*) as count FROM repo_meta`)
+      .get()
+    return (row?.count ?? 0) > 0
+  }
+
+  /** saveModule
+   * Descrição: Salva sumário L1 de um módulo
+   * @param modulePath - Caminho do diretório do módulo
+   * @param summary - Dados do sumário
+   * @param fileCount - Número de arquivos no módulo
+   */
+  saveModule(
+    modulePath: string,
+    summary: {
+      purpose: string
+      publicApi: string[]
+      dependsOn: string[]
+      dependedBy: string[]
+    },
+    fileCount: number,
+  ): void {
+    const id = `l1:${modulePath}`
+    this.db.run(
+      `INSERT OR REPLACE INTO modules
+       (id, module_path, purpose, public_api, depends_on, depended_by, file_count, generated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        modulePath,
+        summary.purpose,
+        JSON.stringify(summary.publicApi),
+        JSON.stringify(summary.dependsOn),
+        JSON.stringify(summary.dependedBy),
+        fileCount,
+        Date.now(),
+      ],
+    )
+  }
+
+  /** getFileSummariesForModule
+   * Descrição: Retorna sumários L2 de todos os arquivos em um diretório
+   * @param dirPath - Caminho do diretório
+   * @returns Array de sumários com path, purpose e exports
+   */
+  getFileSummariesForModule(
+    dirPath: string,
+  ): Array<{ path: string; purpose: string; exports: string[] }> {
+    const rows = this.db
+      .query<
+        { file_path: string; purpose: string; exports: string },
+        [string]
+      >(`SELECT file_path, purpose, exports FROM file_summaries WHERE file_path LIKE ? || '%'`)
+      .all(dirPath)
+    return rows.map((r) => ({
+      path: r.file_path,
+      purpose: r.purpose ?? '',
+      exports: JSON.parse(r.exports || '[]'),
+    }))
+  }
+
+  /** getChangedFileRatio
+   * Descrição: Calcula a proporção de arquivos que mudaram desde a última geração de L4
+   * @returns Razão entre 0 e 1
+   */
+  getChangedFileRatio(): number {
+    const totalRow = this.db
+      .query<{ count: number }, []>(`SELECT COUNT(*) as count FROM file_hashes`)
+      .get()
+    const total = totalRow?.count ?? 0
+    if (total === 0) return 1
+
+    const patternsRow = this.db
+      .query<{ generated_at: number }, []>(`SELECT generated_at FROM patterns WHERE id = 1`)
+      .get()
+    if (!patternsRow) return 1
+
+    const changedRow = this.db
+      .query<
+        { count: number },
+        [number]
+      >(`SELECT COUNT(*) as count FROM file_hashes WHERE indexed_at > ?`)
+      .get(patternsRow.generated_at)
+    return (changedRow?.count ?? 0) / total
+  }
+
   /** close
    * Descrição: Fecha a conexão com o banco de dados SQLite
    */

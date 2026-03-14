@@ -13,3 +13,12 @@ export type {
 } from './vector-store.port'
 
 export type { TextSearchPort, TextDocument, TextSearchResult } from './text-search.port'
+
+export type {
+  LlmEnricherPort,
+  EnrichmentError,
+  RepoMeta,
+  FileSummary,
+  ModuleSummary,
+  PatternAnalysis,
+} from './llm-enricher.port'
