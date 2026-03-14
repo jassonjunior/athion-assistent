@@ -2,7 +2,12 @@
  * Structured logger para o Athion.
  * Interface compatível com Pino — pode ser substituído por `pino` sem mudanças nos call-sites.
  * Emite JSON para stdout quando LOG_FORMAT=json, texto legível caso contrário.
+ * Sempre grava em arquivo ~/.athion/athion.log (acessível via tail -f de outro terminal).
  */
+
+import { appendFileSync, mkdirSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 
 export type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal' | 'silent'
 
@@ -60,6 +65,25 @@ function resolveEnvLevel(): LogLevel {
 
 const isJson = process.env['LOG_FORMAT'] === 'json'
 
+/** Caminho do arquivo de log persistente */
+const LOG_DIR = join(homedir(), '.athion')
+const LOG_FILE = join(LOG_DIR, 'athion.log')
+
+// Garante que o diretório existe (sync, executa uma vez no import)
+try {
+  mkdirSync(LOG_DIR, { recursive: true })
+} catch {
+  // ignora se já existe ou sem permissão
+}
+
+function writeToFile(line: string): void {
+  try {
+    appendFileSync(LOG_FILE, line + '\n')
+  } catch {
+    // ignora erros de escrita — não deve quebrar o app
+  }
+}
+
 /** Cria uma instância do Logger estruturado. */
 export function createLogger(name?: string, bindings: Record<string, unknown> = {}): Logger {
   let minLevel = LEVELS[resolveEnvLevel()]
@@ -70,6 +94,17 @@ export function createLogger(name?: string, bindings: Record<string, unknown> = 
     const now = Date.now()
     const message = typeof objOrMsg === 'string' ? objOrMsg : (msg ?? '')
     const extra = typeof objOrMsg === 'object' ? objOrMsg : {}
+
+    const label = LEVEL_LABELS[levelNum] ?? '?????'
+    const ts = new Date(now).toISOString()
+    const prefix = name ? `[${name}] ` : ''
+    const extras = Object.keys({ ...bindings, ...extra }).length
+      ? ' ' + JSON.stringify({ ...bindings, ...extra })
+      : ''
+    const textLine = `${ts} ${label} ${prefix}${message}${extras}`
+
+    // Sempre grava no arquivo de log
+    writeToFile(textLine)
 
     if (isJson) {
       const entry: LogEntry = {
@@ -82,13 +117,7 @@ export function createLogger(name?: string, bindings: Record<string, unknown> = 
       }
       process.stdout.write(JSON.stringify(entry) + '\n')
     } else {
-      const label = LEVEL_LABELS[levelNum] ?? '?????'
-      const ts = new Date(now).toISOString()
-      const prefix = name ? `[${name}] ` : ''
-      const extras = Object.keys({ ...bindings, ...extra }).length
-        ? ' ' + JSON.stringify({ ...bindings, ...extra })
-        : ''
-      process.stderr.write(`${ts} ${label} ${prefix}${message}${extras}\n`)
+      process.stderr.write(textLine + '\n')
     }
   }
 
