@@ -19,6 +19,7 @@ import type { EmbeddingService } from './embeddings'
 import { walkDirectory } from './file-walker'
 import type { VectorStorePort } from './ports/vector-store.port'
 import type { TextSearchPort } from './ports/text-search.port'
+import type { LlmEnricherPort } from './ports/llm-enricher.port'
 import type { CodeChunk, IndexerConfig, IndexStats, SearchResult } from './types'
 
 /** CodebaseIndexerDeps
@@ -38,6 +39,10 @@ export interface CodebaseIndexerDeps {
    * Descrição: Serviço de embeddings (default: criado a partir de embeddingBaseUrl da config)
    */
   embedding?: EmbeddingService | null
+  /** enricher
+   * Descrição: Port de enriquecimento LLM (default: NoopEnricher)
+   */
+  enricher?: LlmEnricherPort
 }
 
 /** CodebaseIndexer
@@ -62,6 +67,10 @@ export class CodebaseIndexer {
    * Descrição: Serviço de embeddings (null se modo FTS-only)
    */
   private embedding: EmbeddingService | null
+  /** enricher
+   * Descrição: Port de enriquecimento LLM (null se não configurado)
+   */
+  private enricher: LlmEnricherPort | null
   /** config
    * Descrição: Configuração completa do indexador com valores padrão preenchidos
    */
@@ -89,6 +98,7 @@ export class CodebaseIndexer {
     // Ports injetados ou null (fallback para DbStore interno)
     this.vectorStore = deps.vectorStore ?? null
     this.textSearch = deps.textSearch ?? null
+    this.enricher = deps.enricher ?? null
 
     // Embedding: injetado, criado a partir de config, ou null (FTS-only)
     if (deps.embedding !== undefined) {
@@ -125,6 +135,13 @@ export class CodebaseIndexer {
       onProgress?.(indexed, files.length, filePath)
       await this.indexFile(filePath)
       indexed++
+    }
+
+    // Enrichment pós-indexação (L0, L4, L1)
+    if (this.enricher) {
+      await this.enrichL0(files)
+      await this.enrichL4(files)
+      await this.enrichL1(files)
     }
 
     this.store.setIndexedAt(new Date())
@@ -236,12 +253,26 @@ export class CodebaseIndexer {
     }
 
     // Atualiza file hash após indexação bem-sucedida
+    let fileHash = ''
     try {
       const content = readFileSync(filePath, 'utf-8')
-      const hash = computeFileHash(content)
-      this.store.setFileHash(filePath, hash, fullChunks.length)
+      fileHash = computeFileHash(content)
+      this.store.setFileHash(filePath, fileHash, fullChunks.length)
     } catch {
       // Arquivo pode ter sido deletado entre leitura e hash
+    }
+
+    // Enrichment L2 — gera sumário do arquivo via LLM
+    if (this.enricher && fileHash) {
+      try {
+        const code = readFileSync(filePath, 'utf-8')
+        const result = await this.enricher.generateFileSummary(filePath, code)
+        if (result.ok) {
+          this.store.saveFileSummary(filePath, result.value, fileHash)
+        }
+      } catch {
+        // Enrichment falha não deve interromper indexação
+      }
     }
   }
 
@@ -381,11 +412,102 @@ export class CodebaseIndexer {
    * ou workspace não encontrado)
    * @returns true se o índice precisa ser recriado
    */
+  /** enrichL0
+   * Descrição: Gera metadata L0 do repositório via LLM (apenas se não existe)
+   * @param files - Lista de arquivos do workspace
+   */
+  private async enrichL0(files: string[]): Promise<void> {
+    if (!this.enricher || this.store.hasRepoMeta()) return
+    try {
+      let packageJson: string | undefined
+      try {
+        packageJson = readFileSync(`${this.config.workspacePath}/package.json`, 'utf-8')
+      } catch {
+        // Sem package.json
+      }
+      const result = await this.enricher.generateRepoMeta(files, packageJson)
+      if (result.ok) {
+        this.store.saveRepoMeta(result.value)
+      }
+    } catch {
+      // Enrichment L0 falhou — não crítico
+    }
+  }
+
+  /** enrichL4
+   * Descrição: Gera análise L4 de padrões do codebase via LLM
+   * Só regenera quando: tabela vazia, ou >30% dos arquivos mudaram
+   * @param files - Lista de arquivos do workspace
+   */
+  private async enrichL4(files: string[]): Promise<void> {
+    if (!this.enricher) return
+    const hasPatterns = this.store.hasPatterns()
+    if (hasPatterns && this.store.getChangedFileRatio() < 0.3) return
+
+    try {
+      const samples: Array<{ path: string; content: string }> = []
+      for (const f of files.slice(0, 20)) {
+        try {
+          const content = readFileSync(f, 'utf-8')
+          samples.push({ path: f, content: content.slice(0, 1500) })
+        } catch {
+          // Ignora arquivos inacessíveis
+        }
+      }
+      if (samples.length === 0) return
+
+      const result = await this.enricher.generatePatternAnalysis(samples)
+      if (result.ok) {
+        this.store.savePatterns(result.value)
+      }
+    } catch {
+      // Enrichment L4 falhou — não crítico
+    }
+  }
+
+  /** enrichL1
+   * Descrição: Gera sumários L1 de módulos via LLM + DependencyGraph
+   * Agrupa arquivos por diretório (módulo = dir com ≥2 arquivos de código)
+   * @param files - Lista de arquivos do workspace
+   */
+  private async enrichL1(files: string[]): Promise<void> {
+    if (!this.enricher) return
+    try {
+      const modules = new Map<string, string[]>()
+      for (const f of files) {
+        const dir = f.substring(0, f.lastIndexOf('/'))
+        if (!modules.has(dir)) modules.set(dir, [])
+        modules.get(dir)?.push(f)
+      }
+
+      for (const [dir, moduleFiles] of modules) {
+        if (moduleFiles.length < 2) continue
+
+        const fileInfos = moduleFiles
+          .map((f) => {
+            const summary = this.store.getFileSummary(f)
+            return {
+              path: f,
+              exports: summary?.exports ?? [],
+              purpose: summary?.purpose ?? '',
+            }
+          })
+          .slice(0, 20)
+
+        const result = await this.enricher.generateModuleSummary(dir, fileInfos)
+        if (result.ok) {
+          this.store.saveModule(dir, result.value, moduleFiles.length)
+        }
+      }
+    } catch {
+      // Enrichment L1 falhou — não crítico
+    }
+  }
+
   needsReindex(): boolean {
     const stats = this.store.getStats()
     if (!stats.indexedAt) return true
 
-    // Heurística: checa se workspace ainda existe
     try {
       statSync(this.config.workspacePath)
       return false

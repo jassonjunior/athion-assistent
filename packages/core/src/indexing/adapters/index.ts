@@ -5,3 +5,5 @@
 
 export { SqliteVectorStore } from './sqlite-vector-store'
 export { SqliteTextSearch } from './sqlite-text-search'
+export { ProviderEnricher } from './provider-enricher'
+export { NoopEnricher } from './noop-enricher'

@@ -82,6 +82,18 @@ export const ConfigSchema = z.object({
   /** llamaCppArgs - Argumentos extras para o llama-server */
   llamaCppArgs: z.array(z.string()).default([]).optional(),
 
+  // ─── Codebase Intelligence ──────────────────────────────────
+  /** codebaseEnrichmentEnabled - Habilita enriquecimento semântico via LLM (L0/L1/L2/L4) */
+  codebaseEnrichmentEnabled: z.boolean().default(true),
+  /** codebaseEnrichmentModel - Modelo específico para enriquecimento (default: usa agentModel) */
+  codebaseEnrichmentModel: z.string().optional(),
+  /** codebaseEnrichmentMaxConcurrency - Concorrência máxima para chamadas de enriquecimento */
+  codebaseEnrichmentMaxConcurrency: z.number().default(1),
+  /** codebaseVectorStoreType - Tipo de vector store: sqlite (built-in) ou qdrant (externo) */
+  codebaseVectorStoreType: z.enum(['sqlite', 'qdrant']).default('sqlite'),
+  /** codebaseQdrantUrl - URL do Qdrant (para Fase 3) */
+  codebaseQdrantUrl: z.string().default('http://localhost:6333'),
+
   // ─── lm-studio ──────────────────────────────────────────────
   /** lmStudioPort - Porta da API do LM Studio (default: 1234) */
   lmStudioPort: z.number().default(1234).optional(),

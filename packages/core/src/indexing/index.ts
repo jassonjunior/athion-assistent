@@ -26,9 +26,28 @@ export type {
 } from './ports'
 export type { TextSearchPort, TextDocument, TextSearchResult } from './ports'
 
+// Ports — LLM Enricher
+export type {
+  LlmEnricherPort,
+  EnrichmentError,
+  RepoMeta,
+  FileSummary,
+  ModuleSummary,
+  PatternAnalysis,
+} from './ports'
+
 // Adapters (implementações concretas)
 export { SqliteVectorStore } from './adapters'
 export { SqliteTextSearch } from './adapters'
+export { ProviderEnricher } from './adapters'
+export { NoopEnricher } from './adapters'
+
+// Pipeline
+export { IndexPipeline, createStage, stageOk, stageErr } from './pipeline'
+export type { PipelineStage, PipelineResult, PipelineError, StageResult } from './pipeline'
+
+// LLM Priority Queue
+export { LlmPriorityQueue } from './llm-priority-queue'
 
 // Dependency Graph
 export { DependencyGraph } from './dependency-graph'
