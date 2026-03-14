@@ -1,5 +1,7 @@
 import { z } from 'zod/v4'
+import type { Bus } from '../bus/bus'
 import type { SubAgentManager, SubAgentTask, TaskStep } from '../subagent/types'
+import { flowEvent, createFlowEvent } from '../orchestrator/flow-events'
 import { defineTool } from './registry'
 
 /** taskToolParams
@@ -35,6 +37,10 @@ export interface TaskToolDeps {
    * Descrição: Gerenciador de subagentes para delegação de tasks
    */
   subagents: SubAgentManager
+  /** bus
+   * Descrição: Bus de eventos para publicação de flow events dos subagentes
+   */
+  bus: Bus
 }
 
 /** MAX_CONTINUATIONS
@@ -50,14 +56,14 @@ const MAX_CONTINUATIONS = 5
  * @returns ToolDefinition configurada para delegação de tasks
  */
 export function createTaskTool(deps: TaskToolDeps) {
-  const { subagents } = deps
+  const { subagents, bus } = deps
 
   return defineTool({
     name: 'task',
     description:
       'Delegate a task to a specialized sub-agent. Use when the task requires focused expertise or multiple steps.',
     parameters: taskToolParams,
-    execute: (params: TaskToolParams) => executeTask(subagents, params),
+    execute: (params: TaskToolParams) => executeTask(subagents, bus, params),
   })
 }
 
@@ -69,7 +75,7 @@ export function createTaskTool(deps: TaskToolDeps) {
  * @param params - Parâmetros da task (agente, descrição, steps)
  * @returns Resultado da execução com dados do agente ou mensagem de erro
  */
-async function executeTask(subagents: SubAgentManager, params: TaskToolParams) {
+async function executeTask(subagents: SubAgentManager, bus: Bus, params: TaskToolParams) {
   let config = subagents.getAgent(params.agent)
 
   // Fuzzy match: se não encontrou exato, tenta por similaridade
@@ -94,10 +100,28 @@ async function executeTask(subagents: SubAgentManager, params: TaskToolParams) {
     for (let continuation = 0; continuation <= MAX_CONTINUATIONS; continuation++) {
       task.continuationIndex = continuation
 
+      const parentId = task.id
       const generator = subagents.spawn(config, task)
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      for await (const _event of generator) {
-        /* drain — eventos tratados pelo orchestrator */
+      for await (const event of generator) {
+        const typeMap: Record<string, string> = {
+          start: 'subagent_start',
+          content: 'subagent_content',
+          tool_call: 'subagent_tool_call',
+          tool_result: 'subagent_tool_result',
+          continuation_needed: 'subagent_continuation',
+          complete: 'subagent_complete',
+        }
+        const flowType = typeMap[event.type]
+        if (flowType) {
+          bus.publish(
+            flowEvent,
+            createFlowEvent(
+              flowType as ReturnType<typeof createFlowEvent>['type'],
+              { agentName: config.name, ...event },
+              parentId,
+            ),
+          )
+        }
       }
 
       if (task.status === 'completed') {

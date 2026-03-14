@@ -313,7 +313,7 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
     summarizer,
   })
   for (const agent of builtinAgents) subagents.registerAgent(agent)
-  tools.register(createTaskTool({ subagents }) as ToolDefinition)
+  tools.register(createTaskTool({ subagents, bus }) as ToolDefinition)
 
   const plugins = createPluginManager({ bus, config, tools, provider: effectiveProvider })
   await plugins.loadFromDirectory(pluginsDir ?? '~/.athion/plugins')

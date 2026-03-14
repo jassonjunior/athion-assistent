@@ -37,6 +37,15 @@ export type { Config, ConfigManager } from './config'
 export { createOrchestrator } from './orchestrator/orchestrator'
 /** Orchestrator, OrchestratorEvent, Session, UserMessage - Tipos do orquestrador */
 export type { Orchestrator, OrchestratorEvent, Session, UserMessage } from './orchestrator/types'
+/** flowEvent, createFlowEvent - Evento unificado do Flow Observer */
+export {
+  flowEvent,
+  createFlowEvent,
+  flowEventSchema,
+  flowEventTypes,
+} from './orchestrator/flow-events'
+/** FlowEventData - Tipo do payload do flowEvent */
+export type { FlowEventData } from './orchestrator/flow-events'
 
 // ─── Plugins ────────────────────────────────────────────────────
 /** createPluginManager, createPluginInstaller - Fábricas do sistema de plugins */
