@@ -13,7 +13,7 @@ import { createCodebaseIndexer } from '@athion/core'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
-const PORT = 3457
+const PORT = Number(process.env.PORT) || 3457
 const DIST_DIR = resolve(import.meta.dir, '../../dist')
 
 type WsData = { id: string }

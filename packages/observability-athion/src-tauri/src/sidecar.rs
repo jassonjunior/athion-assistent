@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 /// Max restart attempts within the restart window
 const MAX_RESTARTS: u32 = 3;
@@ -45,10 +45,51 @@ fn resolve_entry(handle: &tauri::AppHandle) -> std::path::PathBuf {
     }
 }
 
+/// Finds the bun binary, checking common locations if not in PATH
+fn find_bun() -> String {
+    // Try PATH first
+    if let Ok(output) = std::process::Command::new("which").arg("bun").output() {
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() {
+                return path;
+            }
+        }
+    }
+
+    // macOS .app bundles have minimal PATH — check common locations
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/Users".to_string());
+    let candidates = [
+        format!("{}/.bun/bin/bun", home),
+        "/usr/local/bin/bun".to_string(),
+        "/opt/homebrew/bin/bun".to_string(),
+    ];
+
+    for candidate in &candidates {
+        if std::path::Path::new(candidate).exists() {
+            return candidate.clone();
+        }
+    }
+
+    "bun".to_string()
+}
+
 /// Spawns the Bun sidecar process
-async fn spawn_sidecar(entry: &std::path::Path) -> Result<Child, Box<dyn std::error::Error>> {
-    let child = Command::new("bun")
+async fn spawn_sidecar(entry: &std::path::Path) -> Result<Child, Box<dyn std::error::Error + Send + Sync>> {
+    let bun = find_bun();
+
+    // cwd deve ser o diretório do observability-athion para resolver node_modules
+    let work_dir = entry
+        .parent()
+        .and_then(|p| p.parent())
+        .and_then(|p| p.parent())
+        .unwrap_or_else(|| std::path::Path::new("."));
+
+    log::info!("Sidecar bun={}, cwd={}", bun, work_dir.display());
+
+    let child = Command::new(&bun)
         .arg(entry.to_str().unwrap_or("src/server/index.ts"))
+        .current_dir(work_dir)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true)
@@ -87,7 +128,7 @@ async fn health_check() -> Result<(), String> {
 }
 
 /// Starts the sidecar and returns success/failure
-pub async fn start(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn start(handle: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let entry = resolve_entry(handle);
     log::info!("Starting sidecar: bun {}", entry.display());
 
