@@ -22,6 +22,7 @@ import { useTheme } from '../hooks/useTheme.js'
 import { useKeyboard } from '../hooks/useKeyboard.js'
 import { usePermission } from '../hooks/usePermission.js'
 import { useSession } from '../hooks/useSession.js'
+import { useIndexingProgress } from '../hooks/useIndexingProgress.js'
 
 /** ChatAppProps
  * Descrição: Props do componente ChatApp.
@@ -44,6 +45,7 @@ export function ChatApp({ core, session: initialSession }: ChatAppProps) {
   const model = core.config.get('model')
   const { session } = useSession(core, initialSession)
   const permission = usePermission(core)
+  const indexing = useIndexingProgress(core)
   const chat = useChat(core, session.id, permission.requestPermission)
   const [skills, setSkills] = useState<SkillDefinition[]>(() => core.skills.list())
   const [activeSkill, setActiveSkill] = useState<string | undefined>(
@@ -62,6 +64,7 @@ export function ChatApp({ core, session: initialSession }: ChatAppProps) {
         sessionId={session.id}
         tokens={chat.tokens}
         activeSkill={activeSkill}
+        indexing={indexing}
         theme={theme}
       />
 

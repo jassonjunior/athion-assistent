@@ -1,5 +1,38 @@
 # Changes Log - Athion Assistent
 
+## Progresso de indexação na StatusBar + Auto-indexação no bootstrap (2026-03-14)
+
+**Status**: Concluído ✅
+**Branch**: `fix/mlx-omni-dual-model-swap` (ou nova branch)
+
+### O que foi feito
+
+1. Evento `indexingProgressEvent` no Bus para comunicar % de progresso
+2. Auto-indexação em background no bootstrap (quando `needsReindex()` retorna true)
+3. Emissão de 100% quando já indexado
+4. Hook `useIndexingProgress` no CLI para escutar eventos de progresso
+5. Indicador visual na StatusBar: `⟳ Codebase: 42%` (indexando) / `✓ Codebase: 100%` (pronto)
+
+### Modelo de indexação
+
+- **Modelo de embedding**: `nomic-embed-text` (configurável via `ATHION_EMBEDDING_MODEL`)
+- **Não é LLM generativo** — é um modelo de embeddings para busca semântica vetorial
+- Walk dos arquivos → chunk → FTS5 (textual) + embeddings vetoriais (se `ATHION_EMBEDDING_URL` configurado)
+
+### Arquivos criados
+
+- `packages/cli/src/hooks/useIndexingProgress.ts` — Hook React para escutar progresso via Bus
+
+### Arquivos modificados
+
+- `packages/core/src/indexing/events.ts` — Novo evento `indexingProgressEvent`
+- `packages/core/src/indexing/index.ts` — Export do novo evento
+- `packages/core/src/bootstrap.ts` — Auto-indexação + emissão de progresso + 100% se já indexado
+- `packages/cli/src/ui/StatusBar.tsx` — Indicador visual de % na barra de status
+- `packages/cli/src/ui/ChatApp.tsx` — Conecta hook ao componente
+
+---
+
 ## Fase 5 — File Watcher + Finalização (Codebase Intelligence) (2026-03-14)
 
 **Status**: Concluído ✅
