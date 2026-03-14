@@ -1,25 +1,39 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import type { TestInfo } from '../server/protocol'
-import type { WsServerMessage } from '../server/protocol'
+import type { WsServerMessage, FlowEventMessage } from '../server/protocol'
+import { isFlowEvent } from '../server/protocol'
 import { FlowPanel } from './components/FlowPanel'
+import { FlowPanelLive } from './components/FlowPanelLive'
 import { LogPanel } from './components/LogPanel'
+import { LogPanelLive } from './components/LogPanelLive'
 import { TestSelector } from './components/TestSelector'
 import { TokenBar } from './components/TokenBar'
 import { useTokenTracker } from './hooks/useTokenTracker'
 import { useWebSocket } from './hooks/useWebSocket'
 
 type ViewMode = 'split' | 'flow' | 'log'
+type AppMode = 'test' | 'live'
 
-/** Constrói URL do WebSocket. Conecta direto ao backend (3457). */
-function getWsUrl(): string {
+const DEFAULT_TEST_PORT = '3457'
+const DEFAULT_LIVE_PORT = '4200'
+
+/** Constroi URL do WebSocket para o modo selecionado */
+function getWsUrl(mode: AppMode): string {
   const host = window.location.hostname || 'localhost'
-  // Em dev (Vite 3456) ou produção (server 3457), sempre conecta ao server backend
-  const backendPort = '3457'
-  return `ws://${host}:${backendPort}/api/ws`
+  if (mode === 'live') {
+    const port = new URLSearchParams(window.location.search).get('livePort') ?? DEFAULT_LIVE_PORT
+    return `ws://${host}:${port}`
+  }
+  const port = new URLSearchParams(window.location.search).get('testPort') ?? DEFAULT_TEST_PORT
+  return `ws://${host}:${port}/api/ws`
 }
 
 export function App() {
-  const wsUrl = getWsUrl()
+  const [appMode, setAppMode] = useState<AppMode>(() => {
+    const params = new URLSearchParams(window.location.search)
+    return params.get('mode') === 'live' ? 'live' : 'test'
+  })
+  const wsUrl = getWsUrl(appMode)
   const { connected, messages, send, clearMessages } = useWebSocket(wsUrl)
   const tokens = useTokenTracker(messages)
   const [running, setRunning] = useState(false)
@@ -43,60 +57,108 @@ export function App() {
     setRunning(false)
   }
 
-  // Detect test:finished to update running state
+  const toggleMode = useCallback(() => {
+    clearMessages()
+    setAppMode((prev) => (prev === 'test' ? 'live' : 'test'))
+  }, [clearMessages])
+
+  // Detect test:finished to update running state (test mode only)
   useMemo(() => {
+    if (appMode !== 'test') return
     const lastFinish = [...messages]
       .reverse()
       .find(
         (m): m is Extract<WsServerMessage, { type: 'test:finished' }> => m.type === 'test:finished',
       )
     if (lastFinish) setRunning(false)
-  }, [messages])
+  }, [messages, appMode])
 
-  // Filter out test:list from display messages
-  const displayMessages = useMemo(() => messages.filter((m) => m.type !== 'test:list'), [messages])
+  // Separar mensagens por modo
+  const testMessages = useMemo(
+    () =>
+      appMode === 'test'
+        ? (messages.filter((m) => !isFlowEvent(m) && m.type !== 'test:list') as WsServerMessage[])
+        : [],
+    [messages, appMode],
+  )
+
+  const liveMessages = useMemo(
+    () =>
+      appMode === 'live' ? (messages.filter(isFlowEvent) as unknown as FlowEventMessage[]) : [],
+    [messages, appMode],
+  )
 
   return (
     <div className="app">
       <header className="app-header">
-        <h1>Athion Test UI</h1>
-        <div className="view-modes">
+        <h1>Athion {appMode === 'live' ? 'Flow Observer' : 'Test UI'}</h1>
+        <div className="header-controls">
           <button
-            className={`btn btn-sm ${viewMode === 'split' ? 'btn-active' : ''}`}
-            onClick={() => setViewMode('split')}
+            className={`btn btn-sm ${appMode === 'live' ? 'btn-live' : 'btn-test'}`}
+            onClick={toggleMode}
           >
-            Split
+            {appMode === 'live' ? '🔴 Live Mode' : '🧪 Test Mode'}
           </button>
-          <button
-            className={`btn btn-sm ${viewMode === 'flow' ? 'btn-active' : ''}`}
-            onClick={() => setViewMode('flow')}
-          >
-            Flow
-          </button>
-          <button
-            className={`btn btn-sm ${viewMode === 'log' ? 'btn-active' : ''}`}
-            onClick={() => setViewMode('log')}
-          >
-            Log
+          <span className={`connection-dot ${connected ? 'connected' : 'disconnected'}`}>
+            {connected ? '● Connected' : '○ Disconnected'}
+          </span>
+          <span className="ws-url">{wsUrl}</span>
+          <div className="view-modes">
+            <button
+              className={`btn btn-sm ${viewMode === 'split' ? 'btn-active' : ''}`}
+              onClick={() => setViewMode('split')}
+            >
+              Split
+            </button>
+            <button
+              className={`btn btn-sm ${viewMode === 'flow' ? 'btn-active' : ''}`}
+              onClick={() => setViewMode('flow')}
+            >
+              Flow
+            </button>
+            <button
+              className={`btn btn-sm ${viewMode === 'log' ? 'btn-active' : ''}`}
+              onClick={() => setViewMode('log')}
+            >
+              Log
+            </button>
+          </div>
+          <button className="btn btn-sm" onClick={clearMessages}>
+            Clear
           </button>
         </div>
       </header>
 
-      <TestSelector
-        tests={tests as TestInfo[]}
-        running={running}
-        connected={connected}
-        onRun={handleRun}
-        onStop={handleStop}
-        onClear={clearMessages}
-      />
+      {appMode === 'test' && (
+        <TestSelector
+          tests={tests as TestInfo[]}
+          running={running}
+          connected={connected}
+          onRun={handleRun}
+          onStop={handleStop}
+          onClear={clearMessages}
+        />
+      )}
 
       <div className={`main-content ${viewMode}`}>
-        {(viewMode === 'split' || viewMode === 'flow') && <FlowPanel messages={displayMessages} />}
-        {(viewMode === 'split' || viewMode === 'log') && <LogPanel messages={displayMessages} />}
+        {appMode === 'test' ? (
+          <>
+            {(viewMode === 'split' || viewMode === 'flow') && <FlowPanel messages={testMessages} />}
+            {(viewMode === 'split' || viewMode === 'log') && <LogPanel messages={testMessages} />}
+          </>
+        ) : (
+          <>
+            {(viewMode === 'split' || viewMode === 'flow') && (
+              <FlowPanelLive messages={liveMessages} />
+            )}
+            {(viewMode === 'split' || viewMode === 'log') && (
+              <LogPanelLive messages={liveMessages} />
+            )}
+          </>
+        )}
       </div>
 
-      <TokenBar tokens={tokens} />
+      {appMode === 'test' && <TokenBar tokens={tokens} />}
     </div>
   )
 }

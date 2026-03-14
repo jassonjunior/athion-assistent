@@ -307,6 +307,60 @@ body {
   transition: width 0.3s ease, background-color 0.3s ease;
 }
 
+/* Header controls */
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.connection-dot {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.connection-dot.connected {
+  color: var(--green);
+}
+
+.connection-dot.disconnected {
+  color: var(--red);
+}
+
+.ws-url {
+  font-size: 10px;
+  color: var(--text-muted);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.btn-live {
+  background: #ef4444 !important;
+  color: white !important;
+  border-color: #ef4444 !important;
+  font-weight: 600;
+}
+
+.btn-test {
+  background: var(--blue) !important;
+  color: var(--bg-overlay) !important;
+  border-color: var(--blue) !important;
+  font-weight: 600;
+}
+
+/* Log error highlight */
+.log-error {
+  background: rgba(239, 68, 68, 0.1) !important;
+  border-left: 2px solid #ef4444;
+}
+
+.log-time {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-family: inherit;
+}
+
 /* Pulse animation for running nodes */
 @keyframes pulse {
   0%, 100% { opacity: 1; }
