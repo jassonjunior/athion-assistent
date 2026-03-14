@@ -1,5 +1,44 @@
 # Changes Log - Athion Assistent
 
+## Fase 4 — Context Builder + Retriever (Codebase Intelligence) (2026-03-14)
+
+**Status**: Concluído ✅
+**Branch**: `feat/codebase-intelligence-fase-4`
+**Issues**: #59 (parent), #60-#66 (sub-issues)
+
+### O que foi feito
+
+Context Builder hierárquico (L0→L4→Impact→L2→L3→Task) com budget de tokens, formatadores por nível, RetrievalCache LRU, search_codebase multi-nível com contextBundle, e injeção automática de L0+L4 no system prompt do subagente.
+
+### Tarefas (4.1-4.7)
+
+- **4.1** (#60): ContextAssembler com blocos priorizados (Composite Pattern)
+- **4.2** (#61): Formatadores hierárquicos L0→L4→Impact→L2→L3→Task
+- **4.3** (#62): Impact analysis (DependencyGraph) integrado no contexto
+- **4.4** (#63): Token estimation (~3.5 chars/token) + truncation inteligente por linhas
+- **4.5** (#64): search_codebase multi-nível com contextBundle (L0+L4+L2)
+- **4.6** (#65): Injeção de L0+L4 no system prompt do subagente (buildCodebaseContext)
+- **4.7** (#66): RetrievalCache LRU genérico com TTL e invalidação por pattern
+
+### Arquivos criados
+
+- `packages/core/src/indexing/context-builder.ts` — ContextAssembler + estimateTokens + truncateBlock
+- `packages/core/src/indexing/context-formatters.ts` — formatRepoMeta, formatPatterns, formatFileSummaries, formatSymbols, formatImpactAnalysis, formatHierarchicalPrompt
+- `packages/core/src/indexing/retrieval-cache.ts` — RetrievalCache<T> LRU com TTL
+- `packages/core/src/indexing/context-builder.test.ts` — 10 testes
+- `packages/core/src/indexing/context-formatters.test.ts` — 14 testes
+- `packages/core/src/indexing/retrieval-cache.test.ts` — 9 testes
+
+### Arquivos modificados
+
+- `packages/core/src/indexing/manager.ts` — searchSymbols(), searchFiles(), getContextData()
+- `packages/core/src/indexing/db-store.ts` — getPatterns(), getAllFileSummaries(), getChunksByFile()
+- `packages/core/src/tools/builtins.ts` — search_codebase com contextBundle multi-nível
+- `packages/core/src/subagent/agent.ts` — buildCodebaseContext() + injeção L0+L4 no prompt
+- `packages/core/src/indexing/index.ts` — exports de context-builder, context-formatters, retrieval-cache
+
+---
+
 ## Fase 3 — Qdrant Integration (Codebase Intelligence) (2026-03-13)
 
 **Status**: Concluído ✅

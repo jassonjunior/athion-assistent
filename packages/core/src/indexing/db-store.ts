@@ -721,6 +721,92 @@ export class DbStore {
     return stored.version !== currentVersion || stored.embeddingModel !== currentModel
   }
 
+  /** getPatterns
+   * Descrição: Retorna dados L4 de padrões do codebase
+   * @returns Objeto com campos de padrões ou null se não gerado
+   */
+  getPatterns(): {
+    namingFunctions: string
+    namingClasses: string
+    namingConstants: string
+    namingFiles: string
+    namingVariables: string
+    errorHandling: string
+    importStyle: string
+    testingPatterns: string
+    architecturePatterns: string
+    antiPatterns: string
+  } | null {
+    const row = this.db
+      .query<Record<string, string | null>, []>(`SELECT * FROM patterns WHERE id = 1`)
+      .get()
+    if (!row) return null
+    return {
+      namingFunctions: (row.naming_functions as string) ?? '',
+      namingClasses: (row.naming_classes as string) ?? '',
+      namingConstants: (row.naming_constants as string) ?? '',
+      namingFiles: (row.naming_files as string) ?? '',
+      namingVariables: (row.naming_variables as string) ?? '',
+      errorHandling: (row.error_handling as string) ?? '',
+      importStyle: (row.import_style as string) ?? '',
+      testingPatterns: (row.testing_patterns as string) ?? '',
+      architecturePatterns: (row.architecture_patterns as string) ?? '',
+      antiPatterns: (row.anti_patterns as string) ?? '',
+    }
+  }
+
+  /** getAllFileSummaries
+   * Descrição: Retorna todos os sumários L2 de arquivos
+   * @returns Array com filePath, purpose e exports
+   */
+  getAllFileSummaries(): Array<{ filePath: string; purpose: string; exports: string[] }> {
+    const rows = this.db
+      .query<
+        { file_path: string; purpose: string; exports: string },
+        []
+      >(`SELECT file_path, purpose, exports FROM file_summaries`)
+      .all()
+    return rows.map((r) => ({
+      filePath: r.file_path,
+      purpose: r.purpose ?? '',
+      exports: JSON.parse(r.exports || '[]'),
+    }))
+  }
+
+  /** getChunksByFile
+   * Descrição: Retorna todos os chunks de um arquivo
+   * @param filePath - Caminho do arquivo
+   * @returns Array de CodeChunks
+   */
+  getChunksByFile(filePath: string): CodeChunk[] {
+    const rows = this.db
+      .query<
+        {
+          id: string
+          file_path: string
+          language: string
+          start_line: number
+          end_line: number
+          content: string
+          symbol_name: string | null
+          chunk_type: string
+        },
+        [string]
+      >(`SELECT * FROM chunks WHERE file_path = ?`)
+      .all(filePath)
+
+    return rows.map((row) => ({
+      id: row.id,
+      filePath: row.file_path,
+      language: row.language,
+      startLine: row.start_line,
+      endLine: row.end_line,
+      content: row.content,
+      chunkType: row.chunk_type as CodeChunk['chunkType'],
+      ...(row.symbol_name !== null ? { symbolName: row.symbol_name } : {}),
+    }))
+  }
+
   /** close
    * Descrição: Fecha a conexão com o banco de dados SQLite
    */

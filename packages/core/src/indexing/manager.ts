@@ -504,6 +504,92 @@ export class CodebaseIndexer {
     }
   }
 
+  /** searchSymbols
+   * Descrição: Busca símbolos no índice vetorial por similaridade semântica
+   * @param query - Texto de busca
+   * @param limit - Máximo de resultados (default: 10)
+   * @returns Array de SearchResult filtrado por chunkType function/class/method
+   */
+  async searchSymbols(query: string, limit = 10): Promise<SearchResult[]> {
+    const results = await this.search(query, limit * 2)
+    return results
+      .filter((r) => ['function', 'class', 'method'].includes(r.chunk.chunkType))
+      .slice(0, limit)
+  }
+
+  /** searchFiles
+   * Descrição: Busca arquivos relevantes no índice combinando FTS e vector search
+   * @param query - Texto de busca
+   * @param limit - Máximo de arquivos (default: 5)
+   * @returns Array de filePaths únicos ordenados por relevância
+   */
+  async searchFiles(query: string, limit = 5): Promise<string[]> {
+    const results = await this.search(query, limit * 3)
+    const seen = new Set<string>()
+    const files: string[] = []
+    for (const r of results) {
+      if (!seen.has(r.chunk.filePath)) {
+        seen.add(r.chunk.filePath)
+        files.push(r.chunk.filePath)
+        if (files.length >= limit) break
+      }
+    }
+    return files
+  }
+
+  /** getContextData
+   * Descrição: Retorna dados de contexto do índice (L0, L4, L2 de arquivos específicos)
+   * para montagem do prompt hierárquico pelo ContextAssembler.
+   * @param filePaths - Arquivos relevantes para buscar L2/L3
+   * @returns Dados de L0, L4 e L2 do índice
+   */
+  getContextData(filePaths?: string[]): {
+    repoMeta: Record<string, unknown> | null
+    patterns: {
+      namingFunctions: string
+      namingClasses: string
+      namingConstants: string
+      namingFiles: string
+      namingVariables: string
+      errorHandling: string
+      importStyle: string
+      testingPatterns: string
+      architecturePatterns: string
+      antiPatterns: string
+    } | null
+    fileSummaries: Array<{ filePath: string; purpose: string; exports: string[] }>
+    symbols: CodeChunk[]
+  } {
+    const repoMeta = this.store.getRepoMeta()
+    const patterns = this.store.getPatterns()
+
+    let fileSummaries: Array<{ filePath: string; purpose: string; exports: string[] }> = []
+    const symbols: CodeChunk[] = []
+
+    if (filePaths && filePaths.length > 0) {
+      // L2: sumários dos arquivos relevantes
+      for (const fp of filePaths) {
+        const summary = this.store.getFileSummary(fp)
+        if (summary) {
+          fileSummaries.push({
+            filePath: fp,
+            purpose: summary.purpose,
+            exports: summary.exports,
+          })
+        }
+      }
+      // L3: chunks/symbols dos arquivos relevantes
+      for (const fp of filePaths) {
+        const chunks = this.store.getChunksByFile(fp)
+        symbols.push(...chunks)
+      }
+    } else {
+      fileSummaries = this.store.getAllFileSummaries()
+    }
+
+    return { repoMeta, patterns, fileSummaries, symbols }
+  }
+
   needsReindex(): boolean {
     const stats = this.store.getStats()
     if (!stats.indexedAt) return true
