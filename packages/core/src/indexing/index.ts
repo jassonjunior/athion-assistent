@@ -42,6 +42,14 @@ export { SqliteTextSearch } from './adapters'
 export { ProviderEnricher } from './adapters'
 export { NoopEnricher } from './adapters'
 
+// Qdrant adapter
+export { QdrantVectorStore } from './adapters'
+export type { QdrantVectorStoreConfig } from './adapters'
+
+// Vector Store Chain + Dual Write
+export { VectorStoreChain } from './vector-store-chain'
+export { DualWriteManager } from './dual-write-manager'
+
 // Pipeline
 export { IndexPipeline, createStage, stageOk, stageErr } from './pipeline'
 export type { PipelineStage, PipelineResult, PipelineError, StageResult } from './pipeline'

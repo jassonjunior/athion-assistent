@@ -51,7 +51,7 @@ describe('SqliteVectorStore', () => {
       ]
       await store.upsertPoints('chunks', points)
 
-      const results = await store.scroll('chunks')
+      const results = await store.scroll('chunks', 1000).then((r) => r.points)
       expect(results).toHaveLength(2)
     })
 
@@ -59,7 +59,7 @@ describe('SqliteVectorStore', () => {
       await store.upsertPoints('chunks', [makePoint('p1', [1, 0, 0], { v: 1 })])
       await store.upsertPoints('chunks', [makePoint('p1', [0, 1, 0], { v: 2 })])
 
-      const results = await store.scroll('chunks')
+      const results = await store.scroll('chunks', 1000).then((r) => r.points)
       expect(results).toHaveLength(1)
       expect(results.at(0).payload.v).toBe(2)
     })
@@ -142,7 +142,7 @@ describe('SqliteVectorStore', () => {
         must: [{ key: 'filePath', match: { value: '/a.ts' } }],
       })
 
-      const remaining = await store.scroll('chunks')
+      const remaining = await store.scroll('chunks', 1000).then((r) => r.points)
       expect(remaining).toHaveLength(1)
       expect(remaining.at(0).id).toBe('b1')
     })
@@ -153,7 +153,7 @@ describe('SqliteVectorStore', () => {
         must: [{ key: 'x', match: { value: 999 } }],
       })
 
-      const results = await store.scroll('chunks')
+      const results = await store.scroll('chunks', 1000).then((r) => r.points)
       expect(results).toHaveLength(1)
     })
   })
@@ -186,7 +186,7 @@ describe('SqliteVectorStore', () => {
     it('retorna todos os pontos sem filtro', async () => {
       await store.upsertPoints('chunks', [makePoint('p1', [1, 0, 0]), makePoint('p2', [0, 1, 0])])
 
-      const results = await store.scroll('chunks')
+      const results = await store.scroll('chunks', 1000).then((r) => r.points)
       expect(results).toHaveLength(2)
     })
 
@@ -194,8 +194,8 @@ describe('SqliteVectorStore', () => {
       const points = Array.from({ length: 5 }, (_, i) => makePoint(`p${i}`, [i, 0, 0]))
       await store.upsertPoints('chunks', points)
 
-      const results = await store.scroll('chunks', undefined, 2)
-      expect(results).toHaveLength(2)
+      const page = await store.scroll('chunks', 2)
+      expect(page.points).toHaveLength(2)
     })
   })
 })

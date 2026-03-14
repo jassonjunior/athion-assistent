@@ -1,5 +1,51 @@
 # Changes Log - Athion Assistent
 
+## Fase 3 — Qdrant Integration (Codebase Intelligence) (2026-03-13)
+
+**Status**: Concluído ✅
+**Branch**: `feat/codebase-intelligence-fase-3`
+**Issues**: #51 (parent), #52-#58 (sub-issues)
+
+### O que foi feito
+
+Integração com Qdrant HNSW como vector store primário, fallback automático para SQLite, dual-write com reconciliação, testes de contrato e schema versioning.
+
+### Tarefas (3.1-3.7)
+
+- **3.1** (#52): Instalar `@qdrant/js-client-rest` v1.17.0
+- **3.2** (#53): QdrantVectorStore adapter com health check periódico (30s)
+- **3.3** (#54): Criação automática de 5 coleções (symbols, files, modules, patterns, repo_meta)
+- **3.4** (#55): VectorStoreChain — Qdrant → SQLite fallback automático
+- **3.5** (#56): DualWriteManager — SQLite (verdade) + Qdrant (best-effort) com reconciliação
+- **3.6** (#57): Testes de contrato para VectorStorePort (SQLite + Qdrant condicional)
+- **3.7** (#58): Schema versioning (version, embedding_model, dimensions) com detecção de re-indexação
+
+### Arquivos criados
+
+- `packages/core/src/indexing/adapters/qdrant-vector-store.ts` — QdrantVectorStore adapter
+- `packages/core/src/indexing/vector-store-chain.ts` — VectorStoreChain (fallback)
+- `packages/core/src/indexing/dual-write-manager.ts` — DualWriteManager (reconciliação)
+- `packages/core/src/indexing/adapters/vector-store.contract.test.ts` — 6 testes de contrato
+- `packages/core/src/indexing/vector-store-chain.test.ts` — 7 testes
+- `packages/core/src/indexing/dual-write-manager.test.ts` — 7 testes
+
+### Arquivos modificados
+
+- `packages/core/src/indexing/ports/vector-store.port.ts` — scroll() com paginação (limit, offset, nextOffset)
+- `packages/core/src/indexing/adapters/sqlite-vector-store.ts` — scroll() atualizado para paginação
+- `packages/core/src/indexing/adapters/sqlite-vector-store.test.ts` — testes adaptados
+- `packages/core/src/indexing/db-store.ts` — getSchemaVersion, setSchemaVersion, needsReindexForSchema
+- `packages/core/src/indexing/adapters/index.ts` — export QdrantVectorStore
+- `packages/core/src/indexing/index.ts` — exports dos novos componentes
+- `packages/core/package.json` — @qdrant/js-client-rest ^1.17.0
+
+### Testes
+
+- 127 testes de indexação passando (20 novos)
+- 0 falhas nos testes de indexação
+
+---
+
 ## Fase 2 — Enriquecimento LLM (Codebase Intelligence) (2026-03-13)
 
 **Status**: Concluído ✅
