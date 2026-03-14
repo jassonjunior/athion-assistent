@@ -13,7 +13,7 @@ export function applyDagreLayout(
 
   const g = new dagre.graphlib.Graph()
   g.setDefaultEdgeLabel(() => ({}))
-  g.setGraph({ rankdir: 'TB', nodesep: 30, ranksep: 50 })
+  g.setGraph({ rankdir: 'TB', nodesep: 60, ranksep: 60 })
 
   for (const node of nodes) {
     g.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT })
