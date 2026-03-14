@@ -11,7 +11,10 @@
     "start": "bun src/server/index.ts",
     "test:e2e": "bunx playwright test e2e/",
     "test:e2e:model": "ATHION_E2E_MODEL=1 bunx playwright test e2e/",
-    "playwright:install": "bunx playwright install chromium"
+    "playwright:install": "bunx playwright install chromium",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
   },
   "dependencies": {
     "@athion/core": "workspace:*",
@@ -30,6 +33,7 @@
     "vite": "^6.3.0",
     "@playwright/test": "^1.50.0",
     "ws": "^8.18.0",
-    "@types/ws": "^8.5.14"
+    "@types/ws": "^8.5.14",
+    "@tauri-apps/cli": "^2"
   }
 }

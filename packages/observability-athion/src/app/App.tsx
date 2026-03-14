@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { TestInfo } from '../server/protocol'
 import type { WsServerMessage, FlowEventMessage } from '../server/protocol'
 import { isFlowEvent } from '../server/protocol'
@@ -41,6 +41,18 @@ export function App() {
   const tokens = useTokenTracker(messages)
   const [running, setRunning] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>('split')
+  const [waitingConnection, setWaitingConnection] = useState(!connected)
+
+  // Track connection timeout for loading screen
+  useEffect(() => {
+    if (connected) {
+      setWaitingConnection(false)
+      return
+    }
+    setWaitingConnection(true)
+    const timer = setTimeout(() => setWaitingConnection(true), 15_000)
+    return () => clearTimeout(timer)
+  }, [connected])
 
   const tests = useMemo(() => {
     const listMsg = messages.find(
@@ -94,6 +106,18 @@ export function App() {
       appMode === 'live' ? (messages.filter(isFlowEvent) as unknown as FlowEventMessage[]) : [],
     [messages, appMode],
   )
+
+  if (!connected && waitingConnection) {
+    return (
+      <div className="app loading-screen">
+        <div className="loading-container">
+          <div className="loading-spinner" />
+          <p>Conectando ao servidor...</p>
+          <span className="ws-url">{wsUrl}</span>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="app">

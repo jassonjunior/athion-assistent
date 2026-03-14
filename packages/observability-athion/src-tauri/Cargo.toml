@@ -1,0 +1,23 @@
+[package]
+name = "athion-flow-observer"
+version = "0.0.1"
+description = "Athion Flow Observer Desktop App"
+authors = ["Athion"]
+edition = "2021"
+
+[lib]
+name = "athion_flow_observer_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-shell = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["io-util", "process", "sync", "rt", "time"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+log = "0.4"
+env_logger = "0.11"
