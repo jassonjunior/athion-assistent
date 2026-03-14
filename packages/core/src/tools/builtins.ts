@@ -2,6 +2,13 @@ import { readdir, readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { z } from 'zod/v4'
 import type { CodebaseIndexer } from '../indexing'
+import {
+  ContextAssembler,
+  estimateTokens,
+  formatRepoMeta,
+  formatPatterns,
+  formatFileSummaries,
+} from '../indexing'
 import { defineTool } from './registry'
 
 /** readFileTool
@@ -209,19 +216,70 @@ export const searchFilesTool = defineTool({
  * @param indexer - Instância do CodebaseIndexer para executar buscas semânticas
  * @returns ToolDefinition configurada para busca semântica no codebase
  */
+/** createSearchCodebaseTool
+ * Descrição: Cria a tool search_codebase vinculada a um CodebaseIndexer.
+ * Busca multi-nível: L3 (symbols) + L2 (files) + FTS (keywords).
+ * Retorna resultados + contextBundle com L0-L4 para o agente.
+ * @param indexer - Instância do CodebaseIndexer para executar buscas semânticas
+ * @returns ToolDefinition configurada para busca semântica multi-nível no codebase
+ */
 export function createSearchCodebaseTool(indexer: CodebaseIndexer) {
   return defineTool({
     name: 'search_codebase',
     level: 'agent',
     description:
-      'Busca semanticamente no índice do codebase (vector + FTS). Use antes de search_files para perguntas sobre código. Retorna chunks com arquivo, linha e conteúdo.',
+      'Busca semanticamente no índice do codebase (vector + FTS). Use antes de search_files para perguntas sobre código. Retorna chunks com arquivo, linha e conteúdo, além de contextBundle com metadados do repositório.',
     parameters: z.object({
       query: z.string().describe('Descrição do que procurar (ex: "função de autenticação JWT")'),
       limit: z.number().optional().describe('Máximo de resultados (default: 8)'),
     }),
     execute: async ({ query, limit }) => {
       try {
-        const hits = await indexer.search(query, limit ?? 8)
+        const maxResults = limit ?? 8
+        const hits = await indexer.search(query, maxResults)
+
+        // Coleta filePaths únicos dos resultados
+        const filePaths = [...new Set(hits.map((r) => r.chunk.filePath))]
+
+        // Monta contextBundle com L0-L4
+        const ctxData = indexer.getContextData(filePaths)
+        const assembler = new ContextAssembler(2000) // Budget menor para tool result
+
+        if (ctxData.repoMeta) {
+          const text = formatRepoMeta(ctxData.repoMeta as Record<string, string>)
+          assembler.addBlock({
+            name: 'L0_repo_meta',
+            priority: 1,
+            estimatedTokens: estimateTokens(text),
+            content: text,
+            required: true,
+          })
+        }
+
+        if (ctxData.patterns) {
+          const text = formatPatterns(ctxData.patterns)
+          assembler.addBlock({
+            name: 'L4_patterns',
+            priority: 1,
+            estimatedTokens: estimateTokens(text),
+            content: text,
+            required: true,
+          })
+        }
+
+        if (ctxData.fileSummaries.length > 0) {
+          const text = formatFileSummaries(ctxData.fileSummaries)
+          assembler.addBlock({
+            name: 'L2_file_summaries',
+            priority: 3,
+            estimatedTokens: estimateTokens(text),
+            content: text,
+            required: false,
+          })
+        }
+
+        const context = assembler.assemble()
+
         return {
           success: true as const,
           data: {
@@ -236,6 +294,7 @@ export function createSearchCodebaseTool(indexer: CodebaseIndexer) {
               source: r.source,
               content: r.chunk.content,
             })),
+            contextBundle: context.text || undefined,
             message:
               hits.length === 0
                 ? 'Nenhum resultado no índice. Use search_files para busca por texto exato.'

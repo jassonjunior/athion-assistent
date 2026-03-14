@@ -61,6 +61,28 @@ export { LlmPriorityQueue } from './llm-priority-queue'
 export { DependencyGraph } from './dependency-graph'
 export type { ImpactResult, GraphStats } from './dependency-graph'
 
+// Context Builder + Formatters
+export { ContextAssembler, estimateTokens, truncateBlock } from './context-builder'
+export type { ContextBlock, AssembledContext } from './context-builder'
+export {
+  formatRepoMeta,
+  formatPatterns,
+  formatFileSummaries,
+  formatSymbols,
+  formatImpactAnalysis,
+  formatHierarchicalPrompt,
+} from './context-formatters'
+export type {
+  RepoMetaData,
+  PatternData,
+  FileSummaryData,
+  SymbolData,
+  ImpactData,
+} from './context-formatters'
+
+// Retrieval Cache
+export { RetrievalCache } from './retrieval-cache'
+
 // Result type
 export { Ok, Err, unwrapOr, mapResult, flatMapResult, tryCatch, tryCatchAsync } from './result'
 export type { Result } from './result'

@@ -3,6 +3,7 @@ import type { SkillManager } from '../skills/types'
 import type { SummarizationService } from '../tokens/summarize'
 import type { ToolRegistry } from '../tools/types'
 import type { SubAgentConfig, SubAgentEvent, SubAgentTask } from './types'
+import type { CodebaseIndexer } from '../indexing'
 
 /** SubAgentDeps
  * Descrição: Dependências para criar e executar uma instância de SubAgent.
@@ -36,6 +37,10 @@ export interface SubAgentDeps {
    * Descrição: Serviço de sumarização para compactar contexto via LLM (opcional, fallback: sliding-window)
    */
   summarizer?: SummarizationService | undefined
+  /** indexer
+   * Descrição: Indexador do codebase para injetar L0+L4 no system prompt (opcional)
+   */
+  indexer?: CodebaseIndexer | undefined
 }
 
 /** CONTEXT_LIMIT
@@ -96,7 +101,8 @@ export async function* runSubAgent(
   yield { type: 'start', agentName: config.name, task }
 
   const skill = deps.skills.get(config.skill)
-  const systemPrompt = buildAgentPrompt(config, skill?.instructions, task)
+  const codebaseContext = buildCodebaseContext(config, deps)
+  const systemPrompt = buildAgentPrompt(config, skill?.instructions, task, codebaseContext)
   const allowedTools = deps.tools.list().filter((t) => config.tools.includes(t.name))
   const providerTools = buildProviderTools(allowedTools)
   const messages: AgentMessage[] = [
@@ -409,15 +415,76 @@ async function* processToolCalls(
  * @param task - Task sendo executada
  * @returns System prompt completo para o subagente
  */
+/** buildCodebaseContext
+ * Descrição: Extrai L0 e L4 do indexer para injeção no system prompt.
+ * Só injeta quando o agente tem search_codebase como tool.
+ * @param config - Configuração do subagente
+ * @param deps - Dependências com indexer opcional
+ * @returns Texto com L0+L4 ou undefined
+ */
+function buildCodebaseContext(config: SubAgentConfig, deps: SubAgentDeps): string | undefined {
+  if (!deps.indexer || !config.tools.includes('search_codebase')) return undefined
+
+  try {
+    const ctxData = deps.indexer.getContextData()
+    const parts: string[] = []
+
+    if (ctxData.repoMeta) {
+      const meta = ctxData.repoMeta
+      const lines: string[] = ['# Codebase Context', '## Repositório']
+      if (meta.language) lines.push(`- **Linguagem**: ${meta.language}`)
+      if (meta.framework) lines.push(`- **Framework**: ${meta.framework}`)
+      if (meta.test_framework) lines.push(`- **Testes**: ${meta.test_framework}`)
+      if (meta.build_system) lines.push(`- **Build**: ${meta.build_system}`)
+      if (meta.architecture_style) lines.push(`- **Arquitetura**: ${meta.architecture_style}`)
+      parts.push(lines.join('\n'))
+    }
+
+    if (ctxData.patterns) {
+      const p = ctxData.patterns
+      const lines: string[] = ['## Convenções (OBRIGATÓRIO)']
+      if (p.namingFunctions) lines.push(`- **Funções**: ${p.namingFunctions}`)
+      if (p.namingClasses) lines.push(`- **Classes**: ${p.namingClasses}`)
+      if (p.errorHandling) lines.push(`- **Error Handling**: ${p.errorHandling}`)
+      if (p.importStyle) lines.push(`- **Imports**: ${p.importStyle}`)
+      if (p.antiPatterns) {
+        lines.push('')
+        lines.push('### NUNCA faça')
+        lines.push(p.antiPatterns)
+      }
+      parts.push(lines.join('\n'))
+    }
+
+    return parts.length > 0 ? parts.join('\n\n') : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** buildAgentPrompt
+ * Descrição: Monta o system prompt do subagente.
+ * Se é uma continuação (continuationIndex > 0), inclui resultados anteriores e remaining work.
+ * @param config - Configuração do subagente
+ * @param skillInstructions - Instruções da skill associada (opcional)
+ * @param task - Task sendo executada
+ * @param codebaseContext - Contexto L0+L4 do codebase (opcional)
+ * @returns System prompt completo para o subagente
+ */
 function buildAgentPrompt(
   config: SubAgentConfig,
   skillInstructions: string | undefined,
   task: SubAgentTask,
+  codebaseContext?: string,
 ): string {
   const sections: string[] = []
 
   if (skillInstructions) {
     sections.push(skillInstructions)
+  }
+
+  // Injeta L0+L4 do codebase ANTES do search protocol
+  if (codebaseContext) {
+    sections.push(codebaseContext)
   }
 
   sections.push(`You are the "${config.name}" agent. ${config.description}`)
