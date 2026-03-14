@@ -100,6 +100,12 @@ export const ConfigSchema = z.object({
   /** codebaseContextBudgetTokens - Budget de tokens para contexto hierárquico (default: 8000) */
   codebaseContextBudgetTokens: z.number().default(8000),
 
+  // ─── Flow Observer ─────────────────────────────────────────
+  /** flowObserverEnabled - Habilita servidor WebSocket do Flow Observer (default: false) */
+  flowObserverEnabled: z.boolean().default(false),
+  /** flowObserverPort - Porta do servidor WebSocket do Flow Observer (default: 4200) */
+  flowObserverPort: z.number().default(4200),
+
   // ─── lm-studio ──────────────────────────────────────────────
   /** lmStudioPort - Porta da API do LM Studio (default: 1234) */
   lmStudioPort: z.number().default(1234).optional(),

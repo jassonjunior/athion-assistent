@@ -44,6 +44,8 @@ import type { ToolRegistry } from './tools'
 import { BUILTIN_TOOLS, createSearchCodebaseTool, createToolRegistry } from './tools'
 import { createTaskTool } from './tools/task-tool'
 import type { ToolDefinition } from './tools/types'
+import type { FlowServer } from './server/flow-ws'
+import { createFlowServer } from './server/flow-ws'
 
 /** BootstrapOptions
  * Descrição: Opções de configuração para inicialização do core do Athion.
@@ -104,6 +106,8 @@ export interface AthionCore {
   skillRegistry: SkillRegistry
   /** indexingProgress - Último estado de progresso da indexação (lido pelo CLI no mount) */
   indexingProgress: { percent: number; done: boolean } | null
+  /** flowServer - Servidor WebSocket do Flow Observer (null se desabilitado) */
+  flowServer: FlowServer | null
 }
 
 /** bootstrap
@@ -351,6 +355,9 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
     indexMetrics,
     skillRegistry,
     indexingProgress: indexer ? indexingProgress : null,
+    flowServer: config.get('flowObserverEnabled')
+      ? createFlowServer(bus, config.get('flowObserverPort'))
+      : null,
   }
 }
 

@@ -1,5 +1,28 @@
 # Changes Log - Athion Assistent
 
+## Fase 2 — Flow Observer: Servidor WebSocket para live mode (2026-03-14)
+
+**Status**: Concluído ✅
+**Branch**: `feat/flow-observer-fase-2`
+**Issue**: #85
+
+### O que foi feito
+
+1. Criado `packages/core/src/server/flow-ws.ts`:
+   - `createFlowServer(bus, port)` — servidor WebSocket via Bun.serve
+   - Escuta `flowEvent` no Bus e retransmite JSON para todos os clientes WS
+   - Interface `FlowServer` com `port`, `clientCount()` e `stop()`
+
+2. Configs no schema: `flowObserverEnabled` (default: false), `flowObserverPort` (default: 4200)
+
+3. Integrado no bootstrap: se enabled, inicia o servidor WS automaticamente
+
+4. Exportações: `createFlowServer`, `FlowServer` no barrel
+
+5. 6 testes unitários passando (conexão, broadcast, múltiplos clientes, stop, HTTP)
+
+---
+
 ## Fase 1 — Flow Observer: Emissão de flowEvent unificado no Core (2026-03-14)
 
 **Status**: Concluído ✅

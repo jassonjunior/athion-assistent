@@ -133,3 +133,9 @@ export type {
   IndexerConfig,
   IndexStats,
 } from './indexing'
+
+// ─── Flow Observer ──────────────────────────────────────────
+/** createFlowServer - Fábrica do servidor WebSocket do Flow Observer */
+export { createFlowServer } from './server/flow-ws'
+/** FlowServer - Tipo do servidor WebSocket do Flow Observer */
+export type { FlowServer } from './server/flow-ws'
