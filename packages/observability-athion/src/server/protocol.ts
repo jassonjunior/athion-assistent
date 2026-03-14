@@ -1,7 +1,12 @@
 /**
  * Protocolo WebSocket entre server e client do observability-athion.
  * Tipos compartilhados para comunicação bidirecional.
+ *
+ * Protocol version: 1.0
  */
+
+/** Current protocol version */
+export const PROTOCOL_VERSION = '1.0'
 
 /** Info de um teste disponível */
 export interface TestInfo {
@@ -21,6 +26,9 @@ export interface TokenSnapshot {
 
 /** Mensagens do server para o client */
 export type WsServerMessage =
+  // Protocol handshake
+  | { type: 'protocol:version'; version: string }
+
   // Controle de teste
   | { type: 'test:list'; tests: TestInfo[] }
   | { type: 'test:started'; testName: string; ts: number }

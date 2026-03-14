@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { TestInfo } from '../server/protocol'
 import type { WsServerMessage, FlowEventMessage } from '../server/protocol'
 import { isFlowEvent } from '../server/protocol'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { FlowPanel } from './components/FlowPanel'
 import { FlowPanelLive } from './components/FlowPanelLive'
 import { LogPanel } from './components/LogPanel'
@@ -178,22 +179,38 @@ export function App() {
       <div className={`main-content ${viewMode}`}>
         {appMode === 'test' ? (
           <>
-            {(viewMode === 'split' || viewMode === 'flow') && <FlowPanel messages={testMessages} />}
-            {(viewMode === 'split' || viewMode === 'log') && <LogPanel messages={testMessages} />}
+            {(viewMode === 'split' || viewMode === 'flow') && (
+              <ErrorBoundary fallbackMessage="Erro ao renderizar Flow Panel">
+                <FlowPanel messages={testMessages} />
+              </ErrorBoundary>
+            )}
+            {(viewMode === 'split' || viewMode === 'log') && (
+              <ErrorBoundary fallbackMessage="Erro ao renderizar Log Panel">
+                <LogPanel messages={testMessages} />
+              </ErrorBoundary>
+            )}
           </>
         ) : (
           <>
             {(viewMode === 'split' || viewMode === 'flow') && (
-              <FlowPanelLive messages={liveMessages} />
+              <ErrorBoundary fallbackMessage="Erro ao renderizar Flow Panel">
+                <FlowPanelLive messages={liveMessages} />
+              </ErrorBoundary>
             )}
             {(viewMode === 'split' || viewMode === 'log') && (
-              <LogPanelLive messages={liveMessages} />
+              <ErrorBoundary fallbackMessage="Erro ao renderizar Log Panel">
+                <LogPanelLive messages={liveMessages} />
+              </ErrorBoundary>
             )}
           </>
         )}
       </div>
 
-      {appMode === 'test' && <TokenBar tokens={tokens} />}
+      {appMode === 'test' && (
+        <ErrorBoundary fallbackMessage="Erro ao renderizar Token Bar">
+          <TokenBar tokens={tokens} />
+        </ErrorBoundary>
+      )}
     </div>
   )
 }
