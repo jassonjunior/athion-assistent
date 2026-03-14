@@ -5,6 +5,7 @@
 
 import { Box, Text } from 'ink'
 import type { Theme } from '../types.js'
+import type { IndexingProgress } from '../hooks/useIndexingProgress.js'
 
 /** WelcomeScreenProps
  * Descrição: Props do componente WelcomeScreen.
@@ -12,6 +13,8 @@ import type { Theme } from '../types.js'
 interface WelcomeScreenProps {
   /** Nome do modelo LLM ativo */
   model: string
+  /** Progresso da indexação do codebase */
+  indexing: IndexingProgress | null
   /** Tema visual com as cores a serem aplicadas */
   theme: Theme
 }
@@ -22,7 +25,7 @@ interface WelcomeScreenProps {
  * @param props - Props contendo o nome do modelo e o tema visual
  * @returns Elemento React com a tela de boas-vindas
  */
-export function WelcomeScreen({ model, theme }: WelcomeScreenProps) {
+export function WelcomeScreen({ model, indexing, theme }: WelcomeScreenProps) {
   return (
     <Box flexDirection="column" alignItems="center" justifyContent="center" flexGrow={1}>
       {/* Logo */}
@@ -102,6 +105,14 @@ export function WelcomeScreen({ model, theme }: WelcomeScreenProps) {
           <Text color={theme.muted}>│</Text>
           <Text color={theme.warning}> Enter</Text>
           <Text color={theme.muted}> enviar</Text>
+          {indexing && indexing.percent >= 0 && (
+            <>
+              <Text color={theme.muted}> │ </Text>
+              <Text color={indexing.done ? theme.success : theme.warning}>
+                {indexing.done ? '✓' : '⟳'} Indexação {indexing.percent}%
+              </Text>
+            </>
+          )}
         </Box>
       </Box>
     </Box>
