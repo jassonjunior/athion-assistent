@@ -97,6 +97,7 @@ export {
   indexingStartedEvent,
   indexingCompletedEvent,
   indexingFailedEvent,
+  indexingProgressEvent,
   metricsUpdatedEvent,
 } from './events'
 

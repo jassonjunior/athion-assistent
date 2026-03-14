@@ -10,7 +10,7 @@ import { createCodebaseIndexer } from './indexing'
 import { CodebaseWatcher } from './indexing/watcher'
 import { IndexQueue } from './indexing/index-queue'
 import { IndexMetrics } from './indexing/index-metrics'
-import { fileChangedEvent } from './indexing/events'
+import { fileChangedEvent, indexingProgressEvent } from './indexing/events'
 import { SqliteVectorStore } from './indexing/adapters/sqlite-vector-store'
 import { SqliteTextSearch } from './indexing/adapters/sqlite-text-search'
 import { createOrchestrator } from './orchestrator/orchestrator'
@@ -170,6 +170,60 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
 
   const indexer = await setupIndexer(workspacePath, indexDbPath, tools)
   if (indexer) log.info({ workspacePath }, 'codebase indexer ready')
+
+  // Auto-indexação: se nunca indexou, indexa em background no primeiro startup
+  if (indexer && workspacePath && indexer.needsReindex()) {
+    log.info({ workspacePath }, 'codebase never indexed — starting background indexation')
+    bus.publish(indexingProgressEvent, {
+      indexed: 0,
+      total: 0,
+      percent: 0,
+      currentFile: '',
+      done: false,
+    })
+    indexer
+      .indexWorkspace((indexed, total, currentFile) => {
+        const percent = Math.floor((indexed / Math.max(total, 1)) * 100)
+        bus.publish(indexingProgressEvent, {
+          indexed,
+          total,
+          percent,
+          currentFile,
+          done: indexed === total,
+        })
+        if (indexed % 50 === 0 || indexed === total) {
+          log.debug({ indexed, total, currentFile }, 'indexing progress')
+        }
+      })
+      .then((stats) => {
+        bus.publish(indexingProgressEvent, {
+          indexed: stats.totalFiles,
+          total: stats.totalFiles,
+          percent: 100,
+          currentFile: '',
+          done: true,
+        })
+        log.info(
+          { files: stats.totalFiles, chunks: stats.totalChunks, vectors: stats.hasVectors },
+          'background indexation complete',
+        )
+      })
+      .catch((err: unknown) => {
+        log.warn(
+          { error: err instanceof Error ? err.message : String(err) },
+          'background indexation failed',
+        )
+      })
+  } else if (indexer) {
+    // Já indexado — emite 100% imediatamente
+    bus.publish(indexingProgressEvent, {
+      indexed: 0,
+      total: 0,
+      percent: 100,
+      currentFile: '',
+      done: true,
+    })
+  }
 
   // Watcher + IndexQueue + IndexMetrics
   let watcher: CodebaseWatcher | null = null

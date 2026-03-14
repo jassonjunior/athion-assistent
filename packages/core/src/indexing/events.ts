@@ -50,6 +50,20 @@ export const indexingFailedEvent = defineBusEvent(
   }),
 )
 
+/** indexingProgressEvent
+ * Descrição: Emitido durante a indexação inicial do workspace com percentual de progresso
+ */
+export const indexingProgressEvent = defineBusEvent(
+  'codebase:indexing_progress',
+  z.object({
+    indexed: z.number(),
+    total: z.number(),
+    percent: z.number(),
+    currentFile: z.string(),
+    done: z.boolean(),
+  }),
+)
+
 /** metricsUpdatedEvent
  * Descrição: Emitido periodicamente pelo IndexMetrics com estatísticas
  */
