@@ -1,5 +1,5 @@
 /**
- * Test Runner instrumentado para o test-ui.
+ * Test Runner instrumentado para o observability-athion.
  * Faz bootstrap do core com SubAgentManager instrumentado
  * para capturar eventos granulares do subagente.
  */
@@ -55,6 +55,7 @@ const TEST_REGISTRY: TestDefinition[] = [
 /** Estado do runner */
 let core: AthionCore | null = null
 let abortController: AbortController | null = null
+let isRunning = false
 
 /** Tracking de tokens acumulado */
 let tokenState: TokenSnapshot = {
@@ -193,7 +194,7 @@ async function ensureCore(emit: Emitter): Promise<AthionCore> {
   const coreDir = resolve(import.meta.dir, '../../../core')
 
   core = await bootstrap({
-    dbPath: '/tmp/athion-test-ui.db',
+    dbPath: '/tmp/athion-observability-athion.db',
     skillsDir: resolve(coreDir, 'skills'),
   })
 
@@ -227,6 +228,16 @@ async function ensureCore(emit: Emitter): Promise<AthionCore> {
 
 /** Executa um teste e emite eventos via WebSocket */
 export async function runTest(testName: string, emit: Emitter): Promise<void> {
+  if (isRunning) {
+    emit({
+      type: 'orch:error',
+      message: 'Teste já em execução. Aguarde a finalização ou pare o teste atual.',
+      tokens: tokenState,
+      ts: Date.now(),
+    })
+    return
+  }
+
   const test = TEST_REGISTRY.find((t) => t.name === testName)
   if (!test) {
     emit({
@@ -238,6 +249,7 @@ export async function runTest(testName: string, emit: Emitter): Promise<void> {
     return
   }
 
+  isRunning = true
   resetTokens()
   abortController = new AbortController()
   const startTime = Date.now()
@@ -247,7 +259,7 @@ export async function runTest(testName: string, emit: Emitter): Promise<void> {
     emit({ type: 'test:started', testName, ts: Date.now() })
 
     // Criar sessão
-    const session = await c.orchestrator.createSession('test-ui', testName)
+    const session = await c.orchestrator.createSession('observability-athion', testName)
 
     // Emitir mensagem do usuário
     emit({
@@ -281,6 +293,7 @@ export async function runTest(testName: string, emit: Emitter): Promise<void> {
       ts: Date.now(),
     })
   } finally {
+    isRunning = false
     abortController = null
   }
 }

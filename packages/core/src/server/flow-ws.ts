@@ -1,7 +1,7 @@
 /** flow-ws
  * Descricao: Servidor WebSocket leve que escuta flowEvent no Bus e retransmite
  * para clientes conectados. Permite observar o fluxo de execucao em tempo real
- * via Flow Observer (test-ui em modo live, wscat, etc).
+ * via Flow Observer (observability-athion em modo live, wscat, etc).
  */
 
 import type { Server, ServerWebSocket } from 'bun'

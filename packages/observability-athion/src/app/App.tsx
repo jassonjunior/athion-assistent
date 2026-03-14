@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { TestInfo } from '../server/protocol'
 import type { WsServerMessage, FlowEventMessage } from '../server/protocol'
 import { isFlowEvent } from '../server/protocol'
@@ -31,13 +31,28 @@ function getWsUrl(mode: AppMode): string {
 export function App() {
   const [appMode, setAppMode] = useState<AppMode>(() => {
     const params = new URLSearchParams(window.location.search)
-    return params.get('mode') === 'live' ? 'live' : 'test'
+    if (params.get('mode') === 'live') return 'live'
+    const saved = localStorage.getItem('athion:appMode')
+    if (saved === 'live' || saved === 'test') return saved
+    return 'test'
   })
   const wsUrl = getWsUrl(appMode)
   const { connected, messages, send, clearMessages } = useWebSocket(wsUrl)
   const tokens = useTokenTracker(messages)
   const [running, setRunning] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>('split')
+  const [waitingConnection, setWaitingConnection] = useState(!connected)
+
+  // Track connection timeout for loading screen
+  useEffect(() => {
+    if (connected) {
+      setWaitingConnection(false)
+      return
+    }
+    setWaitingConnection(true)
+    const timer = setTimeout(() => setWaitingConnection(true), 15_000)
+    return () => clearTimeout(timer)
+  }, [connected])
 
   const tests = useMemo(() => {
     const listMsg = messages.find(
@@ -59,7 +74,11 @@ export function App() {
 
   const toggleMode = useCallback(() => {
     clearMessages()
-    setAppMode((prev) => (prev === 'test' ? 'live' : 'test'))
+    setAppMode((prev) => {
+      const next = prev === 'test' ? 'live' : 'test'
+      localStorage.setItem('athion:appMode', next)
+      return next
+    })
   }, [clearMessages])
 
   // Detect test:finished to update running state (test mode only)
@@ -87,6 +106,18 @@ export function App() {
       appMode === 'live' ? (messages.filter(isFlowEvent) as unknown as FlowEventMessage[]) : [],
     [messages, appMode],
   )
+
+  if (!connected && waitingConnection) {
+    return (
+      <div className="app loading-screen">
+        <div className="loading-container">
+          <div className="loading-spinner" />
+          <p>Conectando ao servidor...</p>
+          <span className="ws-url">{wsUrl}</span>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="app">

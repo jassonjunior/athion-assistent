@@ -1,5 +1,5 @@
 /**
- * Protocolo WebSocket entre server e client do test-ui.
+ * Protocolo WebSocket entre server e client do observability-athion.
  * Tipos compartilhados para comunicação bidirecional.
  */
 
