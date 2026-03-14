@@ -5,13 +5,13 @@ use tauri::{
 };
 
 pub fn setup(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    let show = MenuItem::with_id(app, "show", "Abrir Flow Observer", true, None::<&str>)?;
+    let show = MenuItem::with_id(app, "show", "Abrir Athion Observability", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Sair", true, None::<&str>)?;
 
     let menu = Menu::with_items(app, &[&show, &quit])?;
 
     TrayIconBuilder::new()
-        .tooltip("Athion Flow Observer")
+        .tooltip("Athion Observability")
         .menu(&menu)
         .on_menu_event(move |app, event| match event.id.as_ref() {
             "show" => {

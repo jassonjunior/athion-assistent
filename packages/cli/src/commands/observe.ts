@@ -1,6 +1,6 @@
 /**
  * Comando `athion observe` — Abre o painel de observabilidade.
- * Descrição: Abre o app desktop Athion Flow Observer (Tauri).
+ * Descrição: Abre o app desktop Athion Observability (Tauri).
  * Se o app não estiver buildado, inicia o servidor e abre no browser como fallback.
  *
  * Opções:
@@ -48,12 +48,12 @@ export async function observeHandler(args: ObserveArgs) {
 
   const appPath = resolve(
     import.meta.dir,
-    '../../../observability-athion/src-tauri/target/release/bundle/macos/Athion Flow Observer.app',
+    '../../../observability-athion/src-tauri/target/release/bundle/macos/Athion Observability.app',
   )
 
   // Tentar abrir app desktop Tauri
   if (!args.browser && existsSync(appPath)) {
-    process.stderr.write('\n  Abrindo Athion Flow Observer...\n\n')
+    process.stderr.write('\n  Abrindo Athion Observability...\n\n')
     spawn('open', ['-a', appPath], { stdio: 'ignore', detached: true }).unref()
     return
   }
@@ -62,7 +62,7 @@ export async function observeHandler(args: ObserveArgs) {
   const serverEntry = resolve(import.meta.dir, '../../../observability-athion/src/server/index.ts')
   const url = `http://localhost:${args.port}`
 
-  process.stderr.write(`\n  Iniciando Athion Flow Observer na porta ${args.port}...\n\n`)
+  process.stderr.write(`\n  Iniciando Athion Observability na porta ${args.port}...\n\n`)
 
   const child = spawn('bun', [serverEntry], {
     stdio: ['ignore', 'pipe', 'pipe'],

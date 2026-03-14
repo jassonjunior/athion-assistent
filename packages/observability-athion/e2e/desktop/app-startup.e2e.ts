@@ -10,7 +10,7 @@
 import { describe, it } from 'bun:test'
 
 describe('App Startup', () => {
-  it.todo('should open window with title "Athion Flow Observer"')
+  it.todo('should open window with title "Athion Observability"')
   it.todo('should show loading state initially')
   it.todo('should transition to ready state after sidecar starts')
   it.todo('should display connection status indicator')

@@ -1,6 +1,6 @@
 {
   "identifier": "default",
-  "description": "Default capabilities for the Athion Flow Observer",
+  "description": "Default capabilities for Athion Observability",
   "windows": ["main"],
   "permissions": [
     "core:default",

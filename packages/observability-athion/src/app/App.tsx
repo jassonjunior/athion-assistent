@@ -1,54 +1,31 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { TestInfo } from '../server/protocol'
-import type { WsServerMessage, FlowEventMessage } from '../server/protocol'
+import { useEffect, useMemo, useState } from 'react'
+import type { FlowEventMessage } from '../server/protocol'
 import { isFlowEvent } from '../server/protocol'
 import { ErrorBoundary } from './components/ErrorBoundary'
-import { FlowPanel } from './components/FlowPanel'
 import { FlowPanelLive } from './components/FlowPanelLive'
-import { LogPanel } from './components/LogPanel'
 import { LogPanelLive } from './components/LogPanelLive'
-import { TestSelector } from './components/TestSelector'
-import { TokenBar } from './components/TokenBar'
 import { useDesktopNotification } from './hooks/useDesktopNotification'
-import { useTokenTracker } from './hooks/useTokenTracker'
 import { useWebSocket } from './hooks/useWebSocket'
 import { isTauri } from './utils/platform'
 
 type ViewMode = 'split' | 'flow' | 'log'
-type AppMode = 'test' | 'live'
 
-const DEFAULT_TEST_PORT = '3457'
-const DEFAULT_LIVE_PORT = '4200'
+const DEFAULT_PORT = '4200'
 
-/** Constroi URL do WebSocket para o modo selecionado */
-function getWsUrl(mode: AppMode): string {
+function getWsUrl(): string {
   const host = window.location.hostname || 'localhost'
-  if (mode === 'live') {
-    const port = new URLSearchParams(window.location.search).get('livePort') ?? DEFAULT_LIVE_PORT
-    return `ws://${host}:${port}`
-  }
-  const port = new URLSearchParams(window.location.search).get('testPort') ?? DEFAULT_TEST_PORT
-  return `ws://${host}:${port}/api/ws`
+  const port = new URLSearchParams(window.location.search).get('port') ?? DEFAULT_PORT
+  return `ws://${host}:${port}`
 }
 
 export function App() {
-  const [appMode, setAppMode] = useState<AppMode>(() => {
-    const params = new URLSearchParams(window.location.search)
-    if (params.get('mode') === 'live') return 'live'
-    const saved = localStorage.getItem('athion:appMode')
-    if (saved === 'live' || saved === 'test') return saved
-    return 'test'
-  })
-  const wsUrl = getWsUrl(appMode)
-  const { connected, messages, send, clearMessages } = useWebSocket(wsUrl)
-  const tokens = useTokenTracker(messages)
+  const wsUrl = getWsUrl()
+  const { connected, messages, clearMessages } = useWebSocket(wsUrl)
   const isDesktop = useMemo(() => isTauri(), [])
   useDesktopNotification(messages)
-  const [running, setRunning] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>('split')
   const [waitingConnection, setWaitingConnection] = useState(!connected)
 
-  // Track connection timeout for loading screen
   useEffect(() => {
     if (connected) {
       setWaitingConnection(false)
@@ -59,57 +36,9 @@ export function App() {
     return () => clearTimeout(timer)
   }, [connected])
 
-  const tests = useMemo(() => {
-    const listMsg = messages.find(
-      (m): m is Extract<WsServerMessage, { type: 'test:list' }> => m.type === 'test:list',
-    )
-    return listMsg?.tests ?? []
-  }, [messages])
-
-  const handleRun = (testName: string) => {
-    clearMessages()
-    setRunning(true)
-    send({ type: 'test:run', testName })
-  }
-
-  const handleStop = () => {
-    send({ type: 'test:stop' })
-    setRunning(false)
-  }
-
-  const toggleMode = useCallback(() => {
-    clearMessages()
-    setAppMode((prev) => {
-      const next = prev === 'test' ? 'live' : 'test'
-      localStorage.setItem('athion:appMode', next)
-      return next
-    })
-  }, [clearMessages])
-
-  // Detect test:finished to update running state (test mode only)
-  useMemo(() => {
-    if (appMode !== 'test') return
-    const lastFinish = [...messages]
-      .reverse()
-      .find(
-        (m): m is Extract<WsServerMessage, { type: 'test:finished' }> => m.type === 'test:finished',
-      )
-    if (lastFinish) setRunning(false)
-  }, [messages, appMode])
-
-  // Separar mensagens por modo
-  const testMessages = useMemo(
-    () =>
-      appMode === 'test'
-        ? (messages.filter((m) => !isFlowEvent(m) && m.type !== 'test:list') as WsServerMessage[])
-        : [],
-    [messages, appMode],
-  )
-
   const liveMessages = useMemo(
-    () =>
-      appMode === 'live' ? (messages.filter(isFlowEvent) as unknown as FlowEventMessage[]) : [],
-    [messages, appMode],
+    () => messages.filter(isFlowEvent) as unknown as FlowEventMessage[],
+    [messages],
   )
 
   if (!connected && waitingConnection) {
@@ -127,16 +56,10 @@ export function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>Athion {appMode === 'live' ? 'Flow Observer' : 'Test UI'}</h1>
+        <h1>Athion Observability</h1>
         <div className="header-controls">
-          <button
-            className={`btn btn-sm ${appMode === 'live' ? 'btn-live' : 'btn-test'}`}
-            onClick={toggleMode}
-          >
-            {appMode === 'live' ? '🔴 Live Mode' : '🧪 Test Mode'}
-          </button>
           <span className={`connection-dot ${connected ? 'connected' : 'disconnected'}`}>
-            {connected ? '● Connected' : '○ Disconnected'}
+            {connected ? '● Conectado' : '○ Desconectado'}
           </span>
           {!isDesktop && <span className="ws-url">{wsUrl}</span>}
           <div className="view-modes">
@@ -165,52 +88,18 @@ export function App() {
         </div>
       </header>
 
-      {appMode === 'test' && (
-        <TestSelector
-          tests={tests as TestInfo[]}
-          running={running}
-          connected={connected}
-          onRun={handleRun}
-          onStop={handleStop}
-          onClear={clearMessages}
-        />
-      )}
-
       <div className={`main-content ${viewMode}`}>
-        {appMode === 'test' ? (
-          <>
-            {(viewMode === 'split' || viewMode === 'flow') && (
-              <ErrorBoundary fallbackMessage="Erro ao renderizar Flow Panel">
-                <FlowPanel messages={testMessages} />
-              </ErrorBoundary>
-            )}
-            {(viewMode === 'split' || viewMode === 'log') && (
-              <ErrorBoundary fallbackMessage="Erro ao renderizar Log Panel">
-                <LogPanel messages={testMessages} />
-              </ErrorBoundary>
-            )}
-          </>
-        ) : (
-          <>
-            {(viewMode === 'split' || viewMode === 'flow') && (
-              <ErrorBoundary fallbackMessage="Erro ao renderizar Flow Panel">
-                <FlowPanelLive messages={liveMessages} />
-              </ErrorBoundary>
-            )}
-            {(viewMode === 'split' || viewMode === 'log') && (
-              <ErrorBoundary fallbackMessage="Erro ao renderizar Log Panel">
-                <LogPanelLive messages={liveMessages} />
-              </ErrorBoundary>
-            )}
-          </>
+        {(viewMode === 'split' || viewMode === 'flow') && (
+          <ErrorBoundary fallbackMessage="Erro ao renderizar Flow Panel">
+            <FlowPanelLive messages={liveMessages} />
+          </ErrorBoundary>
+        )}
+        {(viewMode === 'split' || viewMode === 'log') && (
+          <ErrorBoundary fallbackMessage="Erro ao renderizar Log Panel">
+            <LogPanelLive messages={liveMessages} />
+          </ErrorBoundary>
         )}
       </div>
-
-      {appMode === 'test' && (
-        <ErrorBoundary fallbackMessage="Erro ao renderizar Token Bar">
-          <TokenBar tokens={tokens} />
-        </ErrorBoundary>
-      )}
     </div>
   )
 }

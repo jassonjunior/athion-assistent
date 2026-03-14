@@ -99,22 +99,6 @@ body {
   background: var(--red);
 }
 
-.test-select {
-  background: var(--bg-base);
-  border: 1px solid var(--border);
-  color: var(--text);
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-family: inherit;
-  font-size: 12px;
-  min-width: 300px;
-}
-
-.test-select:focus {
-  outline: none;
-  border-color: var(--blue);
-}
-
 /* Buttons */
 .btn {
   padding: 6px 16px;
@@ -333,20 +317,6 @@ body {
   max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.btn-live {
-  background: #ef4444 !important;
-  color: white !important;
-  border-color: #ef4444 !important;
-  font-weight: 600;
-}
-
-.btn-test {
-  background: var(--blue) !important;
-  color: var(--bg-overlay) !important;
-  border-color: var(--blue) !important;
-  font-weight: 600;
 }
 
 /* Log error highlight */

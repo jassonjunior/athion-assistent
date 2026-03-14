@@ -64,7 +64,7 @@ async function handleStatic(pathname: string): Promise<Response> {
   const indexResponse = await serveStatic('/')
   if (indexResponse) return indexResponse
 
-  return new Response('Athion Test UI — run "bun run build" first', { status: 200 })
+  return new Response('Athion Observability — run "bun run build" first', { status: 200 })
 }
 
 const server = Bun.serve<WsData>({
