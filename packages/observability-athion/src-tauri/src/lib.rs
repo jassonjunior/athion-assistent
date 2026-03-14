@@ -1,11 +1,13 @@
 use tauri::Manager;
 
+mod hotkeys;
 mod sidecar;
 mod tray;
 
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(sidecar::SidecarState::default())
         .setup(|app| {
             // Set app icon for dev mode (macOS dock)
@@ -18,15 +20,18 @@ pub fn run() {
 
             let handle = app.handle().clone();
 
-            // Start sidecar (Bun server)
+            // Start sidecar with auto-restart monitoring
             tauri::async_runtime::spawn(async move {
-                if let Err(e) = sidecar::start(&handle).await {
-                    log::error!("Failed to start sidecar: {}", e);
-                }
+                sidecar::start_with_monitor(&handle).await;
             });
 
             // Register close handler for graceful sidecar shutdown
             sidecar::SidecarState::register_close_handler(app);
+
+            // Register global hotkeys
+            if let Err(e) = hotkeys::setup(app.handle()) {
+                log::error!("Failed to register hotkeys: {}", e);
+            }
 
             // Setup system tray
             tray::setup(app)?;

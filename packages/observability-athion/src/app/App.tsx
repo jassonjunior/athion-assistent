@@ -8,8 +8,10 @@ import { LogPanel } from './components/LogPanel'
 import { LogPanelLive } from './components/LogPanelLive'
 import { TestSelector } from './components/TestSelector'
 import { TokenBar } from './components/TokenBar'
+import { useDesktopNotification } from './hooks/useDesktopNotification'
 import { useTokenTracker } from './hooks/useTokenTracker'
 import { useWebSocket } from './hooks/useWebSocket'
+import { isTauri } from './utils/platform'
 
 type ViewMode = 'split' | 'flow' | 'log'
 type AppMode = 'test' | 'live'
@@ -39,6 +41,8 @@ export function App() {
   const wsUrl = getWsUrl(appMode)
   const { connected, messages, send, clearMessages } = useWebSocket(wsUrl)
   const tokens = useTokenTracker(messages)
+  const isDesktop = useMemo(() => isTauri(), [])
+  useDesktopNotification(messages)
   const [running, setRunning] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>('split')
   const [waitingConnection, setWaitingConnection] = useState(!connected)
@@ -133,7 +137,7 @@ export function App() {
           <span className={`connection-dot ${connected ? 'connected' : 'disconnected'}`}>
             {connected ? '● Connected' : '○ Disconnected'}
           </span>
-          <span className="ws-url">{wsUrl}</span>
+          {!isDesktop && <span className="ws-url">{wsUrl}</span>}
           <div className="view-modes">
             <button
               className={`btn btn-sm ${viewMode === 'split' ? 'btn-active' : ''}`}
