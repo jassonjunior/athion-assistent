@@ -2,7 +2,7 @@
  * Descrição: Divide arquivos de código em chunks semânticos usando AST real
  * via web-tree-sitter (WASM, compatível com Bun). Grammars instalados via npm.
  * Fallback automático para regex-chunker se WASM não disponível.
- * Linguagens suportadas: typescript, javascript, python, rust, go.
+ * Linguagens suportadas: typescript, javascript, python, rust, go, java, ruby, c, cpp, php.
  */
 
 import { readFile } from 'node:fs/promises'
@@ -53,6 +53,11 @@ const GRAMMAR_PACKAGES: Record<string, { pkg: string; wasm: string }> = {
   python: { pkg: 'tree-sitter-python', wasm: 'tree-sitter-python.wasm' },
   rust: { pkg: 'tree-sitter-rust', wasm: 'tree-sitter-rust.wasm' },
   go: { pkg: 'tree-sitter-go', wasm: 'tree-sitter-go.wasm' },
+  java: { pkg: 'tree-sitter-java', wasm: 'tree-sitter-java.wasm' },
+  ruby: { pkg: 'tree-sitter-ruby', wasm: 'tree-sitter-ruby.wasm' },
+  c: { pkg: 'tree-sitter-c', wasm: 'tree-sitter-c.wasm' },
+  cpp: { pkg: 'tree-sitter-cpp', wasm: 'tree-sitter-cpp.wasm' },
+  php: { pkg: 'tree-sitter-php', wasm: 'tree-sitter-php.wasm' },
 }
 
 /** DECLARATION_TYPES
@@ -106,6 +111,40 @@ const DECLARATION_TYPES: Record<string, Set<string>> = {
     'type_declaration',
     'var_declaration',
     'const_declaration',
+  ]),
+  java: new Set([
+    'class_declaration',
+    'interface_declaration',
+    'enum_declaration',
+    'method_declaration',
+    'constructor_declaration',
+    'annotation_type_declaration',
+    'record_declaration',
+  ]),
+  ruby: new Set(['method', 'singleton_method', 'class', 'module']),
+  c: new Set([
+    'function_definition',
+    'struct_specifier',
+    'enum_specifier',
+    'type_definition',
+    'declaration',
+  ]),
+  cpp: new Set([
+    'function_definition',
+    'class_specifier',
+    'struct_specifier',
+    'enum_specifier',
+    'namespace_definition',
+    'template_declaration',
+    'type_definition',
+  ]),
+  php: new Set([
+    'function_definition',
+    'class_declaration',
+    'interface_declaration',
+    'trait_declaration',
+    'enum_declaration',
+    'method_declaration',
   ]),
 }
 
@@ -169,6 +208,11 @@ const IMPORT_TYPES: Record<string, string[]> = {
   python: ['import_statement', 'import_from_statement'],
   rust: ['use_declaration'],
   go: ['import_declaration'],
+  java: ['import_declaration'],
+  ruby: ['call'],
+  c: ['preproc_include'],
+  cpp: ['preproc_include'],
+  php: ['namespace_use_declaration'],
 }
 
 /** TreeSitterChunkerResult
@@ -382,6 +426,9 @@ function mapNodeTypeToChunkType(nodeType: string): ChunkType {
     nodeType.includes('struct') ||
     nodeType.includes('enum') ||
     nodeType.includes('trait') ||
+    nodeType.includes('interface') ||
+    nodeType.includes('module') ||
+    nodeType.includes('namespace') ||
     nodeType === 'impl_item'
   )
     return 'class'
@@ -435,12 +482,21 @@ function extractSymbolFromNode(node: SyntaxNode, lang: string): string | undefin
     if (typeNode) return typeNode.text
   }
 
+  if (lang === 'c' || lang === 'cpp') {
+    let cur = node.childForFieldName('declarator')
+    while (cur && cur.type !== 'identifier') {
+      cur = cur.childForFieldName('name') ?? cur.childForFieldName('declarator') ?? null
+    }
+    if (cur) return cur.text
+    const typeId = node.children.findLast((c: SyntaxNode) => c.type === 'type_identifier')
+    if (typeId) return typeId.text
+  }
+
   return undefined
 }
 
 /** extractImports
  * Descrição: Extrai paths de import do nó raiz da AST para construção do DependencyGraph.
- * Suporta TypeScript/JavaScript, Python, Rust e Go.
  * @param root - Nó raiz da árvore AST
  * @param code - Código fonte completo do arquivo
  * @param lang - Linguagem detectada
@@ -455,6 +511,24 @@ function extractImports(root: SyntaxNode, code: string, lang: string): string[] 
 
   for (const child of root.children) {
     if (!importTypes.includes(child.type)) continue
+
+    // Ruby: filtra apenas calls de require/require_relative
+    if (lang === 'ruby' && child.type === 'call') {
+      const method = child.childForFieldName('method')
+      if (!method || (method.text !== 'require' && method.text !== 'require_relative')) continue
+    }
+
+    // PHP: percorre children (pode ter program > namespace_use_declaration dentro)
+    if (lang === 'php' && child.type === 'program') {
+      for (const inner of child.children) {
+        if (importTypes.includes(inner.type)) {
+          const text = lines.slice(inner.startPosition.row, inner.endPosition.row + 1).join('\n')
+          const path = extractImportPath(text, lang)
+          if (path) imports.push(path)
+        }
+      }
+      continue
+    }
 
     const importText = lines.slice(child.startPosition.row, child.endPosition.row + 1).join('\n')
 
@@ -501,6 +575,34 @@ function extractImportPath(importText: string, lang: string): string | null {
   if (lang === 'go') {
     // import "module" ou import ( "module" )
     const match = importText.match(/["']([^"']+)["']/)
+    if (match) return match[1] ?? null
+    return null
+  }
+
+  if (lang === 'java') {
+    // import com.example.MyClass;
+    const match = importText.match(/import\s+(?:static\s+)?(\S+?)\s*;/)
+    if (match) return match[1] ?? null
+    return null
+  }
+
+  if (lang === 'ruby') {
+    // require 'module' ou require_relative './path'
+    const match = importText.match(/require(?:_relative)?\s+['"]([^'"]+)['"]/)
+    if (match) return match[1] ?? null
+    return null
+  }
+
+  if (lang === 'c' || lang === 'cpp') {
+    // #include <header.h> ou #include "path.h"
+    const match = importText.match(/#include\s+[<"]([^>"]+)[>"]/)
+    if (match) return match[1] ?? null
+    return null
+  }
+
+  if (lang === 'php') {
+    // use App\Models\User; ou use App\Models\User as U;
+    const match = importText.match(/use\s+(\S+?)(?:\s+as\s+\S+)?\s*;/)
     if (match) return match[1] ?? null
     return null
   }

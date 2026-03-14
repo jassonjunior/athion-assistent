@@ -99,6 +99,19 @@ describe('VS Code Extension — webview de chat', () => {
   })
 })
 
+describe('VS Code Extension — dependency graph', () => {
+  it('athion.showDependencyGraph abre um painel webview', async () => {
+    await executeAthionCommand('athion.showDependencyGraph')
+    await browser.pause(2000)
+
+    // Verifica que um editor tab com título "Dependency Graph" existe
+    const tabs = await browser.$$('.tab .label-name')
+    const labels = await Promise.all(tabs.map((t) => t.getText()))
+    const hasGraphTab = labels.some((l) => l.includes('Dependency Graph'))
+    expect(hasGraphTab).toBe(true)
+  })
+})
+
 describe('VS Code Extension — status bar', () => {
   it('sidecar Bun inicia e status fica ready', async () => {
     // Aguarda sidecar subir (até 30s)

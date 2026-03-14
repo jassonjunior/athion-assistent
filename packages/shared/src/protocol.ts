@@ -114,6 +114,13 @@ export type RpcMethod =
   | 'codebase.search'
   | 'codebase.status'
   | 'codebase.clear'
+  | 'codebase.getDependencyGraph'
+  | 'skill.list'
+  | 'skill.setActive'
+  | 'skill.clearActive'
+  | 'files.list'
+  | 'plugin.search'
+  | 'plugin.install'
   | 'ping'
 
 // ─── Request Params ────────────────────────────────────────────────
