@@ -1,4 +1,7 @@
 import { generateText as aiGenerateText, streamText, tool } from 'ai'
+import { appendFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { PROVIDERS } from './registry'
 import type {
   GenerateConfig,
@@ -9,6 +12,118 @@ import type {
   StreamEvent,
   TokenUsage,
 } from './types'
+
+const LOG_FILE = join(homedir(), '.athion', 'athion.log')
+const SEP = '════════════════════════════════════════════════════════════'
+let requestCounter = 0
+
+function logToFile(text: string): void {
+  try {
+    appendFileSync(LOG_FILE, text)
+  } catch {
+    // ignora
+  }
+}
+
+function ts(): string {
+  return new Date().toISOString().replace('T', ' ').slice(0, 19)
+}
+
+function logRequest(
+  config: {
+    model: string
+    messages?: unknown[]
+    maxTokens?: number
+    tools?: Record<string, { description: string }>
+  },
+  stream: boolean,
+): number {
+  const num = ++requestCounter
+  const msgs = config.messages ?? []
+  const toolNames = config.tools ? Object.keys(config.tools) : []
+  let totalChars = 0
+  for (const m of msgs) {
+    const msg = m as Record<string, unknown>
+    totalChars += typeof msg.content === 'string' ? msg.content.length : 80
+  }
+  const estTokens = Math.round(totalChars / 3.5)
+
+  const lines: string[] = [
+    SEP,
+    `[${ts()}] → POST /v1/chat/completions  #${num}`,
+    `model: ${config.model}`,
+    `stream: ${stream} | max_tokens: ${config.maxTokens ?? 'default'}`,
+    `messages: ${msgs.length} | tools: ${toolNames.length}`,
+    `est. prompt tokens: ~${estTokens}`,
+  ]
+
+  if (toolNames.length > 0) {
+    lines.push('', '─── TOOLS ───')
+    for (const name of toolNames) {
+      const desc = config.tools?.[name]?.description ?? ''
+      lines.push(`  ${name} — ${desc.slice(0, 80)}`)
+    }
+  }
+
+  lines.push('', '─── MESSAGES ───', '')
+  for (let i = 0; i < msgs.length; i++) {
+    const raw = msgs[i]
+    if (!raw) continue
+    const msg = raw as Record<string, unknown>
+    const role = (msg.role as string) ?? 'unknown'
+    const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
+    lines.push(`[${i}] ${role} (${content.length} chars)`)
+    lines.push('  ' + content.slice(0, 500) + (content.length > 500 ? '\n  ...(truncated)' : ''))
+    lines.push('')
+  }
+
+  logToFile(lines.join('\n') + '\n')
+  return num
+}
+
+function logStreamResponse(
+  num: number,
+  latencyMs: number,
+  content: string,
+  usage: TokenUsage,
+): void {
+  const total = usage.promptTokens + usage.completionTokens
+  const lines: string[] = [
+    '',
+    '─── RESPONSE (STREAMING) ───',
+    '',
+    `[${ts()}] ← 200 STREAM (${latencyMs}ms)  #${num}`,
+    '',
+    content.slice(0, 2000) + (content.length > 2000 ? '\n  ...(truncated)' : ''),
+    '',
+    `tokens: ${usage.promptTokens} prompt + ${usage.completionTokens} completion = ${total}`,
+    SEP,
+    '',
+  ]
+  logToFile(lines.join('\n') + '\n')
+}
+
+function logGenerateResponse(
+  num: number,
+  latencyMs: number,
+  text: string,
+  usage: TokenUsage,
+): void {
+  const total = usage.promptTokens + usage.completionTokens
+  const lines: string[] = [
+    '',
+    '─── RESPONSE ───',
+    '',
+    `[${ts()}] ← 200 (${latencyMs}ms)  #${num}`,
+    '',
+    text.slice(0, 2000) + (text.length > 2000 ? '\n  ...(truncated)' : ''),
+    '',
+    `tokens: ${usage.promptTokens} prompt + ${usage.completionTokens} completion = ${total}`,
+    SEP,
+    '',
+  ]
+  logToFile(lines.join('\n') + '\n')
+}
 
 /** ProviderLayer
  * Descrição: Interface pública do Provider Layer.
@@ -77,8 +192,11 @@ export function createProviderLayer(): ProviderLayer {
       return
     }
 
+    const reqNum = logRequest(config, true)
+    const startTime = Date.now()
     const model = entry.createModel(config.model)
     const aiTools = convertTools(config.tools)
+    let fullContent = ''
 
     try {
       const result = streamText({
@@ -92,6 +210,7 @@ export function createProviderLayer(): ProviderLayer {
 
       for await (const part of result.fullStream) {
         if (part.type === 'text-delta') {
+          fullContent += part.text
           yield { type: 'content', content: part.text }
         } else if (part.type === 'tool-call') {
           yield {
@@ -111,6 +230,7 @@ export function createProviderLayer(): ProviderLayer {
       }
       tokenUsage.totalTokens = tokenUsage.promptTokens + tokenUsage.completionTokens
 
+      logStreamResponse(reqNum, Date.now() - startTime, fullContent, tokenUsage)
       yield { type: 'finish', usage: tokenUsage }
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
@@ -131,6 +251,8 @@ export function createProviderLayer(): ProviderLayer {
       throw new Error(`Provider '${config.provider}' not found`)
     }
 
+    const reqNum = logRequest(config, false)
+    const startTime = Date.now()
     const model = entry.createModel(config.model)
 
     const result = await aiGenerateText({
@@ -141,14 +263,15 @@ export function createProviderLayer(): ProviderLayer {
     } as Parameters<typeof aiGenerateText>[0])
 
     const usage = result.usage
-    return {
-      text: result.text,
-      usage: {
-        promptTokens: usage.inputTokens ?? 0,
-        completionTokens: usage.outputTokens ?? 0,
-        totalTokens: (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0),
-      },
+    const tokenUsage: TokenUsage = {
+      promptTokens: usage.inputTokens ?? 0,
+      completionTokens: usage.outputTokens ?? 0,
+      totalTokens: (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0),
     }
+
+    logGenerateResponse(reqNum, Date.now() - startTime, result.text, tokenUsage)
+
+    return { text: result.text, usage: tokenUsage }
   }
 
   return { listProviders, listModels, streamChat, generateText }
