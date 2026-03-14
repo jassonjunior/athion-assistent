@@ -1,5 +1,53 @@
 # Changes Log - Athion Assistent
 
+## Fase 1 — Flow Observer: Emissão de flowEvent unificado no Core (2026-03-14)
+
+**Status**: Concluído ✅
+**Branch**: `feat/flow-observer-fase-1`
+**Issue**: #84
+
+### O que foi feito
+
+1. Criado `packages/core/src/orchestrator/flow-events.ts`:
+   - `flowEventTypes` — 15 tipos de eventos (user*message, system_prompt, llm_content, tool_call, tool_result, subagent*\*, model_loading, model_ready, finish, error)
+   - `flowEventSchema` — Schema Zod para validação
+   - `flowEvent` — Definição de BusEvent via `defineBusEvent`
+   - `createFlowEvent()` — Helper com id (UUID) e timestamp automáticos
+
+2. Modificado `packages/core/src/orchestrator/orchestrator.ts`:
+   - Import de `flowEvent` e `createFlowEvent`
+   - Emissão de `user_message` após adicionar mensagem do usuário em `prepareChat`
+   - Emissão de `system_prompt` após construir o systemPrompt
+   - Emissão de `model_loading`/`model_ready` nos eventos de swap de modelo
+   - Emissão de `llm_content` e `tool_call` no processamento de stream
+   - Emissão de `finish` com token usage
+   - Emissão de `error` com mensagem
+   - Emissão de `tool_result` em bloqueio de tools agent-level
+   - Emissão de `subagent_start` antes do dispatch
+   - Emissão de `subagent_complete` e `tool_result` após dispatch
+
+3. Modificado `packages/core/src/tools/task-tool.ts`:
+   - Adicionado `bus: Bus` em `TaskToolDeps`
+   - SubAgentEvents agora são publicados via Bus com `parentId` (em vez de serem drenados silenciosamente)
+   - Mapeamento de tipos: start→subagent_start, content→subagent_content, tool_call→subagent_tool_call, etc.
+
+4. Atualizado `packages/core/src/bootstrap.ts`:
+   - Passando `bus` para `createTaskTool({ subagents, bus })`
+
+5. Exportações nos barrels:
+   - `packages/core/src/orchestrator/index.ts` — exporta flowEvent, createFlowEvent, flowEventSchema, flowEventTypes, FlowEventData
+   - `packages/core/src/index.ts` — re-exporta tudo para consumo externo
+
+6. Testes em `packages/core/src/orchestrator/flow-events.test.ts`:
+   - 10 testes cobrindo: tipos, createFlowEvent, schema validation, integração com Bus, parentId
+
+### Próximas fases
+
+- **Fase 2 (#85)**: WebSocket server para modo live
+- **Fase 3 (#86)**: Adaptar test-ui para modo live + UX
+
+---
+
 ## Progresso de indexação na StatusBar + Auto-indexação no bootstrap (2026-03-14)
 
 **Status**: Concluído ✅

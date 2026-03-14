@@ -17,3 +17,5 @@ export type {
   Session,
   UserMessage,
 } from './types'
+export { flowEvent, createFlowEvent, flowEventSchema, flowEventTypes } from './flow-events'
+export type { FlowEventData } from './flow-events'

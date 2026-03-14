@@ -1,5 +1,6 @@
 import { createLogger } from '../logger'
 import type { Bus } from '../bus/bus'
+import { flowEvent, createFlowEvent } from './flow-events'
 import type { ConfigManager } from '../config/config'
 import type { ProviderLayer } from '../provider/provider'
 import type { StreamEvent as ProviderStreamEvent } from '../provider/types'
@@ -317,7 +318,21 @@ async function prepareChat(
   session.addMessage(sessionId, 'user', message.content)
   messages.push({ role: 'user', content: message.content })
 
+  deps.bus.publish(
+    flowEvent,
+    createFlowEvent('user_message', { content: message.content, sessionId }),
+  )
+
   const systemPrompt = promptBuilder.build(currentSession, tools.list(), agents)
+
+  deps.bus.publish(
+    flowEvent,
+    createFlowEvent('system_prompt', {
+      length: systemPrompt.length,
+      toolCount: tools.list().length,
+      agentCount: agents.length,
+    }),
+  )
 
   if (tokens.needsCompaction()) {
     await session.compress(sessionId)
@@ -381,6 +396,7 @@ async function* runStreamTurn(ctx: ChatContext): AsyncGenerator<OrchestratorEven
   for await (const event of stream) {
     // Propagar eventos de swap de modelo diretamente para o cliente
     if (event.type === 'model_loading' || event.type === 'model_ready') {
+      ctx.deps.bus.publish(flowEvent, createFlowEvent(event.type, { modelName: event.modelName }))
       yield event as OrchestratorEvent
       continue
     }
@@ -390,15 +406,41 @@ async function* runStreamTurn(ctx: ChatContext): AsyncGenerator<OrchestratorEven
 
     // Se forceTextOnly, ignorar tool calls alucinados pelo modelo local
     if (ctx.forceTextOnly && result.toolCall) continue
-    if (result.yieldEvent) yield result.yieldEvent
+    if (result.yieldEvent) {
+      if (result.yieldEvent.type === 'content') {
+        ctx.deps.bus.publish(
+          flowEvent,
+          createFlowEvent('llm_content', { content: result.yieldEvent.content }),
+        )
+      } else if (result.yieldEvent.type === 'tool_call') {
+        ctx.deps.bus.publish(
+          flowEvent,
+          createFlowEvent('tool_call', {
+            id: result.yieldEvent.id,
+            name: result.yieldEvent.name,
+            args: result.yieldEvent.args,
+          }),
+        )
+      }
+      yield result.yieldEvent
+    }
     if (result.toolCall) pendingToolCalls.push(result.toolCall)
 
     if (event.type === 'finish') {
       tokens.trackUsage(event.usage.promptTokens, event.usage.completionTokens)
+      ctx.deps.bus.publish(
+        flowEvent,
+        createFlowEvent('finish', {
+          promptTokens: event.usage.promptTokens,
+          completionTokens: event.usage.completionTokens,
+          totalTokens: event.usage.totalTokens,
+        }),
+      )
       yield event as OrchestratorEvent
     }
 
     if (event.type === 'error') {
+      ctx.deps.bus.publish(flowEvent, createFlowEvent('error', { message: event.error.message }))
       yield { type: 'error', error: event.error }
       return { assistantContent, pendingToolCalls: [], hasError: true }
     }
@@ -424,6 +466,10 @@ async function* handleToolCalls(
     if (toolDef && !isOrchestratorTool(toolDef)) {
       const errorMsg = `Tool "${tc.name}" is not available directly. Use the "task" tool to delegate to the appropriate agent.`
       const failResult = { success: false as const, error: errorMsg }
+      ctx.deps.bus.publish(
+        flowEvent,
+        createFlowEvent('tool_result', { id: tc.id, name: tc.name, error: errorMsg }),
+      )
       yield { type: 'tool_result', id: tc.id, name: tc.name, result: failResult }
       ctx.llmMessages.push({
         role: 'tool',
@@ -452,6 +498,10 @@ async function* handleToolCalls(
     // Emitir subagent_start antes de executar
     const taskArgs = tc.args as { agent?: string }
     const agentName = taskArgs.agent ?? 'unknown'
+    ctx.deps.bus.publish(
+      flowEvent,
+      createFlowEvent('subagent_start', { agentName, toolCallId: tc.id }),
+    )
     yield { type: 'subagent_start', agentName }
 
     const dispatchCtx: DispatchContext = { sessionId: ctx.sessionId }
@@ -459,11 +509,27 @@ async function* handleToolCalls(
     const toolResult = await toolDispatcher.dispatch(tc.name, tc.args, dispatchCtx)
 
     // Emitir subagent_complete após executar
+    ctx.deps.bus.publish(
+      flowEvent,
+      createFlowEvent('subagent_complete', {
+        agentName,
+        success: toolResult.success,
+        result: toolResult.success ? toolResult.data : null,
+      }),
+    )
     yield {
       type: 'subagent_complete',
       agentName,
       result: toolResult.success ? toolResult.data : null,
     }
+    ctx.deps.bus.publish(
+      flowEvent,
+      createFlowEvent('tool_result', {
+        id: tc.id,
+        name: tc.name,
+        success: toolResult.success,
+      }),
+    )
     yield { type: 'tool_result', id: tc.id, name: tc.name, result: toolResult }
 
     const rawText = toolResult.success
