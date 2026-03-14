@@ -1,8 +1,9 @@
 /** CodebaseIndexer
  * Descrição: Orquestra a indexação e busca do codebase.
- * Fluxo de indexação: walkDirectory -> chunkFile -> embedBatch -> upsert no SQLite.
- * Fluxo de busca: FTS (palavras-chave) + Vector (similaridade semântica) = Hybrid.
+ * Fluxo de indexação: walkDirectory -> chunkFile -> embedBatch -> upsert nos ports.
+ * Fluxo de busca: TextSearch (palavras-chave) + VectorStore (similaridade semântica) = Hybrid.
  * Suporta atualização incremental (indexFile) e remoção (deleteFile).
+ * Recebe dependências via constructor (Dependency Injection) para desacoplamento.
  */
 
 import { statSync } from 'node:fs'
@@ -16,18 +17,47 @@ import {
 } from './embeddings'
 import type { EmbeddingService } from './embeddings'
 import { walkDirectory } from './file-walker'
+import type { VectorStorePort } from './ports/vector-store.port'
+import type { TextSearchPort } from './ports/text-search.port'
 import type { CodeChunk, IndexerConfig, IndexStats, SearchResult } from './types'
+
+/** CodebaseIndexerDeps
+ * Descrição: Dependências injetáveis do CodebaseIndexer.
+ * Todas são opcionais — se não fornecidas, o indexer usa os adapters SQLite internos.
+ */
+export interface CodebaseIndexerDeps {
+  /** vectorStore
+   * Descrição: Port de armazenamento vetorial (default: SQLite brute-force via DbStore)
+   */
+  vectorStore?: VectorStorePort
+  /** textSearch
+   * Descrição: Port de busca full-text (default: SQLite FTS5 via DbStore)
+   */
+  textSearch?: TextSearchPort
+  /** embedding
+   * Descrição: Serviço de embeddings (default: criado a partir de embeddingBaseUrl da config)
+   */
+  embedding?: EmbeddingService | null
+}
 
 /** CodebaseIndexer
  * Descrição: Classe principal que gerencia a indexação e busca semântica do codebase.
  * Combina FTS5 (busca por palavras) com embeddings (busca vetorial) para
- * busca híbrida de código.
+ * busca híbrida de código. Recebe ports via DI para desacoplamento.
  */
 export class CodebaseIndexer {
   /** store
-   * Descrição: Instância do banco SQLite para persistência do índice
+   * Descrição: Instância do banco SQLite para persistência do índice (chunks + meta)
    */
   private store: DbStore
+  /** vectorStore
+   * Descrição: Port de armazenamento vetorial (null se não configurado)
+   */
+  private vectorStore: VectorStorePort | null
+  /** textSearch
+   * Descrição: Port de busca full-text (null se não configurado)
+   */
+  private textSearch: TextSearchPort | null
   /** embedding
    * Descrição: Serviço de embeddings (null se modo FTS-only)
    */
@@ -38,10 +68,12 @@ export class CodebaseIndexer {
   private config: Required<IndexerConfig>
 
   /** constructor
-   * Descrição: Inicializa o indexador com configuração, banco SQLite e serviço de embeddings
+   * Descrição: Inicializa o indexador com configuração e dependências injetadas.
+   * Se deps não fornecidas, usa os adapters internos (backward-compatible).
    * @param config - Configuração do indexador (workspace, banco, embeddings)
+   * @param deps - Dependências injetáveis (vectorStore, textSearch, embedding)
    */
-  constructor(config: IndexerConfig) {
+  constructor(config: IndexerConfig, deps: CodebaseIndexerDeps = {}) {
     this.config = {
       workspacePath: config.workspacePath,
       dbPath: config.dbPath,
@@ -54,13 +86,21 @@ export class CodebaseIndexer {
 
     this.store = new DbStore(this.config.dbPath)
 
-    // Embedding é opcional — se baseUrl vazia, funciona em modo FTS-only
-    this.embedding = this.config.embeddingBaseUrl
-      ? createEmbeddingService({
-          baseUrl: this.config.embeddingBaseUrl,
-          model: this.config.embeddingModel,
-        })
-      : null
+    // Ports injetados ou null (fallback para DbStore interno)
+    this.vectorStore = deps.vectorStore ?? null
+    this.textSearch = deps.textSearch ?? null
+
+    // Embedding: injetado, criado a partir de config, ou null (FTS-only)
+    if (deps.embedding !== undefined) {
+      this.embedding = deps.embedding
+    } else {
+      this.embedding = this.config.embeddingBaseUrl
+        ? createEmbeddingService({
+            baseUrl: this.config.embeddingBaseUrl,
+            model: this.config.embeddingModel,
+          })
+        : null
+    }
   }
 
   /** indexWorkspace
@@ -72,6 +112,10 @@ export class CodebaseIndexer {
   async indexWorkspace(
     onProgress?: (indexed: number, total: number, currentFile: string) => void,
   ): Promise<IndexStats> {
+    // Inicializa ports se configurados
+    if (this.vectorStore) await this.vectorStore.initialize()
+    if (this.textSearch) await this.textSearch.initialize()
+
     const files = await walkDirectory(this.config.workspacePath, {
       ignoredDirs: this.config.ignoredDirs,
     })
@@ -96,6 +140,18 @@ export class CodebaseIndexer {
     // Remove chunks antigos do arquivo antes de re-indexar
     this.store.deleteByFile(filePath)
 
+    // Remove do TextSearch port se configurado
+    if (this.textSearch) {
+      await this.textSearch.removeDocuments({ filePath })
+    }
+
+    // Remove do VectorStore port se configurado
+    if (this.vectorStore) {
+      await this.vectorStore.deletePoints('chunks', {
+        must: [{ key: 'filePath', match: { value: filePath } }],
+      })
+    }
+
     const { chunks } = await chunkFile(filePath, {
       maxChunkLines: this.config.maxChunkLines,
       minChunkLines: this.config.minChunkLines,
@@ -109,9 +165,22 @@ export class CodebaseIndexer {
       id: generateChunkId(c.filePath, c.startLine, c.endLine),
     }))
 
-    // Insere chunks no SQLite
+    // Insere chunks no SQLite (store principal)
     for (const chunk of fullChunks) {
       this.store.upsertChunk(chunk)
+    }
+
+    // Indexa no TextSearch port se configurado
+    if (this.textSearch) {
+      for (const chunk of fullChunks) {
+        await this.textSearch.indexDocument({
+          id: chunk.id,
+          content: chunk.content,
+          symbolName: chunk.symbolName,
+          filePath: chunk.filePath,
+          language: chunk.language,
+        })
+      }
     }
 
     // Gera embeddings em batch (se configurado)
@@ -119,12 +188,35 @@ export class CodebaseIndexer {
       const texts = fullChunks.map((c) => buildEmbeddingText(c))
       const vectors = await this.embedding.embedBatch(texts)
       if (vectors) {
+        // Salva no DbStore (backward-compatible)
         for (let i = 0; i < fullChunks.length; i++) {
           const chunk = fullChunks[i]
           const vec = vectors[i]
           if (chunk && vec) {
             this.store.upsertVector(chunk.id, serializeVector(vec))
           }
+        }
+
+        // Salva no VectorStore port se configurado
+        if (this.vectorStore) {
+          const points = fullChunks
+            .map((chunk, i) => {
+              const vec = vectors[i]
+              if (!vec) return null
+              return {
+                id: chunk.id,
+                vector: vec,
+                payload: {
+                  filePath: chunk.filePath,
+                  language: chunk.language,
+                  chunkType: chunk.chunkType,
+                  symbolName: chunk.symbolName ?? '',
+                },
+              }
+            })
+            .filter((p): p is NonNullable<typeof p> => p !== null)
+
+          await this.vectorStore.upsertPoints('chunks', points)
         }
       }
     }
@@ -134,14 +226,25 @@ export class CodebaseIndexer {
    * Descrição: Remove um arquivo do índice (para quando o arquivo foi deletado)
    * @param filePath - Caminho absoluto do arquivo a remover
    */
-  deleteFile(filePath: string): void {
+  async deleteFile(filePath: string): Promise<void> {
     this.store.deleteByFile(filePath)
+
+    if (this.textSearch) {
+      await this.textSearch.removeDocuments({ filePath })
+    }
+
+    if (this.vectorStore) {
+      await this.vectorStore.deletePoints('chunks', {
+        must: [{ key: 'filePath', match: { value: filePath } }],
+      })
+    }
   }
 
   /** search
    * Descrição: Busca híbrida combinando FTS (palavras-chave) e similaridade vetorial.
    * Se embeddings não configurado, usa apenas FTS. Combina scores com pesos
    * FTS(0.4) + vector(0.6) para resultados híbridos.
+   * Usa ports quando disponíveis, senão fallback para DbStore.
    * @param query - Texto de busca
    * @param limit - Número máximo de resultados (default: 10)
    * @returns Array de resultados ordenados por score decrescente
@@ -149,32 +252,63 @@ export class CodebaseIndexer {
   async search(query: string, limit = 10): Promise<SearchResult[]> {
     const results = new Map<string, SearchResult>()
 
-    // 1. FTS search
-    const ftsHits = this.store.searchFts(sanitizeFtsQuery(query), limit * 2)
-    for (const hit of ftsHits) {
-      const chunk = this.store.getChunkById(hit.id)
-      if (!chunk) continue
-      results.set(hit.id, { chunk, score: hit.score * 0.7, source: 'fts' })
+    // 1. FTS search (via port ou DbStore)
+    if (this.textSearch) {
+      const ftsHits = await this.textSearch.search(query, limit * 2)
+      for (const hit of ftsHits) {
+        const chunk = this.store.getChunkById(hit.id)
+        if (!chunk) continue
+        results.set(hit.id, { chunk, score: hit.score * 0.7, source: 'fts' })
+      }
+    } else {
+      const ftsHits = this.store.searchFts(sanitizeFtsQuery(query), limit * 2)
+      for (const hit of ftsHits) {
+        const chunk = this.store.getChunkById(hit.id)
+        if (!chunk) continue
+        results.set(hit.id, { chunk, score: hit.score * 0.7, source: 'fts' })
+      }
     }
 
-    // 2. Vector search (se embeddings disponível)
+    // 2. Vector search (via port ou brute-force no DbStore)
     if (this.embedding) {
       const queryVec = await this.embedding.embed(query)
       if (queryVec) {
-        const allVectors = this.store.getAllVectors()
-        const vectorHits = computeTopK(queryVec, allVectors, limit * 2)
+        if (this.vectorStore) {
+          // Usa o port de vectorStore
+          const vectorHits = await this.vectorStore.search('chunks', {
+            vector: queryVec,
+            limit: limit * 2,
+            scoreThreshold: 0.1,
+          })
 
-        for (const hit of vectorHits) {
-          const chunk = this.store.getChunkById(hit.chunkId)
-          if (!chunk) continue
+          for (const hit of vectorHits) {
+            const chunk = this.store.getChunkById(hit.id)
+            if (!chunk) continue
 
-          const existing = results.get(hit.chunkId)
-          if (existing) {
-            // Combina scores: FTS(0.4) + vector(0.6)
-            existing.score = existing.score * 0.4 + hit.score * 0.6
-            existing.source = 'hybrid'
-          } else {
-            results.set(hit.chunkId, { chunk, score: hit.score * 0.6, source: 'vector' })
+            const existing = results.get(hit.id)
+            if (existing) {
+              existing.score = existing.score * 0.4 + hit.score * 0.6
+              existing.source = 'hybrid'
+            } else {
+              results.set(hit.id, { chunk, score: hit.score * 0.6, source: 'vector' })
+            }
+          }
+        } else {
+          // Fallback: brute-force via DbStore
+          const allVectors = this.store.getAllVectors()
+          const vectorHits = computeTopK(queryVec, allVectors, limit * 2)
+
+          for (const hit of vectorHits) {
+            const chunk = this.store.getChunkById(hit.chunkId)
+            if (!chunk) continue
+
+            const existing = results.get(hit.chunkId)
+            if (existing) {
+              existing.score = existing.score * 0.4 + hit.score * 0.6
+              existing.source = 'hybrid'
+            } else {
+              results.set(hit.chunkId, { chunk, score: hit.score * 0.6, source: 'vector' })
+            }
           }
         }
       }
@@ -210,10 +344,12 @@ export class CodebaseIndexer {
   }
 
   /** close
-   * Descrição: Fecha a conexão com o banco de dados SQLite
+   * Descrição: Fecha a conexão com o banco de dados SQLite e os ports
    */
-  close(): void {
+  async close(): Promise<void> {
     this.store.close()
+    if (this.vectorStore) await this.vectorStore.close()
+    if (this.textSearch) await this.textSearch.close()
   }
 
   /** needsReindex
@@ -238,10 +374,14 @@ export class CodebaseIndexer {
 /** createCodebaseIndexer
  * Descrição: Factory function para criar uma instância do CodebaseIndexer
  * @param config - Configuração do indexador
+ * @param deps - Dependências injetáveis opcionais (vectorStore, textSearch, embedding)
  * @returns Nova instância do CodebaseIndexer
  */
-export function createCodebaseIndexer(config: IndexerConfig): CodebaseIndexer {
-  return new CodebaseIndexer(config)
+export function createCodebaseIndexer(
+  config: IndexerConfig,
+  deps?: CodebaseIndexerDeps,
+): CodebaseIndexer {
+  return new CodebaseIndexer(config, deps)
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────

@@ -149,6 +149,8 @@ const CREATE_TABLES = `
     scope TEXT NOT NULL CHECK(scope IN ('once', 'session', 'remember')),
     created_at INTEGER NOT NULL
   );
+
+  CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id);
 `
 
 /** createDatabaseManager
