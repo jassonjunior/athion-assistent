@@ -90,6 +90,7 @@ export class CodebaseIndexer {
       embeddingModel: config.embeddingModel ?? 'nomic-embed-text',
       maxChunkLines: config.maxChunkLines ?? 60,
       minChunkLines: config.minChunkLines ?? 3,
+      embeddingApiKey: config.embeddingApiKey ?? '',
       ignoredDirs: config.ignoredDirs ?? [],
     }
 
@@ -108,6 +109,7 @@ export class CodebaseIndexer {
         ? createEmbeddingService({
             baseUrl: this.config.embeddingBaseUrl,
             model: this.config.embeddingModel,
+            ...(this.config.embeddingApiKey ? { apiKey: this.config.embeddingApiKey } : {}),
           })
         : null
     }
