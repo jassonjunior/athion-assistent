@@ -21,6 +21,8 @@
     "test:e2e:chatapp": "cd packages/observability-athion && bunx playwright test e2e/",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
+    "storybook": "cd packages/storybook && bun run storybook",
+    "build-storybook": "cd packages/storybook && bun run build-storybook",
     "format": "prettier --write \"**/*.{ts,tsx,json,md,yml}\"",
     "prepare": "husky"
   },
