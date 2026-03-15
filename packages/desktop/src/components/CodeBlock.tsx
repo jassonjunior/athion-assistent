@@ -3,7 +3,7 @@
  * Descrição: Bloco de código com label de linguagem e botão de copiar para a área de transferência.
  */
 
-import { useCallback, useState } from 'react'
+import { useCodeCopy } from '@athion/shared'
 
 /** CodeBlockProps
  * Descrição: Propriedades do componente CodeBlock
@@ -22,24 +22,14 @@ interface CodeBlockProps {
  * @returns Elemento JSX com o bloco de código estilizado
  */
 export function CodeBlock({ language, code }: CodeBlockProps) {
-  const [copied, setCopied] = useState(false)
-
-  /** handleCopy
-   * Descrição: Copia o código para a área de transferência e exibe feedback visual temporário
-   */
-  const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(code).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    })
-  }, [code])
+  const { copied, handleCopy } = useCodeCopy()
 
   return (
     <div className="my-2 overflow-hidden rounded-lg border border-surface-700">
       <div className="flex items-center justify-between bg-surface-850 px-3 py-1.5 text-xs">
         <span className="text-neutral-400">{language}</span>
         <button
-          onClick={handleCopy}
+          onClick={() => handleCopy(code)}
           className="text-neutral-500 transition-colors hover:text-neutral-300"
         >
           {copied ? 'Copiado!' : 'Copiar'}
