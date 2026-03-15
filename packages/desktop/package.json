@@ -11,6 +11,8 @@
     "tauri:build": "tauri build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "test:e2e": "bunx wdio run e2e/wdio.conf.ts",
     "test:e2e:model": "ATHION_E2E_MODEL=1 bunx wdio run e2e/wdio.conf.ts"
   },
@@ -39,6 +41,10 @@
     "@wdio/mocha-framework": "^9.0.0",
     "@wdio/spec-reporter": "^9.0.0",
     "@wdio/json-reporter": "^9.0.0",
-    "webdriverio": "^9.0.0"
+    "webdriverio": "^9.0.0",
+    "vitest": "^4.0.18",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/jest-dom": "^6.6.0",
+    "jsdom": "^26.1.0"
   }
 }
