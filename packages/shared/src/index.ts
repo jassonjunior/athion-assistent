@@ -9,6 +9,19 @@ export type { SupportedLocale } from './i18n/i18n.js'
 
 export { RPC_ERRORS, isResponse, isNotification, isRequest } from './protocol.js'
 
+// Hooks & Utils compartilhados
+export { useFeedbackPhrase } from './hooks/useFeedbackPhrase.js'
+export { useCodeCopy } from './hooks/useCodeCopy.js'
+export { createChatEventHandler, flushAssistant } from './hooks/chat-events.js'
+export type {
+  ChatMessage,
+  ToolCallInfo,
+  ChatRefs,
+  ChatEventHandlerOptions,
+} from './hooks/chat-events.js'
+export { parseCodeBlocks } from './hooks/parseCodeBlocks.js'
+export type { ContentPart } from './hooks/parseCodeBlocks.js'
+
 export type {
   JsonRpcRequest,
   JsonRpcResponse,

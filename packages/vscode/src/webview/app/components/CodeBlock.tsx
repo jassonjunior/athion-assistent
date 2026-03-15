@@ -4,7 +4,7 @@
  * Usa CSS do VS Code para estilização (sem dependência de syntax highlighter).
  */
 
-import { useCallback, useState } from 'react'
+import { useCodeCopy } from '@athion/shared'
 
 /**
  * CodeBlockProps
@@ -25,20 +25,13 @@ interface CodeBlockProps {
  * @returns Elemento JSX do bloco de código
  */
 export function CodeBlock({ language, code }: CodeBlockProps) {
-  const [copied, setCopied] = useState(false)
-
-  const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(code).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    })
-  }, [code])
+  const { copied, handleCopy } = useCodeCopy()
 
   return (
     <div className="code-block">
       <div className="code-block-header">
         <span className="code-lang">{language}</span>
-        <button className="copy-button" onClick={handleCopy}>
+        <button className="copy-button" onClick={() => handleCopy(code)}>
           {copied ? 'Copiado!' : 'Copiar'}
         </button>
       </div>

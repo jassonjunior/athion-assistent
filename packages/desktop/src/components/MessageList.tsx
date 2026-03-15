@@ -5,6 +5,7 @@
 
 import { useEffect, useRef } from 'react'
 import type { ChatMessage } from '../hooks/useChat.js'
+import { parseCodeBlocks } from '@athion/shared'
 import { CodeBlock } from './CodeBlock.js'
 import { ToolCallCard } from './ToolCallCard.js'
 import { useFeedbackPhrase } from '../hooks/useFeedbackPhrase.js'
@@ -95,23 +96,20 @@ export function MessageList({ messages, isStreaming }: MessageListProps) {
 function FormattedContent({ content }: { content: string }) {
   if (!content) return null
 
-  const parts = content.split(/(```[\s\S]*?```)/g)
+  const parts = parseCodeBlocks(content)
 
   return (
     <>
       {parts.map((part, i) => {
-        if (part.startsWith('```')) {
-          const match = part.match(/```(\w*)\n([\s\S]*?)```/)
-          if (match) {
-            return <CodeBlock key={i} language={match[1] || 'text'} code={match[2]} />
-          }
+        if (part.type === 'code') {
+          return <CodeBlock key={i} language={part.language ?? 'text'} code={part.content} />
         }
         return (
           <span key={i}>
-            {part.split('\n').map((line, j) => (
+            {part.content.split('\n').map((line, j, arr) => (
               <span key={j}>
                 {line}
-                {j < part.split('\n').length - 1 && <br />}
+                {j < arr.length - 1 && <br />}
               </span>
             ))}
           </span>
