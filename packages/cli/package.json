@@ -39,6 +39,8 @@
     "yargs": "^18.0.0"
   },
   "devDependencies": {
+    "@athion/storybook": "workspace:*",
+    "@storybook/react-vite": "^10.2.19",
     "@types/react": "^19.2.14",
     "@types/yargs": "^17.0.35"
   }
