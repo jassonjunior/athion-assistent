@@ -195,6 +195,8 @@
     "@athion/shared": "workspace:*"
   },
   "devDependencies": {
+    "@athion/storybook": "workspace:*",
+    "@storybook/react-vite": "^10.2.19",
     "@types/dagre": "^0.7.54",
     "@types/node": "^25.3.5",
     "@types/react": "^19.2.14",
