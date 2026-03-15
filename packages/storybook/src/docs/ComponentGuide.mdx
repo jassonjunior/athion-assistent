@@ -1,0 +1,90 @@
+{/* ComponentGuide.mdx */}
+
+import { Meta } from '@storybook/blocks'
+
+<Meta title="Docs/Component Guide" />
+
+# Component Guide
+
+Padrões e convenções para criar stories no Athion Storybook.
+
+## Template de Story
+
+```tsx
+import type { Meta, StoryObj } from '@storybook/react-vite'
+import { ComponentName } from './ComponentName'
+
+const meta = {
+  title: 'Frontend/Categoria/ComponentName',
+  component: ComponentName,
+  tags: ['autodocs'],
+  parameters: {
+    layout: 'centered', // ou 'fullscreen' para layouts
+  },
+} satisfies Meta<typeof ComponentName>
+
+export default meta
+type Story = StoryObj<typeof meta>
+
+export const Default: Story = {
+  args: {
+    // props padrão
+  },
+}
+
+export const Loading: Story = {
+  args: {
+    isStreaming: true,
+  },
+}
+```
+
+## Variantes Obrigatórias por Tipo
+
+| Tipo | Variantes Mínimas |
+|------|-------------------|
+| **Input** (form) | Default, Filled, Disabled, Error |
+| **Display** (data) | WithData, Empty, Loading, Error |
+| **Layout** (container) | Default, Responsive |
+| **Feedback** (status) | Idle, Active, Success, Error |
+| **Interactive** (menu) | Closed, Open, Selected |
+
+## Dados Mock
+
+Use os dados do `common-args.ts`:
+
+```tsx
+import { mockMessages, mockToolCallSuccess } from '@athion/storybook/mocks/common-args'
+
+export const WithMessages: Story = {
+  args: {
+    messages: mockMessages,
+  },
+}
+```
+
+## Play Functions
+
+Para componentes interativos, adicione play functions:
+
+```tsx
+import { within, userEvent, expect } from 'storybook/test'
+
+export const Interactive: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await userEvent.type(canvas.getByRole('textbox'), 'Hello')
+    await userEvent.keyboard('{Enter}')
+  },
+}
+```
+
+## Inventário de Componentes
+
+| Frontend | Total | Com Stories |
+|----------|-------|------------|
+| Desktop | 7 | 6 |
+| Observability | 8 | 4 |
+| VSCode | 7 | 0 |
+| CLI | 11 | 0 |
+| **Total** | **33** | **10** |
