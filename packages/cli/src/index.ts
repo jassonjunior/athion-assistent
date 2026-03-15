@@ -24,6 +24,8 @@ import { skillsCommand, skillsHandler } from './commands/skills.js'
 import { sessionsCommand } from './commands/sessions.js'
 import { serveCommand, serveHandler } from './commands/serve.js'
 import { codebaseCommand } from './commands/codebase.js'
+import { workspaceCommand } from './commands/workspace.js'
+import { remoteCommand } from './commands/remote.js'
 import { observeCommand, observeHandler } from './commands/observe.js'
 import { mcpCommand, mcpHandler } from './commands/mcp.js'
 import { VERSION, initI18n } from '@athion/shared'
@@ -41,6 +43,8 @@ await yargs(hideBin(process.argv))
   .command('sessions', 'Gerenciar sessões', sessionsCommand)
   .command('serve', 'Iniciar servidor HTTP', serveCommand, serveHandler)
   .command('codebase', 'Indexar e buscar no codebase', codebaseCommand)
+  .command('workspace', 'Gerenciar multi-workspace', workspaceCommand)
+  .command('remote', 'Gerenciar repositórios remotos', remoteCommand)
   .command('observe', 'Abrir painel de observabilidade', observeCommand, observeHandler)
   .command('mcp', 'Iniciar servidor MCP (Codebase Intelligence)', mcpCommand, mcpHandler)
   .command('$0', false as never, chatCommand, chatHandler)

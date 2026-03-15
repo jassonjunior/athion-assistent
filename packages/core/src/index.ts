@@ -137,6 +137,31 @@ export type {
   SerializedGraph,
 } from './indexing'
 
+// ─── Multi-Workspace ──────────────────────────────────────────
+/** WorkspaceRegistry - Gerenciamento de múltiplos workspaces */
+export { WorkspaceRegistry } from './indexing'
+/** Tipos de workspace */
+export type {
+  WorkspaceInfo,
+  RemoteInfo,
+  CrossSearchOptions,
+  CrossSearchResult,
+  WorkspaceSearchResult,
+  PartialError,
+} from './indexing'
+/** crossWorkspaceSearch - Busca em múltiplos workspaces */
+export { crossWorkspaceSearch } from './indexing'
+/** Remote Fetcher - Clone e gerenciamento de repos remotos */
+export {
+  cloneRepo,
+  syncRepo,
+  removeRepo,
+  cleanupStaleRepos,
+  listRepos,
+  parseRepoUrl,
+  toRemoteInfo,
+} from './indexing'
+
 // ─── MCP ────────────────────────────────────────────────────
 /** createMcpServer - Fábrica do servidor MCP */
 export { createMcpServer } from './mcp'
