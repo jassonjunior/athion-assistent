@@ -1,0 +1,61 @@
+{/* DesignTokens.mdx */}
+
+import { Meta } from '@storybook/blocks'
+
+<Meta title="Docs/Design Tokens" />
+
+# Design Tokens
+
+Tokens semânticos compartilhados via CSS Custom Properties com prefixo `--athion-*`.
+
+## Cores — Background
+
+| Token | Desktop | Observability | VSCode | CLI |
+|-------|---------|---------------|--------|-----|
+| `--athion-bg-base` | `#0a0a0a` | `#1e1e2e` | `#1e1e1e` | `#1a1b26` |
+| `--athion-bg-surface` | `#171717` | `#181825` | `#252526` | `#24283b` |
+| `--athion-bg-overlay` | `#1a1a1a` | `#11111b` | `#2d2d30` | `#1f2335` |
+
+## Cores — Texto
+
+| Token | Desktop | Observability | VSCode | CLI |
+|-------|---------|---------------|--------|-----|
+| `--athion-text-primary` | `#e5e5e5` | `#cdd6f4` | `#cccccc` | `#c0caf5` |
+| `--athion-text-muted` | `#737373` | `#a6adc8` | `#858585` | `#565f89` |
+
+## Cores — Accent
+
+| Token | Desktop | Observability | VSCode | CLI |
+|-------|---------|---------------|--------|-----|
+| `--athion-accent-primary` | `#3b82f6` | `#89b4fa` | `#007acc` | `#7aa2f7` |
+| `--athion-accent-success` | `#22c55e` | `#a6e3a1` | `#4ec9b0` | `#9ece6a` |
+| `--athion-accent-error` | `#ef4444` | `#f38ba8` | `#f14c4c` | `#f7768e` |
+| `--athion-accent-warning` | `#eab308` | `#f9e2af` | `#cca700` | `#e0af68` |
+
+## Tipografia
+
+| Token | Desktop | Observability | VSCode | CLI |
+|-------|---------|---------------|--------|-----|
+| `--athion-font-sans` | System UI | inherit | System UI | monospace |
+| `--athion-font-mono` | SF Mono | JetBrains Mono | Cascadia Code | SF Mono |
+
+## Border Radius
+
+| Token | Desktop | Observability | VSCode | CLI |
+|-------|---------|---------------|--------|-----|
+| `--athion-radius-sm` | 4px | 4px | 2px | 0px |
+| `--athion-radius-md` | 8px | 6px | 4px | 0px |
+| `--athion-radius-lg` | 12px | 10px | 6px | 0px |
+
+## Uso
+
+```css
+.my-component {
+  background: var(--athion-bg-surface);
+  color: var(--athion-text-primary);
+  border-radius: var(--athion-radius-md);
+  font-family: var(--athion-font-sans);
+}
+```
+
+Os tokens são aplicados automaticamente pelo ThemeDecorator baseado no tema selecionado no toolbar.

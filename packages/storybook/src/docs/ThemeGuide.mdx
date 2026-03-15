@@ -1,0 +1,66 @@
+{/* ThemeGuide.mdx */}
+
+import { Meta } from '@storybook/blocks'
+
+<Meta title="Docs/Theme Guide" />
+
+# Theme Guide
+
+Cada frontend tem seu próprio sistema de estilos. Os decorators do Storybook simulam esses ambientes.
+
+## Desktop — Tailwind CSS 4
+
+- **Decorator**: `DesktopDecorator`
+- **Classes**: Tailwind utility classes (`bg-surface-950`, `text-neutral-200`)
+- **Cores**: Paleta customizada definida no `tailwind.config.ts`
+- **Fonte**: System UI sans-serif
+- **Border Radius**: Arredondado (4-12px)
+
+## Observability — Catppuccin Mocha
+
+- **Decorator**: `ObservabilityDecorator`
+- **Classes**: CSS custom (`bg-base`, `text`, `text-dim`)
+- **Cores**: Paleta Catppuccin Mocha (tons roxos/azuis)
+- **Fonte**: JetBrains Mono para código
+- **Border Radius**: Moderado (4-10px)
+
+## VSCode — CSS Variables
+
+- **Decorator**: `VSCodeDecorator`
+- **Classes**: CSS custom (`code-block`, `message`, etc.)
+- **Cores**: Variáveis `--vscode-*` injetadas pelo decorator
+- **Fonte**: System UI com Cascadia Code para código
+- **Border Radius**: Mínimo (2-6px)
+- **Nota**: O decorator injeta CSS vars fake que simulam o ambiente VS Code Dark
+
+## CLI — Tokyo Night (Terminal)
+
+- **Decorator**: `CLIDecorator`
+- **Renderização**: ANSI → HTML (componentes Ink renderizados como texto)
+- **Cores**: Paleta Tokyo Night
+- **Fonte**: Monospace exclusivo (SF Mono, Cascadia Code)
+- **Border Radius**: Zero (terminal não tem border-radius)
+- **Container**: 640x384px simulando terminal 80x24
+
+## Criando Stories com Decorator
+
+```tsx
+import { DesktopDecorator } from '@athion/storybook/decorators'
+
+export default {
+  title: 'Desktop/Chat/MessageList',
+  component: MessageList,
+  decorators: [DesktopDecorator],
+}
+```
+
+## Naming Convention
+
+```
+Frontend/Categoria/ComponentName
+```
+
+Exemplos:
+- `Desktop/Chat/MessageList`
+- `VSCode/Autocomplete/AutocompleteDropdown`
+- `CLI/Feedback/ToolCallDisplay`

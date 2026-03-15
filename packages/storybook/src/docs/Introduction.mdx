@@ -1,0 +1,52 @@
+{/* Introduction.mdx */}
+
+import { Meta } from '@storybook/blocks'
+
+<Meta title="Docs/Introduction" />
+
+# Athion Storybook
+
+Sistema unificado de Storybook para os **4 frontends** do Athion Assistent.
+
+## Frontends
+
+| Frontend | Tecnologia | Runtime | Tema |
+|----------|-----------|---------|------|
+| **Desktop** | React 19 + Tailwind CSS 4 | Tauri (webview) | `.theme-desktop` |
+| **Observability** | React 19 + CSS custom | Tauri (webview) | `.theme-observability` |
+| **VSCode** | React 19 + CSS custom | VS Code webview | `.theme-vscode` |
+| **CLI** | React 19 + Ink 6 | Terminal (Node/Bun) | `.theme-cli` |
+
+## Navegação
+
+As stories estão organizadas por frontend:
+
+- **Desktop/** — Componentes do app desktop (Tailwind)
+- **VSCode/** — Componentes da extensão VS Code
+- **Observability/** — Componentes do dashboard de observabilidade
+- **CLI/** — Componentes do terminal (Ink)
+
+## Theme Switcher
+
+Use o seletor **Theme** no toolbar (ícone de pincel) para alternar entre os temas dos 4 frontends.
+Cada tema aplica os design tokens correspondentes via CSS Custom Properties (`--athion-*`).
+
+## Viewports
+
+6 viewports customizados disponíveis no dropdown:
+
+- **Desktop App** (1280x800)
+- **VS Code Panel** (400x600)
+- **VS Code Sidebar** (300x800)
+- **Terminal 80x24** (640x384)
+- **Terminal 120x40** (960x640)
+- **Observability Dashboard** (1440x900)
+
+## Código Compartilhado
+
+Hooks e utils compartilhados entre frontends estão em `@athion/shared`:
+
+- `useFeedbackPhrase` — Frases de feedback durante streaming
+- `useCodeCopy` — Copy-to-clipboard com feedback visual
+- `parseCodeBlocks` — Parser de markdown para code blocks
+- `createChatEventHandler` — Factory de handlers de eventos de chat
