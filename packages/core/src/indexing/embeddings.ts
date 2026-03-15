@@ -22,6 +22,10 @@ export interface EmbeddingConfig {
    * Descrição: Dimensões esperadas dos vetores (para validação, opcional)
    */
   dimensions?: number
+  /** apiKey
+   * Descrição: API key para autenticação (opcional, ex: LM Studio com auth habilitado)
+   */
+  apiKey?: string
 }
 
 /** EmbeddingService
@@ -63,9 +67,14 @@ export function createEmbeddingService(config: EmbeddingConfig): EmbeddingServic
   async function embedBatch(texts: string[]): Promise<number[][] | null> {
     if (texts.length === 0) return []
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (config.apiKey) {
+        headers['Authorization'] = `Bearer ${config.apiKey}`
+      }
+
       const response = await fetch(`${config.baseUrl}/v1/embeddings`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ model: config.model, input: texts }),
         signal: AbortSignal.timeout(30000),
       })

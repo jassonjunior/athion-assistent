@@ -97,6 +97,10 @@ export interface IndexerConfig {
    * Descrição: Mínimo de linhas por chunk (default: 3)
    */
   minChunkLines?: number
+  /** embeddingApiKey
+   * Descrição: API key para autenticação no serviço de embeddings (ex: LM Studio com auth)
+   */
+  embeddingApiKey?: string
   /** ignoredDirs
    * Descrição: Diretórios adicionais a ignorar além dos padrões
    */
