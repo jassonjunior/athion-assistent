@@ -1,0 +1,76 @@
+/* Design Tokens — Athion Storybook
+ * Tokens semânticos via CSS Custom Properties, mapeados para cada tema de frontend.
+ * Prefixo: --athion-*
+ */
+
+/* === Desktop Theme (Tailwind-mapped) === */
+.theme-desktop {
+  --athion-bg-base: #0a0a0a;
+  --athion-bg-surface: #171717;
+  --athion-bg-overlay: #1a1a1a;
+  --athion-text-primary: #e5e5e5;
+  --athion-text-muted: #737373;
+  --athion-accent-primary: #3b82f6;
+  --athion-accent-success: #22c55e;
+  --athion-accent-error: #ef4444;
+  --athion-accent-warning: #eab308;
+  --athion-font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --athion-font-mono: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+  --athion-radius-sm: 4px;
+  --athion-radius-md: 8px;
+  --athion-radius-lg: 12px;
+}
+
+/* === Observability Theme (Catppuccin Mocha) === */
+.theme-observability {
+  --athion-bg-base: #1e1e2e;
+  --athion-bg-surface: #181825;
+  --athion-bg-overlay: #11111b;
+  --athion-text-primary: #cdd6f4;
+  --athion-text-muted: #a6adc8;
+  --athion-accent-primary: #89b4fa;
+  --athion-accent-success: #a6e3a1;
+  --athion-accent-error: #f38ba8;
+  --athion-accent-warning: #f9e2af;
+  --athion-font-sans: inherit;
+  --athion-font-mono: 'JetBrains Mono', monospace;
+  --athion-radius-sm: 4px;
+  --athion-radius-md: 6px;
+  --athion-radius-lg: 10px;
+}
+
+/* === VSCode Theme (Dark) === */
+.theme-vscode {
+  --athion-bg-base: #1e1e1e;
+  --athion-bg-surface: #252526;
+  --athion-bg-overlay: #2d2d30;
+  --athion-text-primary: #cccccc;
+  --athion-text-muted: #858585;
+  --athion-accent-primary: #007acc;
+  --athion-accent-success: #4ec9b0;
+  --athion-accent-error: #f14c4c;
+  --athion-accent-warning: #cca700;
+  --athion-font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --athion-font-mono: 'Cascadia Code', Menlo, Monaco, monospace;
+  --athion-radius-sm: 2px;
+  --athion-radius-md: 4px;
+  --athion-radius-lg: 6px;
+}
+
+/* === CLI Theme (Tokyo Night) === */
+.theme-cli {
+  --athion-bg-base: #1a1b26;
+  --athion-bg-surface: #24283b;
+  --athion-bg-overlay: #1f2335;
+  --athion-text-primary: #c0caf5;
+  --athion-text-muted: #565f89;
+  --athion-accent-primary: #7aa2f7;
+  --athion-accent-success: #9ece6a;
+  --athion-accent-error: #f7768e;
+  --athion-accent-warning: #e0af68;
+  --athion-font-sans: monospace;
+  --athion-font-mono: 'SF Mono', 'Cascadia Code', monospace;
+  --athion-radius-sm: 0px;
+  --athion-radius-md: 0px;
+  --athion-radius-lg: 0px;
+}
