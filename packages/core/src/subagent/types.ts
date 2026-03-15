@@ -110,7 +110,7 @@ export interface SubAgentConfig {
   /** level
    * Descrição: Nível do agente — determina prioridade e origem
    */
-  level: 'builtin' | 'user' | 'project' | 'session'
+  level: 'builtin' | 'internal' | 'user' | 'project' | 'session'
 }
 
 /** SubAgentEvent

@@ -2,26 +2,70 @@
 /**
  * Servidor WebSocket do observability-athion.
  * Serve a API de testes, faz streaming de eventos, e serve o frontend estático.
+ *
+ * Suporta porta dinâmica: PORT=0 aloca porta automática.
+ * Escreve port file em ~/.athion/obs-port-{pid}.json para discovery.
  */
 
 import { resolve } from 'node:path'
+import { existsSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import type { ServerWebSocket } from 'bun'
 import type { WsClientMessage, WsServerMessage } from './protocol'
 import { PROTOCOL_VERSION } from './protocol'
 import { listTests, runTest, stopTest } from './test-runner'
 import { createCodebaseIndexer } from '@athion/core'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { startFlowBridge } from './flow-bridge'
 
-const PORT = Number(process.env.PORT) || 3457
+const PORT = Number(process.env.PORT) || 0
 const DIST_DIR = resolve(import.meta.dir, '../../dist')
+
+/** Port file para discovery */
+const ATHION_DIR = join(homedir(), '.athion')
+const PORT_FILE = join(ATHION_DIR, `obs-port-${process.pid}.json`)
+
+function writePortFile(port: number): void {
+  if (!existsSync(ATHION_DIR)) {
+    mkdirSync(ATHION_DIR, { recursive: true })
+  }
+  const info = {
+    pid: process.pid,
+    port,
+    startedAt: new Date().toISOString(),
+  }
+  writeFileSync(PORT_FILE, JSON.stringify(info, null, 2), 'utf-8')
+}
+
+function removePortFile(): void {
+  try {
+    rmSync(PORT_FILE, { force: true })
+  } catch {
+    // ignore
+  }
+}
+
+// Cleanup on exit
+process.on('exit', removePortFile)
+process.on('SIGINT', () => {
+  removePortFile()
+  process.exit(0)
+})
+process.on('SIGTERM', () => {
+  removePortFile()
+  process.exit(0)
+})
 
 type WsData = { id: string }
 
 const clients = new Set<ServerWebSocket<WsData>>()
 
 function broadcast(msg: WsServerMessage): void {
-  const data = JSON.stringify(msg)
+  broadcastRaw(JSON.stringify(msg))
+}
+
+/** Envia string JSON raw para todos os clientes conectados */
+function broadcastRaw(data: string): void {
   for (const ws of clients) {
     try {
       ws.send(data)
@@ -87,6 +131,11 @@ const server = Bun.serve<WsData>({
       return Response.json(listTests())
     }
 
+    // REST API: porta do servidor (para health check e discovery)
+    if (url.pathname === '/api/port') {
+      return Response.json({ port: server.port, pid: process.pid })
+    }
+
     // Serve frontend estático (dist/) — retorna Promise<Response>
     return handleStatic(url.pathname)
   },
@@ -137,7 +186,11 @@ const server = Bun.serve<WsData>({
 
           case 'codebase:index': {
             const workspacePath = msg.workspacePath ?? process.cwd()
-            const dbPath = join(homedir(), '.athion', 'index.db')
+            // Per-workspace index db
+            const hasher = new Bun.CryptoHasher('sha256')
+            hasher.update(workspacePath)
+            const hash = hasher.digest('hex').slice(0, 8)
+            const dbPath = join(homedir(), '.athion', `index-${hash}.db`)
             const indexer = createCodebaseIndexer({ workspacePath, dbPath })
             console.log(`[ws] Indexing codebase: ${workspacePath}`)
             indexer
@@ -178,8 +231,12 @@ const server = Bun.serve<WsData>({
           }
 
           case 'codebase:search': {
-            const dbPath = join(homedir(), '.athion', 'index.db')
-            const indexer = createCodebaseIndexer({ workspacePath: process.cwd(), dbPath })
+            const workspacePath = process.cwd()
+            const hasher = new Bun.CryptoHasher('sha256')
+            hasher.update(workspacePath)
+            const hash = hasher.digest('hex').slice(0, 8)
+            const dbPath = join(homedir(), '.athion', `index-${hash}.db`)
+            const indexer = createCodebaseIndexer({ workspacePath, dbPath })
             indexer
               .search(msg.query, msg.limit ?? 8)
               .then((results) => {
@@ -227,5 +284,14 @@ const server = Bun.serve<WsData>({
   },
 })
 
-console.log(`[observability-athion] Server running on http://localhost:${server.port}`)
-console.log(`[observability-athion] WebSocket: ws://localhost:${server.port}/api/ws`)
+// Escrever port file com a porta real alocada
+const actualPort = server.port ?? PORT
+writePortFile(actualPort)
+
+// Iniciar ponte com FlowServers do CLI/extensão/app
+const stopBridge = startFlowBridge(broadcastRaw)
+process.on('exit', stopBridge)
+
+console.log(`[observability-athion] Server running on http://localhost:${actualPort}`)
+console.log(`[observability-athion] WebSocket: ws://localhost:${actualPort}/api/ws`)
+console.log(`[observability-athion] Flow bridge: discovering active FlowServer instances...`)

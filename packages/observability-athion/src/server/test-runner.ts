@@ -22,20 +22,37 @@ export interface TestDefinition {
 
 /** Testes disponíveis (registrados estaticamente) */
 const TEST_REGISTRY: TestDefinition[] = [
+  // ── Search Agent (codebase only) ─────────────────────────────────
   {
-    name: 'search-interfaces',
+    name: 'search-codebase-only',
     agent: 'search',
-    description: 'Search Agent - Find TypeScript interfaces',
+    description: 'Search Agent (codebase only) — Find TypeScript interfaces using semantic index',
     userMessage:
-      'Search the project structure and find all TypeScript files that export interfaces. List the file paths and the interface names.',
+      'Find all TypeScript interfaces related to configuration and settings in this project. List the file paths, interface names, and what each one configures.',
   },
   {
-    name: 'search-functions',
+    name: 'search-architecture',
     agent: 'search',
-    description: 'Search Agent - Find exported functions',
+    description: 'Search Agent (codebase only) — Understand project architecture via index',
     userMessage:
-      'Search the project and find all TypeScript files that export functions. List each file path and function name.',
+      'Analyze the project architecture. What are the main modules, entry points, and how do they connect? Use the codebase index to understand the structure.',
   },
+  // ── Search-Tools Agent (filesystem fallback) ─────────────────────
+  {
+    name: 'search-tools-grep',
+    agent: 'search-tools',
+    description: 'Search-Tools Agent (fallback) — Find patterns with grep/filesystem',
+    userMessage:
+      'Find all files that contain "TODO" or "FIXME" comments. List each file path, line number, and the comment content.',
+  },
+  {
+    name: 'search-tools-explore',
+    agent: 'search-tools',
+    description: 'Search-Tools Agent (fallback) — Explore directory structure',
+    userMessage:
+      'Explore the project directory structure and list the main packages/modules. For each one, read the package.json and describe its purpose.',
+  },
+  // ── Other agents ─────────────────────────────────────────────────
   {
     name: 'code-reviewer',
     agent: 'code-reviewer',

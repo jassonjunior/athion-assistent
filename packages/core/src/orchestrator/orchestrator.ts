@@ -147,12 +147,15 @@ const log = createLogger('orchestrator')
  * @returns Instância do Orchestrator
  */
 export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
-  const agents: AgentDefinition[] = deps.subagents.list().map((a) => ({
-    name: a.name,
-    description: a.description,
-    skill: a.skill,
-    tools: a.tools,
-  }))
+  const agents: AgentDefinition[] = deps.subagents
+    .list()
+    .filter((a) => a.level !== 'internal')
+    .map((a) => ({
+      name: a.name,
+      description: a.description,
+      skill: a.skill,
+      tools: a.tools,
+    }))
 
   /** chat
    * Descrição: Inicia chat streaming com uma sessão existente, executando loop de turnos com tools
