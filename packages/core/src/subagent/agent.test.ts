@@ -33,7 +33,14 @@ function makeConfig(overrides: Partial<SubAgentConfig> = {}): SubAgentConfig {
   }
 }
 
+/** Armazena snapshots das mensagens capturadas em cada chamada a streamChat.
+ * runSubAgent faz messages.length=0 ao final, então não podemos confiar no mock.calls
+ * (que guarda referência ao array já limpo). */
+let capturedStreamChatCalls: Array<{ messages: Array<{ role: string; content: string }> }> = []
+
 function makeDeps(streamEvents: unknown[] = []): SubAgentDeps {
+  capturedStreamChatCalls = []
+
   async function* mockStream() {
     for (const event of streamEvents) yield event
   }
@@ -41,7 +48,16 @@ function makeDeps(streamEvents: unknown[] = []): SubAgentDeps {
   const provider = {
     listProviders: vi.fn(() => []),
     listModels: vi.fn(() => []),
-    streamChat: vi.fn(() => mockStream()),
+    streamChat: vi.fn((args: { messages: Array<{ role: string; content: string }> }) => {
+      // Deep-copy messages no momento da chamada (antes do agent limpar o array)
+      capturedStreamChatCalls.push({
+        messages: args.messages.map((m) => ({
+          role: m.role,
+          content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+        })),
+      })
+      return mockStream()
+    }),
     generateText: vi.fn().mockResolvedValue({ text: 'summary', usage: { totalTokens: 5 } }),
   }
 
@@ -64,6 +80,7 @@ function makeDeps(streamEvents: unknown[] = []): SubAgentDeps {
     skills: skills as unknown as SubAgentDeps['skills'],
     defaultProvider: 'test-provider',
     defaultModel: 'test-model',
+    maxTokens: 8192,
   }
 }
 
@@ -187,7 +204,28 @@ describe('runSubAgent — error handling', () => {
     expect(callArgs?.model).toBe('test-model')
   })
 
-  it('injeta Search Protocol quando search_codebase está nos tools', async () => {
+  it('injeta Codebase Search Protocol quando search_codebase é a ÚNICA tool', async () => {
+    const deps = makeDeps([
+      { type: 'content', content: 'Done' },
+      { type: 'finish', usage: { promptTokens: 5, completionTokens: 3, totalTokens: 8 } },
+    ])
+
+    const config = makeConfig({ tools: ['search_codebase'] })
+    for await (const ev of runSubAgent(config, makeTask(), deps)) {
+      void ev
+    }
+
+    const systemMsg = capturedStreamChatCalls[0]?.messages.find((m) => m.role === 'system')
+    expect(systemMsg?.content).toContain('Codebase Search Protocol')
+    expect(systemMsg?.content).toContain('search_codebase')
+    expect(systemMsg?.content).toContain('L0')
+    expect(systemMsg?.content).toContain('L4')
+    expect(systemMsg?.content).toContain('L2')
+    expect(systemMsg?.content).toContain('contextBundle')
+    expect(systemMsg?.content).not.toContain('Tool priority order')
+  })
+
+  it('injeta Search Protocol com tool priority quando search_codebase + outras tools', async () => {
     const deps = makeDeps([
       { type: 'content', content: 'Done' },
       { type: 'finish', usage: { promptTokens: 5, completionTokens: 3, totalTokens: 8 } },
@@ -198,13 +236,11 @@ describe('runSubAgent — error handling', () => {
       void ev
     }
 
-    const callArgs = (deps.provider.streamChat as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]
-    const systemMsg = (callArgs?.messages as Array<{ role: string; content: string }>).find(
-      (m) => m.role === 'system',
-    )
+    const systemMsg = capturedStreamChatCalls[0]?.messages.find((m) => m.role === 'system')
     expect(systemMsg?.content).toContain('Search Protocol')
-    expect(systemMsg?.content).toContain('search_codebase')
-    expect(systemMsg?.content).toContain('FIRST')
+    expect(systemMsg?.content).toContain('Fallback tools')
+    expect(systemMsg?.content).toContain('ONLY after search_codebase')
+    expect(systemMsg?.content).not.toContain('Codebase Search Protocol')
   })
 
   it('não injeta Search Protocol quando search_codebase não está nos tools', async () => {
@@ -218,11 +254,9 @@ describe('runSubAgent — error handling', () => {
       void ev
     }
 
-    const callArgs = (deps.provider.streamChat as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]
-    const systemMsg = (callArgs?.messages as Array<{ role: string; content: string }>).find(
-      (m) => m.role === 'system',
-    )
+    const systemMsg = capturedStreamChatCalls[0]?.messages.find((m) => m.role === 'system')
     expect(systemMsg?.content).not.toContain('Search Protocol')
+    expect(systemMsg?.content).not.toContain('Codebase Search Protocol')
   })
 
   it('envia nudge quando modelo gera texto sem tool calls pela primeira vez', async () => {

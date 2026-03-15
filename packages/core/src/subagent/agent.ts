@@ -490,12 +490,51 @@ function buildAgentPrompt(
   sections.push(`You are the "${config.name}" agent. ${config.description}`)
 
   if (config.tools.includes('search_codebase')) {
-    sections.push(`# Search Protocol (MANDATORY)
-You have access to two search tools. Always use them in this order:
-1. **search_codebase** — semantic search over the indexed codebase. Use this FIRST for any code-related question.
-2. **search_files** — grep-based text search. Use this ONLY if search_codebase returns 0 results, or if you need to find an exact string/regex match that semantic search missed.
+    const hasFileTools = config.tools.some((t) =>
+      ['read_file', 'list_files', 'search_files'].includes(t),
+    )
+    const hasTaskTool = config.tools.includes('task')
 
-Never skip search_codebase. Never use search_files as the first tool when searching for code.`)
+    sections.push(
+      `# Search Protocol (MANDATORY — FOLLOW STRICTLY)
+Your VERY FIRST tool call(s) MUST be search_codebase. Do NOT call any other tool before search_codebase.
+
+## What search_codebase returns:
+
+### Results Array
+Each result has: file path, startLine, endLine, language, symbolName, chunkType (function/class/method/block/file), score (0-1), source (vector/fts/hybrid), and **content** (the actual source code — read it directly, no need for read_file).
+
+### Context Bundle (contextBundle)
+Hierarchical metadata about the project and the files found:
+- **L0 — Repository Metadata**: Main language, framework, test framework, build system, architecture style, entry points. Tells you WHAT the project is.
+- **L4 — Code Patterns & Conventions**: Naming conventions, error handling, import style, testing patterns, anti-patterns. Tells you HOW the project is written.
+- **L2 — File Summaries**: Purpose and exports of each relevant file. Tells you WHAT each file does.
+
+## Query strategy — broad first, then specific:
+1. **First query** — understand the area: "authentication system architecture", "project entry point"
+2. **Second query** — find specific code: "JWT token validation function"
+3. **Third query** (if needed) — find related: "tests for JWT validation"
+
+## CRITICAL: Know when to stop
+After getting search results, ask yourself: "Do I already have what was asked?" — if YES, write your final answer immediately. Do NOT keep searching after you have the data.` +
+        (hasTaskTool && !hasFileTools
+          ? `
+
+## Fallback: When search_codebase is not enough
+If after 2-3 different queries search_codebase cannot find the information, use the task tool to delegate to the "search-tools" agent:
+- task(agent: "search-tools", description: "what you need to find")
+- This agent has read_file, list_files, and search_files for direct file system access.
+- Only use this fallback after exhausting search_codebase queries.`
+          : '') +
+        (hasFileTools
+          ? `
+
+## Fallback tools (ONLY after search_codebase):
+- **read_file** / **list_files** — ONLY to read specific files found by search results.
+- **search_files** — grep for exact strings. ONLY if search_codebase returns 0 results.
+- NEVER use these as first tools. ALWAYS search_codebase first.`
+          : ''),
+    )
   }
 
   if (task.continuationIndex > 0 && task.accumulatedResults.length > 0) {

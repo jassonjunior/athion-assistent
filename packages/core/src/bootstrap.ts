@@ -13,6 +13,7 @@ import { IndexMetrics } from './indexing/index-metrics'
 import { fileChangedEvent, indexingProgressEvent } from './indexing/events'
 import { SqliteVectorStore } from './indexing/adapters/sqlite-vector-store'
 import { SqliteTextSearch } from './indexing/adapters/sqlite-text-search'
+import { ProviderEnricher } from './indexing/adapters/provider-enricher'
 import { createOrchestrator } from './orchestrator/orchestrator'
 import { createPromptBuilder } from './orchestrator/prompt-builder'
 import { createSessionManager } from './orchestrator/session'
@@ -182,7 +183,7 @@ export async function bootstrap(options: BootstrapOptions = {}): Promise<AthionC
   const promptBuilder = createPromptBuilder(skills)
   const toolDispatcher = createToolDispatcher(tools, permissions)
 
-  const indexer = await setupIndexer(workspacePath, indexDbPath, tools)
+  const indexer = await setupIndexer(workspacePath, indexDbPath, tools, provider)
   const dependencyGraph = indexer ? new DependencyGraph() : null
   if (indexer) log.info({ workspacePath }, 'codebase indexer ready')
 
@@ -438,18 +439,22 @@ function createBaseServices(cliArgs: Partial<Config>) {
 
 /** setupIndexer
  * Descrição: Configura o indexador de codebase para busca semântica.
- * Cria o indexador e registra a ferramenta de busca no ToolRegistry.
+ * Cria o indexador com enricher LLM (para gerar L0/L2/L4) e registra a ferramenta de busca.
  * @param workspacePath - Caminho do workspace a ser indexado (undefined para pular)
  * @param indexDbPath - Caminho do banco de índice (default: ~/.athion/index.db)
  * @param tools - Registry de ferramentas onde a busca será registrada
+ * @param provider - ProviderLayer para enriquecimento semântico via LLM
  * @returns Instância do CodebaseIndexer ou null se workspacePath não informado
  */
 async function setupIndexer(
   workspacePath: string | undefined,
   indexDbPath: string | undefined,
   tools: ToolRegistry,
+  provider: ProviderLayer,
 ): Promise<CodebaseIndexer | null> {
   if (!workspacePath) return null
+
+  const log = createLogger('bootstrap')
 
   // Cada workspace tem seu próprio banco de índice para evitar poluição cruzada.
   // Gera hash curto do workspacePath como sufixo: ~/.athion/index-{hash8}.db
@@ -469,6 +474,15 @@ async function setupIndexer(
   await vectorStore.initialize()
   await textSearch.initialize()
 
+  // Cria enricher LLM para gerar L0 (repo meta), L2 (file summaries), L4 (patterns)
+  const enricherProvider = process.env['ATHION_ENRICHER_PROVIDER'] ?? 'lm-studio'
+  const enricherModel = process.env['ATHION_ENRICHER_MODEL'] ?? 'qwen3-coder-next-reap-40b-a3b-mlx'
+  const enricher = new ProviderEnricher(provider, enricherProvider, enricherModel)
+  log.info(
+    { enricherProvider, enricherModel },
+    'LLM enricher configured for context levels (L0/L2/L4)',
+  )
+
   const indexer = createCodebaseIndexer(
     {
       workspacePath,
@@ -476,7 +490,7 @@ async function setupIndexer(
       embeddingBaseUrl: process.env['ATHION_EMBEDDING_URL'] ?? '',
       embeddingModel: process.env['ATHION_EMBEDDING_MODEL'] ?? 'nomic-embed-text',
     },
-    { vectorStore, textSearch },
+    { vectorStore, textSearch, enricher },
   )
   tools.register(createSearchCodebaseTool(indexer) as ToolDefinition)
   return indexer

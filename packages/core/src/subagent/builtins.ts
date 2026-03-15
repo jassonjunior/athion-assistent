@@ -1,17 +1,33 @@
 import type { SubAgentConfig } from './types'
 
 /** searchAgent
- * Descrição: SubAgent de busca e análise de código.
- * Usa a skill 'search' para investigar o codebase sem fazer alterações.
+ * Descrição: SubAgent de busca semântica via codebase index.
+ * Usa APENAS search_codebase. Se não encontrar, delega para search-tools
+ * via task tool (fallback interno).
  */
 export const searchAgent: SubAgentConfig = {
   name: 'search',
   description:
-    'Searches and analyzes code, files, and project structure. Read-only — never modifies files. Prefers search_codebase (semantic index) first; falls back to search_files (grep) if index has no results.',
+    'Searches and analyzes code using the semantic codebase index (search_codebase). Read-only — never modifies files. If the index is insufficient, delegates to search-tools agent for file system access.',
   skill: 'search',
-  tools: ['search_codebase', 'read_file', 'list_files', 'search_files'],
-  maxTurns: 30,
+  tools: ['search_codebase', 'task'],
+  maxTurns: 15,
   level: 'builtin',
+}
+
+/** searchToolsAgent
+ * Descrição: SubAgent de busca via ferramentas de sistema de arquivos.
+ * Usado internamente pelo search agent quando o índice semântico não basta.
+ * Não aparece na lista de agents do orchestrator (level: 'internal').
+ */
+export const searchToolsAgent: SubAgentConfig = {
+  name: 'search-tools',
+  description:
+    'Searches code using file system tools (read_file, list_files, search_files/grep). Internal fallback for the search agent.',
+  skill: 'search-tools',
+  tools: ['read_file', 'list_files', 'search_files'],
+  maxTurns: 20,
+  level: 'internal',
 }
 
 /** coderAgent
@@ -108,6 +124,7 @@ export const debugAgent: SubAgentConfig = {
  */
 export const builtinAgents: SubAgentConfig[] = [
   searchAgent,
+  searchToolsAgent,
   coderAgent,
   codeReviewAgent,
   refactorAgent,
