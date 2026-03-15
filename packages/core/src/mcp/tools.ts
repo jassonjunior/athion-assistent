@@ -8,6 +8,8 @@ import { z } from 'zod/v4'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { CodebaseIndexer } from '../indexing/manager'
 import type { DependencyGraph } from '../indexing/dependency-graph'
+import { WorkspaceRegistry } from '../indexing/workspace-registry'
+import { crossWorkspaceSearch } from '../indexing/cross-workspace-search'
 
 /** Cria resposta MCP de texto */
 function textResult(data: unknown) {
@@ -163,7 +165,108 @@ function addGetIndexStatus(mcp: McpServer, indexer: CodebaseIndexer): void {
   })
 }
 
-/** registerTools — Registra todas as 7 tools MCP no servidor */
+function addListWorkspaces(mcp: McpServer): void {
+  mcp.tool(
+    'list_workspaces',
+    'Lista todos os workspaces registrados para indexação multi-workspace',
+    {},
+    async () => {
+      const registry = new WorkspaceRegistry()
+      const workspaces = registry.list()
+      return textResult(
+        workspaces.map((ws) => ({
+          id: ws.id,
+          name: ws.name,
+          path: ws.path,
+          isActive: ws.isActive,
+          lastIndexed: ws.lastIndexed,
+          remote: ws.remote ? { url: ws.remote.url, branch: ws.remote.branch } : undefined,
+        })),
+      )
+    },
+  )
+}
+
+function addCrossWorkspaceSearch(mcp: McpServer): void {
+  mcp.tool(
+    'cross_workspace_search',
+    'Busca em múltiplos workspaces simultaneamente com merge por score',
+    {
+      query: z.string().describe('Texto de busca'),
+      limit: z.number().optional().describe('Máximo de resultados (default: 10)'),
+      workspaces: z
+        .array(z.string())
+        .optional()
+        .describe('IDs dos workspaces (se omitido, busca em todos os ativos)'),
+    },
+    async ({ query, limit, workspaces }) => {
+      const registry = new WorkspaceRegistry()
+      const result = await crossWorkspaceSearch(registry, {
+        query,
+        limit: limit ?? 10,
+        ...(workspaces !== undefined ? { workspaces } : {}),
+        mergeStrategy: 'interleave',
+        timeoutMs: 5000,
+      })
+      return textResult({
+        results: result.results.map((r) => ({
+          workspaceId: r.workspaceId,
+          workspaceName: r.workspaceName,
+          file: r.file,
+          startLine: r.startLine,
+          symbolName: r.symbolName,
+          score: r.score,
+          source: r.source,
+          content: r.content,
+        })),
+        errors: result.errors,
+        stats: result.stats,
+      })
+    },
+  )
+}
+
+function addManageWorkspace(mcp: McpServer): void {
+  mcp.tool(
+    'manage_workspace',
+    'Adiciona ou remove workspaces do registro multi-workspace',
+    {
+      action: z.enum(['add', 'remove', 'activate', 'deactivate']).describe('Ação a executar'),
+      path: z.string().optional().describe('Caminho do workspace (para add)'),
+      id: z.string().optional().describe('ID do workspace (para remove/activate/deactivate)'),
+      name: z.string().optional().describe('Nome amigável (para add)'),
+    },
+    async ({ action, path, id, name }) => {
+      const registry = new WorkspaceRegistry()
+
+      if (action === 'add') {
+        if (!path) return { ...textResult({ error: 'path é obrigatório para add' }), isError: true }
+        const ws = registry.add(path, name)
+        return textResult({
+          action: 'added',
+          workspace: { id: ws.id, name: ws.name, path: ws.path },
+        })
+      }
+
+      if (!id) return { ...textResult({ error: 'id é obrigatório para esta ação' }), isError: true }
+
+      if (action === 'remove') {
+        const removed = registry.remove(id)
+        return textResult({ action: 'removed', success: removed, id })
+      }
+
+      if (action === 'activate') {
+        registry.setActive(id, true)
+        return textResult({ action: 'activated', id })
+      }
+
+      registry.setActive(id, false)
+      return textResult({ action: 'deactivated', id })
+    },
+  )
+}
+
+/** registerTools — Registra todas as 10 tools MCP no servidor */
 export function registerTools(
   mcp: McpServer,
   indexer: CodebaseIndexer,
@@ -176,4 +279,7 @@ export function registerTools(
   addGetDependencies(mcp, graph)
   addIndexWorkspace(mcp, indexer)
   addGetIndexStatus(mcp, indexer)
+  addListWorkspaces(mcp)
+  addCrossWorkspaceSearch(mcp)
+  addManageWorkspace(mcp)
 }

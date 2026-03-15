@@ -101,6 +101,30 @@ export {
   metricsUpdatedEvent,
 } from './events'
 
+// Multi-Workspace
+export { WorkspaceRegistry } from './workspace-registry'
+export type {
+  WorkspaceInfo,
+  RemoteInfo,
+  CrossSearchOptions,
+  CrossSearchResult,
+  WorkspaceSearchResult,
+  PartialError,
+} from './workspace-types'
+export { crossWorkspaceSearch } from './cross-workspace-search'
+
+// Remote Fetcher
+export {
+  cloneRepo,
+  syncRepo,
+  removeRepo,
+  cleanupStaleRepos,
+  listRepos,
+  parseRepoUrl,
+  toRemoteInfo,
+} from './remote-fetcher'
+export type { RemoteRepo } from './remote-fetcher'
+
 // Result type
 export { Ok, Err, unwrapOr, mapResult, flatMapResult, tryCatch, tryCatchAsync } from './result'
 export type { Result } from './result'
